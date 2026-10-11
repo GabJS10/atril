@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+/* Provisional tokens until DESIGN.md defines the real system: neutral black and bone. */
+@theme {
+  --color-canvas: #0d0d0d;
+  --color-bone: #edeae4;
+  --font-sans: system-ui, sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-canvas font-sans text-bone antialiased;
+  }
+}
