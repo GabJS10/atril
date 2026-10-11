@@ -3,9 +3,12 @@ import "./pdfjsGlobal";
 import { EventBus, PDFLinkService, PDFViewer as PdfJsViewer } from "pdfjs-dist/web/pdf_viewer.mjs";
 import "pdfjs-dist/web/pdf_viewer.css";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import type { Zoom } from "../api/types";
+import type { Highlight, Zoom } from "../api/types";
 import "./PdfViewer.css";
+import { highlightAt, type PageAtScale1, paintHighlightLayer } from "./highlightLayer";
+import type { PageMapping } from "./geometry";
 import { positionAtScroll, type PageGeometry, type ReaderPosition, scrollForPosition } from "./position";
+import { readSelection, type SelectionPart } from "./selectionReader";
 import { nextScale, zoomFromViewer, zoomToScaleValue } from "./zoom";
 
 /** Pixels moved by j/k. */
@@ -21,6 +24,14 @@ export type PdfViewerProps = {
   onChange: (snapshot: ViewSnapshot) => void;
   /** The start position is on screen. Called once. */
   onRestored: (snapshot: ViewSnapshot) => void;
+  /** Highlights of the book; drawn over the pages. */
+  highlights: Highlight[];
+  /** The user selected text and let go of the mouse. */
+  onSelectionEnd: (parts: SelectionPart[], anchor: DOMRect) => void;
+  /** The user clicked on the page without selecting text. */
+  onSelectionClear: () => void;
+  /** The user clicked on a highlight. */
+  onHighlightPress: (id: string, anchor: DOMRect) => void;
 };
 
 /** Commands the reader's keyboard map sends to the viewer. */
@@ -52,19 +63,41 @@ function pageGeometry(container: HTMLElement, instance: PdfJsViewer): PageGeomet
  * This component restores the saved position before the view is shown, and reports every move after that.
  */
 export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function PdfViewer(
-  { pdf, start, onChange, onRestored },
+  { pdf, start, onChange, onRestored, highlights, onSelectionEnd, onSelectionClear, onHighlightPress },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
   const viewer = useRef<PdfJsViewer | null>(null);
   const [revealed, setRevealed] = useState(false);
+  const paintRef = useRef<(() => void) | null>(null);
+
+  // A change of the book's highlights repaints the layer at once.
+  useEffect(() => {
+    paintRef.current?.();
+  }, [highlights]);
 
   // Latest props, read by pdf.js and DOM listeners that outlive the render.
-  const latest = useRef({ start, onChange, onRestored });
+  const latest = useRef({
+    start,
+    onChange,
+    onRestored,
+    highlights,
+    onSelectionEnd,
+    onSelectionClear,
+    onHighlightPress,
+  });
   useEffect(() => {
-    latest.current = { start, onChange, onRestored };
-  }, [start, onChange, onRestored]);
+    latest.current = {
+      start,
+      onChange,
+      onRestored,
+      highlights,
+      onSelectionEnd,
+      onSelectionClear,
+      onHighlightPress,
+    };
+  }, [start, onChange, onRestored, highlights, onSelectionEnd, onSelectionClear, onHighlightPress]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -112,8 +145,41 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         });
       });
     });
-    eventBus.on("scalechanging", emit);
+    // Highlights are painted per page at scale 1 (percentages), so a zoom needs no new geometry.
+    type PageView = {
+      viewport?: PageMapping & PageAtScale1 & { clone: (options: { scale: number }) => PageAtScale1 };
+    };
+    const viewportOf = (page: number) => (instance.getPageView(page - 1) as PageView | undefined)?.viewport;
+    const pageAtScale1 = (page: number): PageAtScale1 | undefined => viewportOf(page)?.clone({ scale: 1 });
+    const mappingOf = (page: number): PageMapping | undefined => viewportOf(page);
+    const paint = () => paintHighlightLayer(container, pageAtScale1, latest.current.highlights);
+
+    eventBus.on("scalechanging", () => {
+      paint();
+      emit();
+    });
+    eventBus.on("pagerendered", paint);
     container.addEventListener("scroll", emit);
+
+    // A mouse release ends a selection. The selection is read a tick later, once the browser has settled it.
+    const onMouseUp = (event: MouseEvent) => {
+      window.setTimeout(() => {
+        const selection = window.getSelection();
+        const parts = selection ? readSelection(selection, container, mappingOf) : [];
+        if (selection && parts.length > 0) {
+          latest.current.onSelectionEnd(parts, selection.getRangeAt(0).getBoundingClientRect());
+          return;
+        }
+        const element = highlightAt(container, event.clientX, event.clientY);
+        if (element?.dataset.highlightId) {
+          latest.current.onHighlightPress(element.dataset.highlightId, element.getBoundingClientRect());
+        } else {
+          latest.current.onSelectionClear();
+        }
+      }, 0);
+    };
+    container.addEventListener("mouseup", onMouseUp);
+    paintRef.current = paint;
 
     instance.setDocument(pdf);
     linkService.setDocument(pdf, null);
@@ -121,6 +187,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     return () => {
       cancelled = true;
       container.removeEventListener("scroll", emit);
+      container.removeEventListener("mouseup", onMouseUp);
+      paintRef.current = null;
       instance.setDocument(null);
       linkService.setDocument(null, null);
       viewer.current = null;

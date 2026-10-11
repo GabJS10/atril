@@ -10,7 +10,8 @@ export type ReaderAction =
   | "first-page"
   | "last-page"
   | "zoom-in"
-  | "zoom-out";
+  | "zoom-out"
+  | "toggle-highlight-mode";
 
 export type KeyLike = Pick<KeyboardEvent, "key" | "shiftKey" | "ctrlKey" | "metaKey" | "altKey">;
 
@@ -38,6 +39,8 @@ export function readerActionFor(event: KeyLike): ReaderAction | null {
     case "-":
     case "_":
       return "zoom-out";
+    case "h":
+      return "toggle-highlight-mode";
     default:
       return null;
   }

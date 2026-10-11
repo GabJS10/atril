@@ -8,6 +8,9 @@ import type {
   Book,
   BookQuery,
   Collection,
+  Highlight,
+  HighlightInput,
+  HighlightPatch,
   HomeData,
   ImportResult,
   LibraryFolder,
@@ -178,6 +181,25 @@ export function onFilesDropped(handler: (paths: string[]) => void): Promise<Unli
   return getCurrentWebview().onDragDropEvent((event) => {
     if (event.payload.type === "drop") handler(event.payload.paths);
   });
+}
+
+// Highlights (docs/IPC.md, fase 3)
+
+export function listHighlights(bookId: string): Promise<Highlight[]> {
+  return invoke<Highlight[]>("list_highlights", { bookId });
+}
+
+export function createHighlight(highlight: HighlightInput): Promise<Highlight> {
+  return invoke<Highlight>("create_highlight", { highlight });
+}
+
+/** `note: null` clears the note; leaving it out keeps it. */
+export function updateHighlight(highlightId: string, patch: HighlightPatch): Promise<Highlight> {
+  return invoke<Highlight>("update_highlight", { highlightId, ...patch });
+}
+
+export function deleteHighlight(highlightId: string): Promise<null> {
+  return invoke<null>("delete_highlight", { highlightId });
 }
 
 export function isAppError(error: unknown): error is AppError {

@@ -12,6 +12,9 @@ import { type ReaderAction, useReaderShortcuts } from "./shortcuts";
 import { useChromeVisibility } from "./useChromeVisibility";
 import { usePdfDocument } from "./usePdfDocument";
 import { useReadingPosition } from "./useReadingPosition";
+import { useHighlightSession } from "./useHighlightSession";
+import { HighlightEditor } from "./HighlightEditor";
+import { SelectionToolbar } from "./SelectionToolbar";
 import { readerClosed, readerOpened } from "../library/readerActivity";
 
 export function ReaderScreen({ bookId }: { bookId: string }) {
@@ -65,6 +68,8 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
   const [page, setPage] = useState(start.position?.page ?? 1);
   const [view, setView] = useState<{ zoom: Zoom; scale: number }>({ zoom: start.zoom, scale: 1 });
   const pageCount = pdfState.status === "ready" ? pdfState.pdf.numPages : 0;
+  const highlightSession = useHighlightSession(book.id);
+  const { toggleHighlightMode } = highlightSession;
 
   // The background indexer waits while a book is open.
   useEffect(() => {
@@ -129,9 +134,12 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
         case "zoom-out":
           handle.stepZoom(-1);
           break;
+        case "toggle-highlight-mode":
+          toggleHighlightMode();
+          break;
       }
     },
-    [pageCount],
+    [pageCount, toggleHighlightMode],
   );
   useReaderShortcuts(onAction);
 
@@ -146,7 +154,42 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
         start={{ zoom: start.zoom, position: start.position }}
         onChange={onChange}
         onRestored={onRestored}
+        highlights={highlightSession.highlights}
+        onSelectionEnd={highlightSession.handlers.onSelectionEnd}
+        onSelectionClear={highlightSession.handlers.onSelectionClear}
+        onHighlightPress={highlightSession.handlers.onHighlightPress}
       />
+      {highlightSession.selection && !highlightSession.editing ? (
+        <SelectionToolbar
+          anchor={highlightSession.selection.anchor}
+          onPick={highlightSession.toolbar.pick}
+          onNote={highlightSession.toolbar.note}
+          onCopy={highlightSession.toolbar.copy}
+        />
+      ) : null}
+      {highlightSession.editing ? (
+        <HighlightEditor
+          key={highlightSession.editing.highlight.id}
+          highlight={highlightSession.editing.highlight}
+          anchor={highlightSession.editing.anchor}
+          focusNote={highlightSession.editing.focusNote}
+          onColor={(color) =>
+            highlightSession.editor.changeColor(highlightSession.editing!.highlight.id, color)
+          }
+          onNote={(text) => highlightSession.editor.saveNote(highlightSession.editing!.highlight.id, text)}
+          onDelete={() => highlightSession.editor.remove(highlightSession.editing!.highlight.id)}
+          onClose={highlightSession.editor.close}
+        />
+      ) : null}
+      {highlightSession.notice ? (
+        <div
+          role="status"
+          onClick={highlightSession.dismissNotice}
+          className="fixed bottom-20 left-1/2 z-30 -translate-x-1/2 border border-line bg-surface px-5 py-3 text-ui text-ink-2"
+        >
+          {highlightSession.notice}
+        </div>
+      ) : null}
       <ReaderBar
         title={book.title}
         page={page}
@@ -156,6 +199,8 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
         onZoomIn={() => viewer.current?.stepZoom(1)}
         onZoomOut={() => viewer.current?.stepZoom(-1)}
         onFocusWithin={chrome.pin}
+        highlightMode={highlightSession.highlightMode}
+        onToggleHighlightMode={toggleHighlightMode}
       />
     </div>
   );

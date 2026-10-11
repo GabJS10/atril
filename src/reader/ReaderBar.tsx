@@ -12,6 +12,9 @@ export type ReaderBarProps = {
   onZoomOut: () => void;
   /** Keeps the bar visible while focus is inside it (keyboard users). */
   onFocusWithin: (within: boolean) => void;
+  /** The highlighter mode (H): every selection is highlighted with the last pigment. */
+  highlightMode: boolean;
+  onToggleHighlightMode: () => void;
 };
 
 const CONTROL_CLASS = "flex h-8 min-w-8 items-center justify-center text-ink hover:text-ink-2";
@@ -26,6 +29,8 @@ export function ReaderBar({
   onZoomIn,
   onZoomOut,
   onFocusWithin,
+  highlightMode,
+  onToggleHighlightMode,
 }: ReaderBarProps) {
   const t = useT();
   const locale = useLocaleStore((state) => state.locale);
@@ -47,6 +52,21 @@ export function ReaderBar({
       <span className="min-w-0 truncate font-serif text-cartela text-ink">{title}</span>
       <span>{t("reader.pageOf", { page: String(page), pages: String(pageCount) })}</span>
       <span className="flex-1" />
+      <button
+        type="button"
+        aria-pressed={highlightMode}
+        onClick={onToggleHighlightMode}
+        className={`flex items-center gap-2 border px-2.5 py-1 text-label ${
+          highlightMode ? "border-ink bg-ink text-ink-inverse" : "border-line text-ink-2"
+        }`}
+      >
+        <span
+          aria-hidden="true"
+          className="block h-2 w-2 rounded-full"
+          style={{ background: "var(--pigment-ocre)" }}
+        />
+        {t("highlight.mode")}
+      </button>
       <div className="flex items-center gap-2">
         <button type="button" aria-label={t("reader.zoomOut")} className={CONTROL_CLASS} onClick={onZoomOut}>
           −

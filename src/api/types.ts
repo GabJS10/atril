@@ -103,3 +103,33 @@ export type ScanMetadata = {
 export type ImportRejection = { path: string; error: AppError };
 
 export type ImportResult = { imported: Book[]; rejected: ImportRejection[] };
+
+// Highlights (docs/IPC.md, fase 3).
+
+export type HighlightColor = "ochre" | "sienna" | "sage" | "slate";
+
+/** x1, y1, x2, y2 in PDF user space (origin bottom-left). */
+export type PdfRect = [number, number, number, number];
+
+export type HighlightInput = {
+  bookId: string;
+  page: number;
+  rects: PdfRect[];
+  text: string;
+  color: HighlightColor;
+  note?: string | null;
+};
+
+export type Highlight = {
+  id: string;
+  bookId: string;
+  page: number;
+  rects: PdfRect[];
+  text: string;
+  color: HighlightColor;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type HighlightPatch = { color?: HighlightColor; note?: string | null };

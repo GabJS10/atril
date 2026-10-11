@@ -83,6 +83,21 @@ export const es = {
   "settings.folders.removeConfirm":
     "Atril deja de vigilar la carpeta. Sus libros se quedan en la biblioteca.",
   "settings.folders.rescan": "Volver a escanear",
+  "highlight.pigment.ochre": "Ocre",
+  "highlight.pigment.sienna": "Siena",
+  "highlight.pigment.sage": "Salvia",
+  "highlight.pigment.slate": "Pizarra",
+  "highlight.pickColor": "Subrayar en {color}",
+  "highlight.toolbar": "Acciones de la selección",
+  "highlight.note": "Nota",
+  "highlight.copy": "Copiar",
+  "highlight.mode": "Subrayador · H",
+  "highlight.saveFailed": "No se pudo guardar el subrayado.",
+  "highlight.editor": "Editar subrayado",
+  "highlight.noteLabel": "Nota del subrayado",
+  "highlight.saveNote": "Guardar nota",
+  "highlight.delete": "Borrar subrayado",
+  "highlight.close": "Cerrar",
 };
 
 export type TranslationKey = keyof typeof es;
