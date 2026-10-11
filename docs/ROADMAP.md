@@ -45,8 +45,8 @@ Esfuerzos: `low` (renombres, textos, configs), `medium` (componente o comando co
 
 ## Fase 2. Biblioteca
 **backend**
-- [ ] **2.B1 Carpetas, escaneo y vigilancia** (`high`): `walkdir` + `notify`, archivos movidos (misma huella) o desaparecidos (`missing`), `import_files`, evento `library://changed`.
-- [ ] **2.B2 Consultas y Salas** (`medium`): `get_home`, `list_books`, favoritos, CRUD de Salas, `save_book_scan` + portadas en disco, `list_pending_scans`.
+- [x] **2.B1 Carpetas, escaneo y vigilancia** (`high`): `walkdir` + `notify`, archivos movidos (misma huella) o desaparecidos (`missing`), `import_files`, evento `library://changed`.
+- [x] **2.B2 Consultas y Salas** (`medium`): `get_home`, `list_books`, favoritos, CRUD de Salas, `save_book_scan` + portadas en disco, `list_pending_scans`.
 
 **frontend**
 - [ ] **2.F1 Indexador** (`high`): metadatos y portadas con pdf.js en segundo plano, de uno en uno.
