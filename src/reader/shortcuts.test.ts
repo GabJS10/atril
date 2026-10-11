@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { createElement } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { isTypingOrControl, type KeyLike, readerActionFor, useReaderShortcuts } from "./shortcuts";
+import { keyBelongsToControl, type KeyLike, readerActionFor, useReaderShortcuts } from "./shortcuts";
 
 function key(value: string, modifiers: Partial<KeyLike> = {}): KeyLike {
   return { key: value, shiftKey: false, ctrlKey: false, metaKey: false, altKey: false, ...modifiers };
@@ -40,15 +40,17 @@ describe("readerActionFor", () => {
   });
 });
 
-describe("isTypingOrControl", () => {
-  it("is true for fields and buttons, false for the page", () => {
+describe("keyBelongsToControl", () => {
+  it("keeps every key for fields, and Space for buttons; other keys reach the reader", () => {
     const input = document.createElement("input");
     const button = document.createElement("button");
     const page = document.createElement("div");
-    expect(isTypingOrControl(input)).toBe(true);
-    expect(isTypingOrControl(button)).toBe(true);
-    expect(isTypingOrControl(page)).toBe(false);
-    expect(isTypingOrControl(null)).toBe(false);
+    expect(keyBelongsToControl(input, "h")).toBe(true);
+    expect(keyBelongsToControl(button, " ")).toBe(true);
+    expect(keyBelongsToControl(button, "h")).toBe(false);
+    expect(keyBelongsToControl(button, "ArrowRight")).toBe(false);
+    expect(keyBelongsToControl(page, " ")).toBe(false);
+    expect(keyBelongsToControl(null, "h")).toBe(false);
   });
 });
 
@@ -57,6 +59,23 @@ describe("useReaderShortcuts", () => {
     useReaderShortcuts(onAction);
     return createElement("input", { "aria-label": "field" });
   }
+
+  it("keeps H working when a bar button has the focus, but not Space", () => {
+    const onAction = vi.fn();
+    function Bar() {
+      useReaderShortcuts(onAction);
+      return createElement("button", { type: "button" }, "Subrayador");
+    }
+    render(createElement(Bar));
+    const button = document.querySelector("button")!;
+    button.focus();
+
+    fireEvent.keyDown(button, { key: "h" });
+    fireEvent.keyDown(button, { key: " " });
+
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onAction).toHaveBeenCalledWith("toggle-highlight-mode");
+  });
 
   it("runs the mapped action for keys pressed on the page", () => {
     const onAction = vi.fn();

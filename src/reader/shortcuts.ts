@@ -46,10 +46,14 @@ export function readerActionFor(event: KeyLike): ReaderAction | null {
   }
 }
 
-/** Keys typed into a field, or pressed on a control, keep their own behaviour. */
-export function isTypingOrControl(target: EventTarget | null): boolean {
+/**
+ * Keys typed into a field keep their own behaviour, and so does Space on a focused button (it presses it).
+ * Other keys still reach the reader: after a click on a bar button, H and the arrows keep working.
+ */
+export function keyBelongsToControl(target: EventTarget | null, key: string): boolean {
   if (!(target instanceof HTMLElement)) return false;
-  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(target.tagName);
+  if (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return true;
+  return target.tagName === "BUTTON" && key === " ";
 }
 
 /** Runs `onAction` for every mapped key while the reader is mounted. */
@@ -62,7 +66,7 @@ export function useReaderShortcuts(onAction: (action: ReaderAction) => void): vo
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (event.defaultPrevented || isTypingOrControl(event.target)) return;
+      if (event.defaultPrevented || keyBelongsToControl(event.target, event.key)) return;
       const action = readerActionFor(event);
       if (!action) return;
       event.preventDefault();
