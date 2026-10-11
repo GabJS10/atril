@@ -263,6 +263,15 @@ Reglas exactas:
 7. Subrayados separados por una línea en blanco.
 8. Escape: `\`, `*`, `_`, `#`, `[`, `]`, `<`, `>` y `` ` `` del texto y de la nota se preceden de `\` para que no se interpreten como Markdown.
 9. El título y el autor llevan el mismo escape que las citas (son texto del usuario).
+10. Textos fijos según `language` (`es` o `en`); los marcadores `*…*` de cursiva no se escapan:
+
+| Texto | `es` | `en` |
+|---|---|---|
+| Cabecera de exportación | `Subrayados exportados desde Atril el AAAA-MM-DD · N` | `Highlights exported from Atril on AAAA-MM-DD · N` |
+| Recuento | `1 subrayado` / `N subrayados` | `1 highlight` / `N highlights` |
+| Página | `## Página N` | `## Page N` |
+| Sin subrayados | `*Sin subrayados.*` | `*No highlights.*` |
+| Cita sin texto | `> *(sin texto)*` | `> *(no text)*` |
 10. **Idioma:** los textos fijos ("Página", "Subrayados exportados desde Atril el…", "subrayado(s)", "Sin subrayados.", "(sin texto)") salen de `language`. En inglés: `## Page <n>`, "Highlights exported from Atril on AAAA-MM-DD · N highlight(s)", `*No highlights.*`, `> *(no text)*`. Son los únicos textos de UI en Rust; viven juntos en una tabla `es`/`en` dentro de `highlights.rs`.
 
 **Lo que queda fuera de esta fase:** buscar dentro de los subrayados, exportar a otros formatos y el "modo subrayador" (es solo de front).
