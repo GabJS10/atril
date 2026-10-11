@@ -1,14 +1,122 @@
+/* Atril design tokens. Source of truth: DESIGN.md (derived from the approved canvas). */
 @import "tailwindcss";
+@import "@fontsource/cormorant-garamond/latin-400.css";
+@import "@fontsource/cormorant-garamond/latin-500.css";
+@import "@fontsource-variable/inter/wght.css";
 
-/* Provisional tokens until DESIGN.md defines the real system: neutral black and bone. */
-@theme {
-  --color-canvas: #0d0d0d;
-  --color-bone: #edeae4;
-  --font-sans: system-ui, sans-serif;
+/* Theme-independent scale, grid and motion. Colors live below, per theme. */
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-ink-inverse: var(--ink-inverse);
+
+  --color-paper: var(--paper);
+  --color-paper-ink: var(--paper-ink);
+  --color-pigment-ocre: var(--pigment-ocre);
+  --color-pigment-sienna: var(--pigment-sienna);
+  --color-pigment-sage: var(--pigment-sage);
+  --color-pigment-slate: var(--pigment-slate);
+
+  --font-sans: "Inter Variable", Inter, system-ui, sans-serif;
+  --font-serif: "Cormorant Garamond", Georgia, serif;
+
+  /* Escala tipográfica (px en rem a 16 px). */
+  --text-label: 0.6875rem; /* 11 px: rótulos en versalitas */
+  --text-ui: 0.8125rem; /* 13 px: controles secundarios */
+  --text-base: 0.875rem; /* 14 px: UI */
+  --text-reading: 1.0625rem; /* 17 px: cuerpo del lector (grotesca) */
+  --text-cartela: 1.5rem; /* 24 px: títulos de cartela */
+  --text-sala: 2.125rem; /* 34 px: títulos de Sala */
+  --text-obra: 3.5rem; /* 56 px: títulos de obra en pantalla grande */
+  --text-display: 4.75rem; /* 76 px: título de obra en "Seguir leyendo" */
+  --text-hero: 7rem; /* 112 px: Sala en cabecera */
+
+  --tracking-label: 0.14em;
+  --tracking-wordmark: 0.32em;
+
+  --radius-none: 0;
+  --radius-dot: 9999px;
+
+  --ease-atril: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-fast: 200ms;
+  --duration-base: 250ms;
+  --duration-slow: 300ms;
+}
+
+/* Tema oscuro (predeterminado) y "cubo blanco" (data-theme="light"). */
+:root,
+:root[data-theme="dark"] {
+  --canvas: #0d0d0d;
+  --surface: #161616;
+  --surface-2: #1f1f1f;
+  --line: #2a2a2a;
+  --line-strong: #edeae4;
+  --ink: #edeae4;
+  --ink-2: #a39e95;
+  --ink-3: #8a857c;
+  --ink-inverse: #0d0d0d;
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --canvas: #f5f4f0;
+  --surface: #ecebe6;
+  --surface-2: #e2e0d9;
+  --line: #d9d6ce;
+  --line-strong: #121212;
+  --ink: #121212;
+  --ink-2: #5c5852;
+  --ink-3: #6e6a63;
+  --ink-inverse: #f5f4f0;
+  color-scheme: light;
+}
+
+/* Lector: la página no cambia de color con el tema; sí con su modo (normal, sepia, noche). */
+:root {
+  --paper: #f4f1ea;
+  --paper-ink: #1c1a17;
+  --pigment-ocre: #b5914f;
+  --pigment-sienna: #a0644a;
+  --pigment-sage: #8a9a7b;
+  --pigment-slate: #6e7a88;
+  --highlight-alpha: 45%;
+}
+
+:root[data-reader-mode="sepia"] {
+  --paper: #f1e6cf;
+  --paper-ink: #3a2e22;
+}
+
+:root[data-reader-mode="night"] {
+  --paper: #0d0d0d;
+  --paper-ink: #edeae4;
 }
 
 @layer base {
+  html {
+    font-variant-numeric: tabular-nums;
+  }
+
   body {
-    @apply bg-canvas font-sans text-bone antialiased;
+    @apply bg-canvas font-sans text-ink antialiased;
+  }
+
+  :focus-visible {
+    outline: 1px solid var(--ink);
+    outline-offset: 3px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+    --duration-slow: 0ms;
   }
 }

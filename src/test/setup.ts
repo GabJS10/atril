@@ -12,4 +12,5 @@ afterEach(() => {
   cleanup();
   clearMocks();
   useLocaleStore.getState().setLanguage("es");
+  document.documentElement.dataset.theme = "dark";
 });

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { createMemoryHistory } from "@tanstack/react-router";
 import { describe, expect, it } from "vitest";
@@ -7,12 +7,12 @@ import { createQueryClient } from "./api/queries";
 import type { Settings } from "./api/types";
 import { createAppRouter } from "./router";
 
-function mockSettings(language: Settings["language"]) {
+function mockSettings(language: Settings["language"], theme: Settings["theme"] = "dark") {
   mockIPC((cmd) => {
     if (cmd === "get_settings") {
       return {
         language,
-        theme: "dark",
+        theme,
         defaultZoom: "page_width",
         defaultViewMode: "normal",
       } satisfies Settings;
@@ -40,6 +40,22 @@ describe("app shell", () => {
 
     expect(await screen.findByText("Your library is empty")).toBeInTheDocument();
     expect(document.documentElement.lang).toBe("en");
+  });
+
+  it("applies the light theme ('cubo blanco') from settings", async () => {
+    mockSettings("es", "light");
+    renderAt("/");
+
+    expect(await screen.findByText("Tu biblioteca está vacía")).toBeInTheDocument();
+    await waitFor(() => expect(document.documentElement.dataset.theme).toBe("light"));
+  });
+
+  it("keeps the dark theme by default", async () => {
+    mockSettings("es", "dark");
+    renderAt("/");
+
+    expect(await screen.findByText("Tu biblioteca está vacía")).toBeInTheDocument();
+    await waitFor(() => expect(document.documentElement.dataset.theme).toBe("dark"));
   });
 
   it("renders the empty reader for /read/$bookId with the book id", async () => {

@@ -9,7 +9,7 @@ function ReaderPage() {
       <Link to="/" className="self-start text-sm underline underline-offset-4">
         {t("reader.back")}
       </Link>
-      <p className="m-auto text-bone/70">{t("reader.placeholder")}</p>
+      <p className="m-auto text-ink-2">{t("reader.placeholder")}</p>
     </main>
   );
 }

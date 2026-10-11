@@ -2,12 +2,14 @@ import { createRootRoute, Link, Outlet } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useSettings } from "../api/queries";
 import { useLocaleStore, useT } from "../i18n";
+import { applyTheme } from "../theme";
 
 function RootLayout() {
   const { data: settings } = useSettings();
   const language = settings?.language;
   const setLanguage = useLocaleStore((state) => state.setLanguage);
   const locale = useLocaleStore((state) => state.locale);
+  const theme = settings?.theme;
 
   useEffect(() => {
     if (language) setLanguage(language);
@@ -16,6 +18,10 @@ function RootLayout() {
   useEffect(() => {
     document.documentElement.lang = locale;
   }, [locale]);
+
+  useEffect(() => {
+    if (theme) applyTheme(theme);
+  }, [theme]);
 
   return (
     <div className="flex min-h-screen flex-col">
