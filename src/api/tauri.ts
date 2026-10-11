@@ -70,6 +70,12 @@ export function onWindowCloseRequested(
   return getCurrentWindow().onCloseRequested(handler);
 }
 
+/** Switches the window between full screen and windowed (F11). */
+export async function toggleFullscreen(): Promise<void> {
+  const window = getCurrentWindow();
+  await window.setFullscreen(!(await window.isFullscreen()));
+}
+
 export function destroyWindow(): Promise<void> {
   return getCurrentWindow().destroy();
 }

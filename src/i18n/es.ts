@@ -122,6 +122,20 @@ export const es = {
   "search.next": "Resultado siguiente",
   "search.close": "Cerrar búsqueda",
   "search.open": "Buscar",
+  "settings.appearance": "Apariencia",
+  "settings.theme": "Tema de la aplicación",
+  "settings.theme.dark": "Oscuro",
+  "settings.theme.light": "Cubo blanco",
+  "settings.reading": "Lectura",
+  "settings.defaultZoom": "Zoom al abrir un libro",
+  "settings.zoom.page_width": "Ancho de página",
+  "settings.zoom.page_fit": "Página entera",
+  "settings.zoom.auto": "Automático",
+  "settings.defaultViewMode": "Papel al abrir un libro",
+  "reader.paper": "Papel",
+  "reader.paper.normal": "Normal",
+  "reader.paper.sepia": "Sepia",
+  "reader.paper.night": "Noche",
 };
 
 export type TranslationKey = keyof typeof es;

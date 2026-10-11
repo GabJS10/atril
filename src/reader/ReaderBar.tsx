@@ -1,6 +1,8 @@
 import { Link } from "@tanstack/react-router";
 import { useLocaleStore, useT } from "../i18n";
 import { formatPercent } from "./zoom";
+import { Segmented } from "../ui/Segmented";
+import type { ViewMode } from "../api/types";
 
 export type ReaderBarProps = {
   title: string;
@@ -23,6 +25,9 @@ export type ReaderBarProps = {
   onToggleOutline: () => void;
   /** Opens the search bar (also Ctrl+F). */
   onOpenSearch: () => void;
+  /** The paper of the reader: normal, sepia or night (DESIGN.md, lector: papel y tinta por modo). */
+  viewMode: ViewMode;
+  onViewMode: (mode: ViewMode) => void;
 };
 
 const CONTROL_CLASS = "flex h-8 min-w-8 items-center justify-center text-ink hover:text-ink-2";
@@ -45,6 +50,8 @@ export function ReaderBar({
   outlineOpen,
   onToggleOutline,
   onOpenSearch,
+  viewMode,
+  onViewMode,
 }: ReaderBarProps) {
   const t = useT();
   const locale = useLocaleStore((state) => state.locale);
@@ -66,6 +73,17 @@ export function ReaderBar({
       <span className="min-w-0 truncate font-serif text-cartela text-ink">{title}</span>
       <span>{t("reader.pageOf", { page: String(page), pages: String(pageCount) })}</span>
       <span className="flex-1" />
+      <Segmented
+        compact
+        label={t("reader.paper")}
+        value={viewMode}
+        onChange={onViewMode}
+        options={[
+          { value: "normal", label: t("reader.paper.normal") },
+          { value: "sepia", label: t("reader.paper.sepia") },
+          { value: "night", label: t("reader.paper.night") },
+        ]}
+      />
       <button type="button" onClick={onOpenSearch} className={CONTROL_CLASS}>
         {t("search.open")}
       </button>

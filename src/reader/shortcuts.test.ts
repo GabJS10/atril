@@ -20,6 +20,8 @@ describe("readerActionFor", () => {
     ["=", "zoom-in"],
     ["-", "zoom-out"],
     ["h", "toggle-highlight-mode"],
+    ["f", "toggle-focus-mode"],
+    ["Escape", "exit-focus-mode"],
   ] as const)("maps %s to %s", (value, action) => {
     expect(readerActionFor(key(value))).toBe(action);
   });

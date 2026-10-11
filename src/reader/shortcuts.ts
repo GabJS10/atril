@@ -11,7 +11,9 @@ export type ReaderAction =
   | "last-page"
   | "zoom-in"
   | "zoom-out"
-  | "toggle-highlight-mode";
+  | "toggle-highlight-mode"
+  | "toggle-focus-mode"
+  | "exit-focus-mode";
 
 export type KeyLike = Pick<KeyboardEvent, "key" | "shiftKey" | "ctrlKey" | "metaKey" | "altKey">;
 
@@ -41,6 +43,10 @@ export function readerActionFor(event: KeyLike): ReaderAction | null {
       return "zoom-out";
     case "h":
       return "toggle-highlight-mode";
+    case "f":
+      return "toggle-focus-mode";
+    case "Escape":
+      return "exit-focus-mode";
     default:
       return null;
   }

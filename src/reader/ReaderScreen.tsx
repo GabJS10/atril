@@ -71,6 +71,16 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
   const chrome = useChromeVisibility();
   const saver = useReadingPosition(book.id);
   const [page, setPage] = useState(start.position?.page ?? 1);
+  // The paper of the reader; saved with the position, and applied to the whole page through <html>.
+  const [viewMode, setViewMode] = useState<ViewMode>(start.viewMode);
+  const viewModeRef = useRef(start.viewMode);
+  const lastView = useRef<ViewSnapshot | null>(null);
+  useEffect(() => {
+    document.documentElement.dataset.readerMode = viewMode;
+    return () => {
+      delete document.documentElement.dataset.readerMode;
+    };
+  }, [viewMode]);
   const [view, setView] = useState<{ zoom: Zoom; scale: number }>({ zoom: start.zoom, scale: 1 });
   const pageCount = pdfState.status === "ready" ? pdfState.pdf.numPages : 0;
   const highlightSession = useHighlightSession(book.id);
@@ -79,6 +89,8 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
   const [sidePanel, setSidePanel] = useState<"highlights" | "outline" | null>(null);
   const [exporting, setExporting] = useState(false);
   const outline = useOutline(pdfState.status === "ready" ? pdfState.pdf : null);
+  // Focus mode hides the bar and the panels; only the page stays. F or Escape leaves it.
+  const [focusMode, setFocusMode] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [findResult, setFindResult] = useState<FindResult | null>(null);
 
@@ -127,22 +139,35 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
     (snapshot: ViewSnapshot) => {
       setPage(snapshot.position.page);
       setView({ zoom: snapshot.zoom, scale: snapshot.scale });
-      saver.update(toSaveState(snapshot.position, snapshot.zoom, start.viewMode, pageCount));
+      lastView.current = snapshot;
+      saver.update(toSaveState(snapshot.position, snapshot.zoom, viewModeRef.current, pageCount));
     },
-    [saver, start.viewMode, pageCount],
+    [saver, pageCount],
+  );
+
+  const changeViewMode = useCallback(
+    (mode: ViewMode) => {
+      setViewMode(mode);
+      viewModeRef.current = mode;
+      if (lastView.current) {
+        saver.update(toSaveState(lastView.current.position, lastView.current.zoom, mode, pageCount));
+      }
+    },
+    [saver, pageCount],
   );
 
   const onRestored = useCallback(
     (snapshot: ViewSnapshot) => {
       setPage(snapshot.position.page);
       setView({ zoom: snapshot.zoom, scale: snapshot.scale });
+      lastView.current = snapshot;
       saver.enable();
       // A book read for the first time has no page count stored yet: save its start position once.
       if (book.pageCount === null) {
-        saver.update(toSaveState(snapshot.position, snapshot.zoom, start.viewMode, pageCount));
+        saver.update(toSaveState(snapshot.position, snapshot.zoom, viewModeRef.current, pageCount));
       }
     },
-    [saver, start.viewMode, book.pageCount, pageCount],
+    [saver, book.pageCount, pageCount],
   );
 
   const onAction = useCallback(
@@ -183,9 +208,18 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
         case "toggle-highlight-mode":
           toggleHighlightMode();
           break;
+        case "toggle-focus-mode":
+          setFocusMode((on) => !on);
+          setSidePanel(null);
+          break;
+        case "exit-focus-mode":
+          // Escape closes the open panel first, then leaves focus mode.
+          if (sidePanel) setSidePanel(null);
+          else setFocusMode(false);
+          break;
       }
     },
-    [pageCount, toggleHighlightMode],
+    [pageCount, toggleHighlightMode, sidePanel],
   );
   useReaderShortcuts(onAction);
 
@@ -193,7 +227,10 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
   if (pdfState.status === "error") return <ReaderMessage>{t("reader.error")}</ReaderMessage>;
 
   return (
-    <div className="relative h-screen w-full overflow-hidden bg-canvas" onMouseMove={chrome.wake}>
+    <div
+      className="relative h-screen w-full overflow-hidden bg-canvas"
+      onMouseMove={focusMode ? undefined : chrome.wake}
+    >
       <PdfViewer
         ref={viewer}
         pdf={pdfState.pdf}
@@ -242,7 +279,7 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
         page={page}
         pageCount={pageCount}
         scale={view.scale}
-        visible={chrome.visible}
+        visible={chrome.visible && !focusMode}
         onZoomIn={() => viewer.current?.stepZoom(1)}
         onZoomOut={() => viewer.current?.stepZoom(-1)}
         onFocusWithin={chrome.pin}
@@ -254,6 +291,8 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
         outlineOpen={sidePanel === "outline"}
         onToggleOutline={() => setSidePanel((open) => (open === "outline" ? null : "outline"))}
         onOpenSearch={openSearch}
+        viewMode={viewMode}
+        onViewMode={changeViewMode}
       />
       {searchOpen ? (
         <SearchBar

@@ -57,3 +57,16 @@
 .atril-viewer .textLayer .highlight.selected {
   background-color: color-mix(in srgb, var(--paper-ink) 55%, transparent);
 }
+
+/*
+ * Reader paper (DESIGN.md, 2.2). The filters go on the page canvas only: the text, the highlights and the search
+ * marks are drawn above it and keep their own colours. Sepia multiplies the scan onto the sepia paper; night
+ * inverts it (hue kept, so coloured scans stay recognisable).
+ */
+:root[data-reader-mode="sepia"] .atril-viewer .page canvas {
+  mix-blend-mode: multiply;
+}
+
+:root[data-reader-mode="night"] .atril-viewer .page canvas {
+  filter: invert(1) hue-rotate(180deg);
+}
