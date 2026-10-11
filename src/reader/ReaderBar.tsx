@@ -15,10 +15,12 @@ export type ReaderBarProps = {
   /** The highlighter mode (H): every selection is highlighted with the last pigment. */
   highlightMode: boolean;
   onToggleHighlightMode: () => void;
-  /** The side panel with the book's highlights (DESIGN.md, barra del lector: subrayados). */
+  /** The side panels (DESIGN.md, barra del lector): index and highlights. Only one is open at a time. */
   highlightCount: number;
-  panelOpen: boolean;
-  onTogglePanel: () => void;
+  highlightsOpen: boolean;
+  onToggleHighlights: () => void;
+  outlineOpen: boolean;
+  onToggleOutline: () => void;
 };
 
 const CONTROL_CLASS = "flex h-8 min-w-8 items-center justify-center text-ink hover:text-ink-2";
@@ -36,8 +38,10 @@ export function ReaderBar({
   highlightMode,
   onToggleHighlightMode,
   highlightCount,
-  panelOpen,
-  onTogglePanel,
+  highlightsOpen,
+  onToggleHighlights,
+  outlineOpen,
+  onToggleOutline,
 }: ReaderBarProps) {
   const t = useT();
   const locale = useLocaleStore((state) => state.locale);
@@ -61,10 +65,20 @@ export function ReaderBar({
       <span className="flex-1" />
       <button
         type="button"
-        aria-pressed={panelOpen}
-        onClick={onTogglePanel}
+        aria-pressed={outlineOpen}
+        onClick={onToggleOutline}
         className={`flex items-center gap-2 border px-2.5 py-1 text-label ${
-          panelOpen ? "border-ink bg-ink text-ink-inverse" : "border-line text-ink-2"
+          outlineOpen ? "border-ink bg-ink text-ink-inverse" : "border-line text-ink-2"
+        }`}
+      >
+        {t("outline.title")}
+      </button>
+      <button
+        type="button"
+        aria-pressed={highlightsOpen}
+        onClick={onToggleHighlights}
+        className={`flex items-center gap-2 border px-2.5 py-1 text-label ${
+          highlightsOpen ? "border-ink bg-ink text-ink-inverse" : "border-line text-ink-2"
         }`}
       >
         {t("highlightPanel.toggle")} · {highlightCount}

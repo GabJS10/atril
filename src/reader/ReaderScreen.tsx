@@ -15,6 +15,8 @@ import { useReadingPosition } from "./useReadingPosition";
 import { useHighlightSession } from "./useHighlightSession";
 import { HighlightEditor } from "./HighlightEditor";
 import { HighlightsPanel } from "./HighlightsPanel";
+import { OutlinePanel } from "./OutlinePanel";
+import { useOutline } from "./useOutline";
 import { exportBookHighlights } from "./highlightExport";
 import { SelectionToolbar } from "./SelectionToolbar";
 import { readerClosed, readerOpened } from "../library/readerActivity";
@@ -73,8 +75,9 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
   const highlightSession = useHighlightSession(book.id);
   const { toggleHighlightMode } = highlightSession;
   const locale = useLocaleStore((state) => state.locale);
-  const [panelOpen, setPanelOpen] = useState(false);
+  const [sidePanel, setSidePanel] = useState<"highlights" | "outline" | null>(null);
   const [exporting, setExporting] = useState(false);
+  const outline = useOutline(pdfState.status === "ready" ? pdfState.pdf : null);
 
   const exportBook = async () => {
     if (exporting) return;
@@ -223,16 +226,26 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
         highlightMode={highlightSession.highlightMode}
         onToggleHighlightMode={toggleHighlightMode}
         highlightCount={highlightSession.highlights.length}
-        panelOpen={panelOpen}
-        onTogglePanel={() => setPanelOpen((open) => !open)}
+        highlightsOpen={sidePanel === "highlights"}
+        onToggleHighlights={() => setSidePanel((open) => (open === "highlights" ? null : "highlights"))}
+        outlineOpen={sidePanel === "outline"}
+        onToggleOutline={() => setSidePanel((open) => (open === "outline" ? null : "outline"))}
       />
-      {panelOpen ? (
+      {sidePanel === "outline" ? (
+        <OutlinePanel
+          items={outline}
+          currentPage={page}
+          onGo={(item) => viewer.current?.goToDestination(item.dest)}
+          onClose={() => setSidePanel(null)}
+        />
+      ) : null}
+      {sidePanel === "highlights" ? (
         <HighlightsPanel
           highlights={highlightSession.highlights}
           exporting={exporting}
           onJump={(highlight) => viewer.current?.revealHighlight(highlight)}
           onExport={() => void exportBook()}
-          onClose={() => setPanelOpen(false)}
+          onClose={() => setSidePanel(null)}
         />
       ) : null}
     </div>

@@ -108,6 +108,13 @@ export const es = {
   "highlightPanel.exported": "Subrayados exportados: {count}.",
   "highlightPanel.exportFailed": "No se pudieron exportar los subrayados.",
   "highlightPanel.toggle": "Subrayados",
+  "outline.title": "Índice",
+  "outline.label": "Índice del libro",
+  "outline.empty": "Este libro no tiene índice.",
+  "outline.loading": "Cargando el índice…",
+  "outline.expand": "Desplegar {title}",
+  "outline.collapse": "Plegar {title}",
+  "outline.page": "p. {page}",
 };
 
 export type TranslationKey = keyof typeof es;

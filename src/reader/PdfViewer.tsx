@@ -45,6 +45,8 @@ export type PdfViewerProps = {
 /** Commands the reader's keyboard map sends to the viewer. */
 export type PdfViewerHandle = {
   goToPage: (page: number) => void;
+  /** Goes to a destination of the book (an entry of its index): the page and the place on it. */
+  goToDestination: (dest: string | unknown[]) => void;
   /** Scrolls the highlight into view (the panel's click). */
   revealHighlight: (highlight: Highlight) => void;
   /** One page forward or back, from the page pdf.js is on (not from React state, which can lag behind key repeats). */
@@ -79,6 +81,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
   const viewer = useRef<PdfJsViewer | null>(null);
+  const links = useRef<PDFLinkService | null>(null);
   const [revealed, setRevealed] = useState(false);
   const paintRef = useRef<(() => void) | null>(null);
 
@@ -124,6 +127,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       removePageBorders: true,
     });
     linkService.setViewer(instance);
+    links.current = linkService;
     viewer.current = instance;
 
     let restored = false;
@@ -200,6 +204,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       paintRef.current = null;
       instance.setDocument(null);
       linkService.setDocument(null, null);
+      links.current = null;
       viewer.current = null;
     };
   }, [pdf]);
@@ -209,6 +214,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     () => ({
       goToPage(page) {
         if (viewer.current) viewer.current.currentPageNumber = page;
+      },
+      goToDestination(dest) {
+        void links.current?.goToDestination(dest);
       },
       revealHighlight(highlight) {
         const instance = viewer.current;

@@ -108,4 +108,11 @@ export const en: Record<TranslationKey, string> = {
   "highlightPanel.exported": "Highlights exported: {count}.",
   "highlightPanel.exportFailed": "The highlights could not be exported.",
   "highlightPanel.toggle": "Highlights",
+  "outline.title": "Contents",
+  "outline.label": "Book contents",
+  "outline.empty": "This book has no contents.",
+  "outline.loading": "Loading contents…",
+  "outline.expand": "Expand {title}",
+  "outline.collapse": "Collapse {title}",
+  "outline.page": "p. {page}",
 };
