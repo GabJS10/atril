@@ -118,13 +118,3 @@ export async function openPdfByRanges(
   transport.onError = () => void task.destroy();
   return task;
 }
-
-/** Opens a book by its URL and lets pdf.js choose the transport (the case we want to measure). */
-export function openPdfByUrl(fileUrl: string): PDFDocumentLoadingTask {
-  return getDocument({
-    url: fileUrl,
-    rangeChunkSize: RANGE_CHUNK_SIZE,
-    disableAutoFetch: true,
-    disableStream: true,
-  });
-}
