@@ -183,7 +183,7 @@ type ImportResult = {
 - Sin paginación: una biblioteca de cientos de libros cabe en una respuesta. Si crece, se añade `limit`/`offset` en v0.4.
 - La búsqueda usa `LIKE` con normalización en Rust (sin acentos), no FTS, en esta fase.
 
-### Fase 3 (propuesta v0.4, pendiente de revisión)
+### Fase 3 (v0.4, aprobada)
 
 Los subrayados viven en la tabla `highlights` (migración 0001; no hace falta migración nueva). Los rectángulos se guardan como JSON en coordenadas PDF, así que sirven a cualquier zoom.
 
@@ -194,7 +194,7 @@ Los subrayados viven en la tabla `highlights` (migración 0001; no hace falta mi
 | `create_highlight` | `{ highlight: HighlightInput }` | `Highlight` completo, con `id` generado por el backend | `not_found` (libro), `invalid_input`, `db` |
 | `update_highlight` | `{ highlightId: string; color?: HighlightColor; note?: string \| null }` | `Highlight` actualizado | `not_found`, `invalid_input`, `db` |
 | `delete_highlight` | `{ highlightId: string }` | `null` | `not_found`, `db` |
-| `export_highlights` | `{ bookId: string; destPath: string }` | `{ count: number }`: subrayados exportados | `not_found`, `invalid_input` (ruta no absoluta o carpeta que no existe), `io`, `db` |
+| `export_highlights` | `{ bookId: string; destPath: string; language: "es" \| "en" }` (el idioma de la UI ya resuelto) | `{ count: number }`: subrayados exportados | `not_found`, `invalid_input` (ruta no absoluta o carpeta que no existe), `io`, `db` |
 
 Notas de cada comando:
 - **`create_highlight`** está pensado para la UI optimista: una sola inserción por clave primaria y el `Highlight` completo de vuelta, sin esperar nada más. No emite evento; el front actualiza su propia caché.
@@ -262,7 +262,8 @@ Reglas exactas:
 6. Si tiene nota, un párrafo debajo, sin `>`, con sus saltos de línea tal cual. Un subrayado sin nota no lleva nada más.
 7. Subrayados separados por una línea en blanco.
 8. Escape: `\`, `*`, `_`, `#`, `[`, `]`, `<`, `>` y `` ` `` del texto y de la nota se preceden de `\` para que no se interpreten como Markdown.
-9. El título y el autor se escriben sin escapar en la cabecera pero con el mismo escape que las citas (son texto del usuario).
+9. El título y el autor llevan el mismo escape que las citas (son texto del usuario).
+10. **Idioma:** los textos fijos ("Página", "Subrayados exportados desde Atril el…", "subrayado(s)", "Sin subrayados.", "(sin texto)") salen de `language`. En inglés: `## Page <n>`, "Highlights exported from Atril on AAAA-MM-DD · N highlight(s)", `*No highlights.*`, `> *(no text)*`. Son los únicos textos de UI en Rust; viven juntos en una tabla `es`/`en` dentro de `highlights.rs`.
 
 **Lo que queda fuera de esta fase:** buscar dentro de los subrayados, exportar a otros formatos y el "modo subrayador" (es solo de front).
 
