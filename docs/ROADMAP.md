@@ -38,7 +38,7 @@ Esfuerzos: `low` (renombres, textos, configs), `medium` (componente o comando co
 **frontend**
 - [x] **1.F1 Spike de carga** (`high`): pdf.js abriendo `atril://…` con rangos en WebKitGTK (con el backend real). Si falla, aplicar el plan B de `PLAN.md` y avisar.
 - [x] **1.F2 PdfViewer** (`xhigh`): `PDFViewer` + `EventBus` + `PDFLinkService` en React, worker de pdf.js con Vite, scroll continuo, zoom (ancho / página / %), navegación y atajos (←/→, j/k, espacio, +/−, Inicio/Fin).
-- [ ] **1.F3 Posición** (`xhigh`): restaurar página + desplazamiento + zoom al abrir; guardar con debounce de 800 ms y al cerrar o perder el foco.
+- [x] **1.F3 Posición** (`xhigh`): restaurar página + desplazamiento + zoom al abrir; guardar con debounce de 800 ms y al cerrar o perder el foco.
 - [x] **1.F4 Abrir archivo** (`low`): diálogo para abrir un PDF (provisional hasta la biblioteca; `tauri-plugin-dialog`).
 
 **Cierre:** abrir un PDF de más de 300 páginas, ir a la p. 150, cerrar la app y reabrir → misma posición.
