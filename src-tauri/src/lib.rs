@@ -60,9 +60,13 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let data_dir = db::data_dir()?;
-            let conn = db::open_app_database(&data_dir)?;
+            let (conn, applied) = db::open_app_database(&data_dir)?;
             let covers_dir = data_dir.join("covers");
             std::fs::create_dir_all(&covers_dir)?;
+            // La migración que regenera portadas deja los libros en 'pending': las viejas se borran una vez.
+            if applied.contains(&db::COVERS_RESET_VERSION) {
+                library::remove_all_covers(&covers_dir)?;
+            }
 
             let db = Arc::new(Mutex::new(conn));
             // Primer lanzamiento con PDF en la línea de comandos: el front lo recoge con take_pending_open_file.

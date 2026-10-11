@@ -12,7 +12,11 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0001_initial.sql"),
     include_str!("migrations/0002_library.sql"),
     include_str!("migrations/0003_title_source.sql"),
+    include_str!("migrations/0004_regenerate_covers.sql"),
 ];
+
+/// Versión que obliga a borrar las portadas de `covers/` al aplicarse (ver `0004_regenerate_covers.sql`).
+pub const COVERS_RESET_VERSION: i64 = 4;
 
 const APP_DIR_NAME: &str = "atril";
 const DB_FILE_NAME: &str = "atril.db";
@@ -27,24 +31,29 @@ pub fn data_dir() -> Result<PathBuf, AppError> {
 }
 
 /// Abre la base de datos de la app dentro de `data_dir` y la deja al día con las migraciones.
-pub fn open_app_database(data_dir: &Path) -> Result<Connection, AppError> {
-    open(&data_dir.join(DB_FILE_NAME))
+/// Devuelve también las versiones aplicadas en esta llamada.
+pub fn open_app_database(data_dir: &Path) -> Result<(Connection, Vec<i64>), AppError> {
+    open_tracking(&data_dir.join(DB_FILE_NAME))
 }
 
 /// Abre (o crea) una base de datos en `path` y aplica las migraciones pendientes.
 pub fn open(path: &Path) -> Result<Connection, AppError> {
+    open_tracking(path).map(|(conn, _)| conn)
+}
+
+fn open_tracking(path: &Path) -> Result<(Connection, Vec<i64>), AppError> {
     let mut conn = Connection::open(path)?;
     conn.pragma_update(None, "foreign_keys", true)?;
     conn.pragma_update(None, "journal_mode", "WAL")?;
-    migrate(&mut conn)?;
+    let applied = migrate(&mut conn)?;
 
     tracing::info!(path = %path.display(), "database ready");
-    Ok(conn)
+    Ok((conn, applied))
 }
 
-/// Aplica las migraciones que falten. Cada una va en su propia transacción
-/// junto con la subida de `user_version`, así que un fallo no deja medio esquema.
-pub fn migrate(conn: &mut Connection) -> Result<(), AppError> {
+/// Aplica las migraciones que falten y devuelve sus versiones. Cada una va en su propia
+/// transacción junto con la subida de `user_version`, así que un fallo no deja medio esquema.
+pub fn migrate(conn: &mut Connection) -> Result<Vec<i64>, AppError> {
     let current: i64 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
     let latest = MIGRATIONS.len() as i64;
 
@@ -54,6 +63,7 @@ pub fn migrate(conn: &mut Connection) -> Result<(), AppError> {
         )));
     }
 
+    let mut applied = Vec::new();
     for (index, sql) in MIGRATIONS.iter().enumerate() {
         let version = index as i64 + 1;
         if version <= current {
@@ -66,9 +76,10 @@ pub fn migrate(conn: &mut Connection) -> Result<(), AppError> {
         tx.commit()?;
 
         tracing::info!(version, "applied database migration");
+        applied.push(version);
     }
 
-    Ok(())
+    Ok(applied)
 }
 
 #[cfg(test)]
@@ -123,7 +134,7 @@ mod tests {
         }
 
         let mut conn = open(&path).expect("second open");
-        migrate(&mut conn).expect("third migrate");
+        assert!(migrate(&mut conn).expect("third migrate").is_empty());
 
         assert_eq!(user_version(&conn), MIGRATIONS.len() as i64);
         assert_eq!(table_names(&conn), EXPECTED_TABLES);
@@ -149,6 +160,44 @@ mod tests {
         );
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn version_4_regenerates_done_and_failed_books_only() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut conn = Connection::open(dir.path().join("atril.db")).expect("open");
+        for sql in &MIGRATIONS[..3] {
+            conn.execute_batch(sql).expect("old migration");
+        }
+        conn.pragma_update(None, "user_version", 3)
+            .expect("version");
+        for (id, state, has_cover) in [("a", "done", 1), ("b", "failed", 0), ("c", "pending", 0)] {
+            conn.execute(
+                "INSERT INTO books (id, path, file_size, title, added_at, scan_state, has_cover)
+                 VALUES (?1, ?1, 1, ?1, 'now', ?2, ?3)",
+                rusqlite::params![id, state, has_cover],
+            )
+            .expect("insert");
+        }
+
+        let applied = migrate(&mut conn).expect("migrate");
+
+        assert_eq!(applied, vec![COVERS_RESET_VERSION]);
+        let states: Vec<(String, String, i64)> = conn
+            .prepare("SELECT id, scan_state, has_cover FROM books ORDER BY id")
+            .expect("prepare")
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .expect("query")
+            .map(|row| row.expect("row"))
+            .collect();
+        assert_eq!(
+            states,
+            vec![
+                ("a".to_string(), "pending".to_string(), 0),
+                ("b".to_string(), "pending".to_string(), 0),
+                ("c".to_string(), "pending".to_string(), 0),
+            ]
+        );
     }
 
     #[test]

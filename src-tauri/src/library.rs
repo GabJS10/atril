@@ -585,6 +585,22 @@ fn write_cover(
     }
 }
 
+/// Borra todas las portadas de `covers/` (las regenera el indexador). Una carpeta que no existe no es error.
+pub fn remove_all_covers(covers_dir: &Path) -> Result<(), AppError> {
+    let entries = match std::fs::read_dir(covers_dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    for entry in entries {
+        let path = entry?.path();
+        if path.is_file() {
+            std::fs::remove_file(path)?;
+        }
+    }
+    Ok(())
+}
+
 struct BookRecord {
     book: Book,
     /// Ruta tal como está en la base de datos (puede ser provisional).
@@ -1082,6 +1098,18 @@ mod tests {
             ErrorCode::NotFound
         );
         assert!(!covers.path().join(format!("{}.webp", book.id)).exists());
+    }
+
+    #[test]
+    fn remove_all_covers_empties_the_folder_and_tolerates_a_missing_one() {
+        let covers = tempfile::tempdir().expect("covers");
+        std::fs::write(covers.path().join("a.webp"), b"x").expect("write");
+        std::fs::write(covers.path().join("b.jpg"), b"x").expect("write");
+
+        remove_all_covers(covers.path()).expect("remove");
+        assert_eq!(std::fs::read_dir(covers.path()).expect("read").count(), 0);
+
+        remove_all_covers(&covers.path().join("missing")).expect("missing folder is fine");
     }
 
     #[test]
