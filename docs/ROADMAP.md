@@ -6,8 +6,8 @@ Fases del MVP, qué hace cada agente (con el **esfuerzo** que le asigna `plan`),
 |---|---|---|
 | 0 | Andamiaje + propuestas de diseño | terminada (tag `fase-0`) |
 | 1 | Lector | terminada (tag `fase-1`) |
-| 2 | Biblioteca | en curso (backend listo) |
-| 3 | Subrayados y notas | pendiente |
+| 2 | Biblioteca | lista, pendiente de visto bueno |
+| 3 | Subrayados y notas | en curso (backend listo) |
 | 4 | Lectura cómoda | pendiente |
 | 5 | Sistema y release para Linux (v1.0.0) | pendiente |
 
@@ -51,7 +51,7 @@ Esfuerzos: `low` (renombres, textos, configs), `medium` (componente o comando co
 **frontend**
 - [x] **2.F1 Indexador** (`high`): metadatos y portadas con pdf.js en segundo plano, de uno en uno.
 - [x] **2.F2 Biblioteca** (`high`): muro de galería según `DESIGN.md` (Seguir leyendo, Favoritos, Salas, Todos), búsqueda y orden.
-- [ ] **2.F3 Salas y archivos** (`medium`): crear/renombrar/borrar Salas, añadir por menú contextual y arrastrando, soltar PDFs en la ventana, Ajustes › Carpetas.
+- [x] **2.F3 Salas y archivos** (`medium`): crear/renombrar/borrar Salas, añadir por menú contextual y arrastrando, soltar PDFs en la ventana, Ajustes › Carpetas.
 
 **Cierre:** añadir una carpeta real, ver las portadas, crear una Sala y mover un archivo sin perder el progreso.
 
