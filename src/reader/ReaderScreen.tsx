@@ -1,14 +1,17 @@
-import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { useCallback, useRef, useState } from "react";
+import { useSettings } from "../api/queries";
 import { isAppError, openBook } from "../api/tauri";
-import type { Book } from "../api/types";
+import type { Book, ReadingStateInput, Zoom, ViewMode } from "../api/types";
 import { useT } from "../i18n";
-import { PdfViewer, type PdfViewerHandle, type ViewerZoom } from "./PdfViewer";
+import { PdfViewer, type PdfViewerHandle, type ViewSnapshot } from "./PdfViewer";
 import { ReaderBar } from "./ReaderBar";
+import { initialReadingStart, type ReaderPosition, type ReadingStart } from "./position";
 import { type ReaderAction, useReaderShortcuts } from "./shortcuts";
 import { useChromeVisibility } from "./useChromeVisibility";
 import { usePdfDocument } from "./usePdfDocument";
+import { useReadingPosition } from "./useReadingPosition";
 
 export function ReaderScreen({ bookId }: { bookId: string }) {
   const t = useT();
@@ -18,13 +21,17 @@ export function ReaderScreen({ bookId }: { bookId: string }) {
     staleTime: Infinity,
     retry: false,
   });
+  const settings = useSettings();
 
-  if (opened.isPending) return <ReaderMessage>{t("reader.loading")}</ReaderMessage>;
+  if (opened.isPending || settings.isPending) return <ReaderMessage>{t("reader.loading")}</ReaderMessage>;
   if (opened.isError) {
     const missing = isAppError(opened.error) && opened.error.code === "file_missing";
     return <ReaderMessage>{missing ? t("reader.errorMissing") : t("reader.error")}</ReaderMessage>;
   }
-  return <ReaderView key={bookId} book={opened.data.book} />;
+  if (settings.isError) return <ReaderMessage>{t("reader.error")}</ReaderMessage>;
+
+  const start = initialReadingStart(opened.data.readingState, settings.data);
+  return <ReaderView key={bookId} book={opened.data.book} start={start} />;
 }
 
 function ReaderMessage({ children }: { children: string }) {
@@ -39,14 +46,46 @@ function ReaderMessage({ children }: { children: string }) {
   );
 }
 
-function ReaderView({ book }: { book: Book }) {
+function toSaveState(
+  position: ReaderPosition,
+  zoom: Zoom,
+  viewMode: ViewMode,
+  pageCount: number,
+): ReadingStateInput {
+  return { page: position.page, offsetInPage: position.offsetInPage, zoom, viewMode, pageCount };
+}
+
+function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
   const t = useT();
   const pdfState = usePdfDocument(book.fileUrl);
   const viewer = useRef<PdfViewerHandle>(null);
   const chrome = useChromeVisibility();
-  const [page, setPage] = useState(1);
-  const [zoom, setZoom] = useState<ViewerZoom>({ zoom: "page_width", scale: 1 });
+  const saver = useReadingPosition(book.id);
+  const [page, setPage] = useState(start.position?.page ?? 1);
+  const [view, setView] = useState<{ zoom: Zoom; scale: number }>({ zoom: start.zoom, scale: 1 });
   const pageCount = pdfState.status === "ready" ? pdfState.pdf.numPages : 0;
+
+  const onChange = useCallback(
+    (snapshot: ViewSnapshot) => {
+      setPage(snapshot.position.page);
+      setView({ zoom: snapshot.zoom, scale: snapshot.scale });
+      saver.update(toSaveState(snapshot.position, snapshot.zoom, start.viewMode, pageCount));
+    },
+    [saver, start.viewMode, pageCount],
+  );
+
+  const onRestored = useCallback(
+    (snapshot: ViewSnapshot) => {
+      setPage(snapshot.position.page);
+      setView({ zoom: snapshot.zoom, scale: snapshot.scale });
+      saver.enable();
+      // A book read for the first time has no page count stored yet: save its start position once.
+      if (book.pageCount === null) {
+        saver.update(toSaveState(snapshot.position, snapshot.zoom, start.viewMode, pageCount));
+      }
+    },
+    [saver, start.viewMode, book.pageCount, pageCount],
+  );
 
   const onAction = useCallback(
     (action: ReaderAction) => {
@@ -54,10 +93,10 @@ function ReaderView({ book }: { book: Book }) {
       if (!handle) return;
       switch (action) {
         case "next-page":
-          handle.goToPage(Math.min(page + 1, pageCount));
+          handle.turnPage(1);
           break;
         case "previous-page":
-          handle.goToPage(Math.max(page - 1, 1));
+          handle.turnPage(-1);
           break;
         case "first-page":
           handle.goToPage(1);
@@ -85,7 +124,7 @@ function ReaderView({ book }: { book: Book }) {
           break;
       }
     },
-    [page, pageCount],
+    [pageCount],
   );
   useReaderShortcuts(onAction);
 
@@ -97,15 +136,15 @@ function ReaderView({ book }: { book: Book }) {
       <PdfViewer
         ref={viewer}
         pdf={pdfState.pdf}
-        zoom={zoom.zoom}
-        onPageChange={setPage}
-        onZoomChange={setZoom}
+        start={{ zoom: start.zoom, position: start.position }}
+        onChange={onChange}
+        onRestored={onRestored}
       />
       <ReaderBar
         title={book.title}
         page={page}
         pageCount={pageCount}
-        scale={zoom.scale}
+        scale={view.scale}
         visible={chrome.visible}
         onZoomIn={() => viewer.current?.stepZoom(1)}
         onZoomOut={() => viewer.current?.stepZoom(-1)}

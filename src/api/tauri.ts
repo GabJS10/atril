@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow, type CloseRequestedEvent } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { AppError, Book, OpenedBook, ReadingStateInput, Settings, SettingsPatch } from "./types";
 
@@ -37,6 +38,20 @@ export async function pickPdfPath(): Promise<string | null> {
     filters: [{ name: "PDF", extensions: ["pdf"] }],
   });
   return typeof selected === "string" ? selected : null;
+}
+
+/**
+ * Runs `handler` when the user asks to close the window. Calling `event.preventDefault()` keeps it
+ * open; `destroyWindow()` closes it without asking again. Resolves to the function that stops listening.
+ */
+export function onWindowCloseRequested(
+  handler: (event: CloseRequestedEvent) => void | Promise<void>,
+): Promise<() => void> {
+  return getCurrentWindow().onCloseRequested(handler);
+}
+
+export function destroyWindow(): Promise<void> {
+  return getCurrentWindow().destroy();
 }
 
 export function isAppError(error: unknown): error is AppError {
