@@ -16,17 +16,17 @@ Esfuerzos: `low` (renombres, textos, configs), `medium` (componente o comando co
 ## Fase 0. Andamiaje
 **plan**
 - [x] Esqueleto con create-tauri-app (react-ts), `AGENTS.md`, `CLAUDE.md`, `docs/` y CI.
-- [ ] Tabs de Herdr y agentes en marcha.
+- [x] Agentes en marcha en Herdr (paneles en la tab `plan`).
 
 **frontend**
-- [ ] **0.F1 Propuestas de diseño, ronda 1** (`high`): leer [`DESIGN-BRIEF.md`](DESIGN-BRIEF.md) y crear en Claude Design el lienzo "Atril: propuestas" con 2–3 direcciones. Pasar el enlace a `plan`. **No** construir pantallas todavía.
+- [x] **0.F1 Propuestas de diseño, ronda 1** (`high`): leer [`DESIGN-BRIEF.md`](DESIGN-BRIEF.md) y crear en Claude Design el lienzo "Atril: propuestas" con 2–3 direcciones. Pasar el enlace a `plan`. **No** construir pantallas todavía.
 - [ ] **0.F2 Tooling** (`medium`): Tailwind 4 (`@tailwindcss/vite`), TanStack Router (basado en archivos, `src/routes/`) y Query, Zustand, ESLint + Prettier, Vitest + Testing Library + jsdom. Scripts `lint`, `typecheck`, `test`, `format` en `package.json` (como en YTS). Quitar la demo de la plantilla.
 - [ ] **0.F3 Carcasa** (`medium`): i18n es/en (`useT()`, `getT()`, idioma del sistema por defecto), rutas `/` (biblioteca, vacía) y `/read/$bookId` (lector, vacío), `src/api/tauri.ts` con `get_settings`/`update_settings` según `IPC.md`, y un test con `mockIPC`. Estilos neutros provisionales (fondo negro, texto blanco hueso) hasta que haya `DESIGN.md`.
 - [ ] **0.F4 Sistema de diseño** (`high`, cuando el usuario elija): ronda 2 de Claude Design, `DESIGN.md` + `PRODUCT.md`, tokens en el tema de Tailwind y fuentes empaquetadas (OFL).
 
 **backend**
-- [ ] **0.B1 Base** (`medium`): dependencias (`rusqlite` con `bundled`, `thiserror`, `tracing` + `tracing-subscriber`, `dirs`, `serde`), `error.rs` (`AppError { code, message }` según `IPC.md`), rutas de datos (`~/.local/share/atril/`), `db.rs` con migraciones versionadas (todas las tablas de `PLAN.md`), `settings.rs` + comandos `get_settings`/`update_settings`. Quitar el comando `greet` de la plantilla. Ventana: título "Atril", 1280×800, mínimo 900×600, `productName` "Atril".
-- [ ] **0.B2 Tests base** (`medium`): migraciones sobre una DB temporal (`tempfile`), serialización de `AppError` y de `Settings` (camelCase), `cargo fmt`/`clippy -D warnings` limpios.
+- [x] **0.B1 Base** (`medium`): dependencias (`rusqlite` con `bundled`, `thiserror`, `tracing` + `tracing-subscriber`, `dirs`, `serde`), `error.rs` (`AppError { code, message }` según `IPC.md`), rutas de datos (`~/.local/share/atril/`), `db.rs` con migraciones versionadas (todas las tablas de `PLAN.md`), `settings.rs` + comandos `get_settings`/`update_settings`. Quitar el comando `greet` de la plantilla. Ventana: título "Atril", 1280×800, mínimo 900×600, `productName` "Atril".
+- [x] **0.B2 Tests base** (`medium`): migraciones sobre una DB temporal (`tempfile`), serialización de `AppError` y de `Settings` (camelCase), `cargo fmt`/`clippy -D warnings` limpios.
 
 **Cierre:** `npm run tauri dev` arranca la carcasa, todos los checks pasan y el usuario aprobó una dirección de diseño.
 
