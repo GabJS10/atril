@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import type { Book } from "../api/types";
 import { useT } from "../i18n";
 import { useToggleFavorite } from "./actions";
+import { BookMenu } from "./BookMenu";
 
 export type CoverSize = "lg" | "md" | "sm";
 
@@ -44,8 +45,21 @@ export function ProgressLine({ progress, className = "" }: { progress: number | 
   );
 }
 
-/** A cover with its caption, linking to the reader, and a favourite toggle. A missing file is shown but cannot be opened. */
-export function BookCard({ book, size = "md" }: { book: Book; size?: CoverSize }) {
+export const BOOK_DRAG_TYPE = "application/x-atril-book";
+
+/**
+ * A cover with its caption, linking to the reader. Drag it onto a Sala to add it. The options menu and the
+ * favourite toggle sit over the cover. A missing file is shown but cannot be opened.
+ */
+export function BookCard({
+  book,
+  size = "md",
+  collectionId,
+}: {
+  book: Book;
+  size?: CoverSize;
+  collectionId?: string;
+}) {
   const t = useT();
   const toggleFavorite = useToggleFavorite();
   const body = (
@@ -64,14 +78,22 @@ export function BookCard({ book, size = "md" }: { book: Book; size?: CoverSize }
   );
 
   return (
-    <div className="group relative min-w-0">
+    <div
+      className="group relative min-w-0"
+      draggable={!book.missing}
+      onDragStart={(event) => {
+        event.dataTransfer.setData(BOOK_DRAG_TYPE, book.id);
+        event.dataTransfer.effectAllowed = "copy";
+      }}
+    >
       {book.missing ? (
         <div className="block">{body}</div>
       ) : (
-        <Link to="/read/$bookId" params={{ bookId: book.id }} className="block">
+        <Link to="/read/$bookId" params={{ bookId: book.id }} className="block" draggable={false}>
           {body}
         </Link>
       )}
+      {book.missing ? null : <BookMenu book={book} collectionId={collectionId} />}
       {book.missing ? null : (
         <button
           type="button"

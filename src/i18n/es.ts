@@ -59,6 +59,30 @@ export const es = {
   "settings.folders.empty": "Todavía no hay carpetas.",
   "library.favorite": "Añadir a favoritos",
   "library.unfavorite": "Quitar de favoritos",
+  "book.options": "Opciones del libro",
+  "book.remove": "Quitar de la biblioteca",
+  "book.removeConfirm":
+    "El libro sale de la biblioteca. El archivo no se borra; su progreso, subrayados y Salas se conservan.",
+  "collections.create": "Nueva Sala",
+  "collections.placeholder": "Nombre de la Sala",
+  "collections.createAction": "Crear",
+  "collections.rename": "Renombrar",
+  "collections.save": "Guardar",
+  "collections.cancel": "Cancelar",
+  "collections.delete": "Borrar Sala",
+  "collections.deleteConfirm": "Se borra la Sala. Sus libros se quedan en la biblioteca.",
+  "collections.confirm": "Confirmar",
+  "collections.removeFrom": "Quitar de esta Sala",
+  "collections.addTo": "Añadir a «{name}»",
+  "collections.noneYet": "Todavía no hay Salas.",
+  "collections.dropHint": "Arrastra una obra sobre una Sala para añadirla.",
+  "import.imported": "{count} libros añadidos.",
+  "import.rejected": "No se pudieron añadir {count} archivos:",
+  "import.dismiss": "Cerrar",
+  "settings.folders.remove": "Quitar",
+  "settings.folders.removeConfirm":
+    "Atril deja de vigilar la carpeta. Sus libros se quedan en la biblioteca.",
+  "settings.folders.rescan": "Volver a escanear",
 };
 
 export type TranslationKey = keyof typeof es;

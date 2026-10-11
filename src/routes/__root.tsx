@@ -2,12 +2,14 @@ import { createRootRoute, Link, Outlet } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useSettings } from "../api/queries";
 import { useLocaleStore, useT } from "../i18n";
+import { useFileDrop } from "../library/useFileDrop";
 import { useLibraryEvents } from "../library/useLibraryEvents";
 import { applyTheme } from "../theme";
 
 function RootLayout() {
   const { data: settings } = useSettings();
   useLibraryEvents();
+  useFileDrop();
   const language = settings?.language;
   const setLanguage = useLocaleStore((state) => state.setLanguage);
   const locale = useLocaleStore((state) => state.locale);

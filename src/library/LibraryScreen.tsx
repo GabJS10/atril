@@ -6,7 +6,7 @@ import { AllBooks, type AllBooksFilters } from "./AllBooks";
 import { useAddFolder, useOpenPdfFile } from "./actions";
 import { CollectionsSection, ContinueSection, FavoritesSection } from "./sections";
 import { useBooks, useHome, useScanStatus } from "./queries";
-import { EmptyLibrary, MissingBanner, ScanBar } from "./Notices";
+import { EmptyLibrary, ImportNotice, MissingBanner, ScanBar } from "./Notices";
 import { useDebouncedValue } from "./useDebouncedValue";
 
 /** The gallery wall (DESIGN.md, dirección B): Seguir leyendo, Favoritos, Salas and Todos. */
@@ -60,6 +60,7 @@ export function LibraryScreen() {
       </header>
 
       {scan.data?.running ? <ScanBar found={scan.data.found} /> : null}
+      <ImportNotice />
 
       {home.isError ? (
         <p role="alert" className="text-ink-2">

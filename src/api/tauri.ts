@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow, type CloseRequestedEvent } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
 import type {
@@ -8,6 +9,7 @@ import type {
   BookQuery,
   Collection,
   HomeData,
+  ImportResult,
   LibraryFolder,
   OpenedBook,
   ReadingStateInput,
@@ -137,6 +139,45 @@ export function onLibraryChanged(handler: (event: ScanEvent) => void): Promise<U
 /** A scan started, advanced or finished. */
 export function onScanStatus(handler: (status: ScanStatus) => void): Promise<UnlistenFn> {
   return listen<ScanStatus>("library://scan", (event) => handler(event.payload));
+}
+
+export function createCollection(name: string): Promise<Collection> {
+  return invoke<Collection>("create_collection", { name });
+}
+
+export function renameCollection(collectionId: string, name: string): Promise<Collection> {
+  return invoke<Collection>("rename_collection", { collectionId, name });
+}
+
+export function deleteCollection(collectionId: string): Promise<null> {
+  return invoke<null>("delete_collection", { collectionId });
+}
+
+export function addToCollection(bookIds: string[], collectionId: string): Promise<null> {
+  return invoke<null>("add_to_collection", { bookIds, collectionId });
+}
+
+export function removeFromCollection(bookIds: string[], collectionId: string): Promise<null> {
+  return invoke<null>("remove_from_collection", { bookIds, collectionId });
+}
+
+export function removeLibraryFolder(folderId: string): Promise<null> {
+  return invoke<null>("remove_library_folder", { folderId });
+}
+
+export function rescanLibrary(): Promise<null> {
+  return invoke<null>("rescan_library");
+}
+
+export function importFiles(paths: string[]): Promise<ImportResult> {
+  return invoke<ImportResult>("import_files", { paths });
+}
+
+/** PDF files dropped on the window. Resolves to the function that stops listening. */
+export function onFilesDropped(handler: (paths: string[]) => void): Promise<UnlistenFn> {
+  return getCurrentWebview().onDragDropEvent((event) => {
+    if (event.payload.type === "drop") handler(event.payload.paths);
+  });
 }
 
 export function isAppError(error: unknown): error is AppError {

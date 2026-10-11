@@ -3,6 +3,8 @@ import { useT, useLocaleStore } from "../i18n";
 import { SectionLabel } from "./sections";
 import { useAddFolder } from "./actions";
 import { useFolders } from "./queries";
+import { useFolderMutations } from "./collectionActions";
+import { useState } from "react";
 
 /** Ajustes, minimal for now: the library folders, and adding one. */
 export function SettingsScreen() {
@@ -10,6 +12,8 @@ export function SettingsScreen() {
   const locale = useLocaleStore((state) => state.locale);
   const folders = useFolders();
   const addFolder = useAddFolder();
+  const { remove: removeFolder, rescan } = useFolderMutations();
+  const [confirming, setConfirming] = useState<string | null>(null);
 
   return (
     <main className="flex min-h-screen flex-col gap-12 px-16 pb-16">
@@ -30,8 +34,34 @@ export function SettingsScreen() {
               className="flex items-baseline justify-between gap-6 border-b border-line py-4"
             >
               <span className="truncate text-base">{folder.path}</span>
-              <span className="shrink-0 text-ui text-ink-3">
+              <span className="flex shrink-0 items-center gap-6 text-ui text-ink-3">
                 {new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(new Date(folder.addedAt))}
+                {confirming === folder.id ? (
+                  <span className="flex items-center gap-4 text-ink">
+                    <span className="max-w-[320px] text-ink-2">{t("settings.folders.removeConfirm")}</span>
+                    <button
+                      type="button"
+                      className="font-medium text-ink"
+                      onClick={() => {
+                        removeFolder.mutate(folder.id);
+                        setConfirming(null);
+                      }}
+                    >
+                      {t("collections.confirm")}
+                    </button>
+                    <button type="button" className="text-ink-2" onClick={() => setConfirming(null)}>
+                      {t("collections.cancel")}
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="text-ink-2 underline underline-offset-4"
+                    onClick={() => setConfirming(folder.id)}
+                  >
+                    {t("settings.folders.remove")}
+                  </button>
+                )}
               </span>
             </li>
           ))}
@@ -39,14 +69,24 @@ export function SettingsScreen() {
             <li className="py-4 text-ink-2">{t("settings.folders.empty")}</li>
           ) : null}
         </ul>
-        <button
-          type="button"
-          onClick={() => addFolder.mutate()}
-          disabled={addFolder.isPending}
-          className="self-start border border-line-strong px-5 py-2.5 text-base font-medium disabled:opacity-50"
-        >
-          {t("settings.folders.add")}
-        </button>
+        <div className="flex gap-6">
+          <button
+            type="button"
+            onClick={() => addFolder.mutate()}
+            disabled={addFolder.isPending}
+            className="border border-line-strong px-5 py-2.5 text-base font-medium disabled:opacity-50"
+          >
+            {t("settings.folders.add")}
+          </button>
+          <button
+            type="button"
+            onClick={() => rescan.mutate()}
+            disabled={rescan.isPending}
+            className="border border-line px-5 py-2.5 text-base text-ink-2 disabled:opacity-50"
+          >
+            {t("settings.folders.rescan")}
+          </button>
+        </div>
       </section>
     </main>
   );

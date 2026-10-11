@@ -99,3 +99,7 @@ export type ScanMetadata = {
   title?: string;
   author?: string;
 };
+
+export type ImportRejection = { path: string; error: AppError };
+
+export type ImportResult = { imported: Book[]; rejected: ImportRejection[] };

@@ -1,4 +1,7 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useT } from "../i18n";
+import type { ImportResult } from "../api/types";
+import { importResultKey } from "./useFileDrop";
 import type { Book } from "../api/types";
 import { useRelinkBook, useRemoveBook } from "./actions";
 
@@ -107,5 +110,41 @@ export function EmptyLibrary({
         ))}
       </div>
     </section>
+  );
+}
+
+/** Result of the last files dropped on the window: how many were added, and which were refused. */
+export function ImportNotice() {
+  const t = useT();
+  const queryClient = useQueryClient();
+  const { data } = useQuery({
+    queryKey: importResultKey,
+    queryFn: async (): Promise<ImportResult | null> => null,
+    staleTime: Infinity,
+  });
+  if (!data) return null;
+  const dismiss = () => queryClient.setQueryData(importResultKey, null);
+  return (
+    <div
+      role="status"
+      className="flex flex-col gap-3 border border-line bg-surface px-7 py-5 text-ui text-ink-2"
+    >
+      {data.imported.length > 0 ? (
+        <span>{t("import.imported", { count: String(data.imported.length) })}</span>
+      ) : null}
+      {data.rejected.length > 0 ? (
+        <div className="flex flex-col gap-1">
+          <span className="text-ink">{t("import.rejected", { count: String(data.rejected.length) })}</span>
+          {data.rejected.map((item) => (
+            <span key={item.path} className="truncate">
+              {item.path} · {item.error.message}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      <button type="button" onClick={dismiss} className="self-end text-ink underline underline-offset-4">
+        {t("import.dismiss")}
+      </button>
+    </div>
   );
 }
