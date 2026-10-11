@@ -11,7 +11,7 @@ Fases del MVP, qué hace cada agente (con el **esfuerzo** que le asigna `plan`),
 | 4 | Lectura cómoda | pendiente |
 | 5 | Sistema y release para Linux (v1.0.0) | pendiente |
 
-Esfuerzos: `low` (renombres, textos, configs), `medium` (componente o comando con especificación clara), `high` (funciones que cruzan módulos, propuestas de diseño), `xhigh` (lo difícil). **Nunca `max`.**
+Esfuerzos: `low` (renombres, textos, configs), `medium` (componente o comando con especificación clara), `high` (funciones que cruzan módulos, propuestas de diseño), `xhigh` (lo difícil) y `max` **solo para lo imprescindible** (bugs muy difíciles o tareas en las que `xhigh` ya se quedó corto).
 
 ## Fase 0. Andamiaje
 **plan**
