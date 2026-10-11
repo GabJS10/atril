@@ -272,7 +272,6 @@ Reglas exactas:
 | Página | `## Página N` | `## Page N` |
 | Sin subrayados | `*Sin subrayados.*` | `*No highlights.*` |
 | Cita sin texto | `> *(sin texto)*` | `> *(no text)*` |
-10. **Idioma:** los textos fijos ("Página", "Subrayados exportados desde Atril el…", "subrayado(s)", "Sin subrayados.", "(sin texto)") salen de `language`. En inglés: `## Page <n>`, "Highlights exported from Atril on AAAA-MM-DD · N highlight(s)", `*No highlights.*`, `> *(no text)*`. Son los únicos textos de UI en Rust; viven juntos en una tabla `es`/`en` dentro de `highlights.rs`.
 
 **Lo que queda fuera de esta fase:** buscar dentro de los subrayados, exportar a otros formatos y el "modo subrayador" (es solo de front).
 

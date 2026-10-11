@@ -56,7 +56,7 @@ Esfuerzos: `low` (renombres, textos, configs), `medium` (componente o comando co
 **Cierre:** añadir una carpeta real, ver las portadas, crear una Sala y mover un archivo sin perder el progreso.
 
 ## Fase 3. Subrayados y notas
-- [ ] **3.B1** (`medium`): CRUD de subrayados y `export_highlights` a Markdown.
+- [x] **3.B1** (`medium`): CRUD de subrayados y `export_highlights` a Markdown.
 - [ ] **3.F1 Geometría** (`xhigh`): selección → rectángulos en coordenadas PDF y vuelta (`geometry.ts`, con tests en varios zooms y rotaciones).
 - [ ] **3.F2 Subrayar** (`high`): barra de selección (4 pigmentos + nota + copiar), modo subrayador (H), capa de subrayados, editar color/nota y borrar.
 - [ ] **3.F3 Panel** (`medium`): panel de subrayados (clic → salta a la página) y exportar.
@@ -67,7 +67,7 @@ Esfuerzos: `low` (renombres, textos, configs), `medium` (componente o comando co
 - [ ] **4.F1** (`medium`): índice (outline) en panel lateral.
 - [ ] **4.F2** (`high`): búsqueda con Ctrl+F (`PDFFindController`).
 - [ ] **4.F3** (`medium`): modo noche/sepia, tema cubo blanco, pantalla completa / modo foco.
-- [ ] **4.B1** (`low`): campos de ajustes de lectura por defecto.
+- [x] **4.B1** (`low`): campos de ajustes de lectura por defecto (`defaultZoom` y `defaultViewMode`, ya en la fase 0).
 
 ## Fase 5. Sistema y release para Linux
 - [ ] **5.B1** (`high`): `fileAssociations`, `tauri-plugin-single-instance`, `app://open-file`, `set_default_pdf_reader` (`xdg-mime`), iconos.
