@@ -15,10 +15,6 @@ use crate::error::AppError;
 
 pub const SCHEME: &str = "atril";
 
-/// Mayor trozo que se sirve en una respuesta. pdf.js pide por trozos; así un
-/// `bytes=0-` no carga el libro entero en memoria.
-const MAX_CHUNK: u64 = 4 * 1024 * 1024;
-
 /// Orígenes desde los que pdf.js puede pedir: la app en build (`tauri://localhost`,
 /// `http(s)://tauri.localhost` en Windows) y el servidor de desarrollo.
 const ALLOWED_ORIGINS: &[&str] = &[
@@ -97,11 +93,9 @@ pub fn parse_range(header_value: Option<&str>, len: u64) -> ByteRange {
     span(start, last)
 }
 
-fn span(start: u64, last: u64) -> ByteRange {
-    ByteRange::Span {
-        start,
-        end: last.min(start + MAX_CHUNK - 1),
-    }
+/// El 206 sirve exactamente el rango pedido (pdf.js no tolera trozos más cortos).
+fn span(start: u64, end: u64) -> ByteRange {
+    ByteRange::Span { start, end }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -483,14 +477,21 @@ mod tests {
     }
 
     #[test]
-    fn parse_range_caps_each_response_to_one_chunk() {
+    fn parse_range_serves_exactly_the_requested_span_even_when_large() {
         let len = 100 * 1024 * 1024;
 
         assert_eq!(
             parse_range(Some("bytes=0-"), len),
             ByteRange::Span {
                 start: 0,
-                end: MAX_CHUNK - 1
+                end: len - 1
+            }
+        );
+        assert_eq!(
+            parse_range(Some("bytes=1048576-5242879"), len),
+            ByteRange::Span {
+                start: 1_048_576,
+                end: 5_242_879
             }
         );
     }
