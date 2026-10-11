@@ -4,6 +4,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { viteStaticCopy } from "vite-plugin-static-copy";
 
 const host = process.env.TAURI_DEV_HOST;
 
@@ -17,6 +18,20 @@ export default defineConfig({
     }),
     react(),
     tailwindcss(),
+    // pdf.js decodes JPEG 2000 and JBIG2 (scanned pages), reads CMaps and standard fonts from these folders.
+    // They are served under /pdfjs/ in dev and copied to dist/pdfjs/ in the build; nothing is committed.
+    viteStaticCopy({
+      targets: [
+        { src: "node_modules/pdfjs-dist/wasm/*", dest: "pdfjs/wasm", rename: { stripBase: true } },
+        { src: "node_modules/pdfjs-dist/cmaps/*", dest: "pdfjs/cmaps", rename: { stripBase: true } },
+        {
+          src: "node_modules/pdfjs-dist/standard_fonts/*",
+          dest: "pdfjs/standard_fonts",
+          rename: { stripBase: true },
+        },
+        { src: "node_modules/pdfjs-dist/iccs/*", dest: "pdfjs/iccs", rename: { stripBase: true } },
+      ],
+    }),
   ],
 
   // Tauri: keep Rust errors visible and use a fixed port.

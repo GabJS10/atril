@@ -8,6 +8,25 @@ import workerUrl from "pdfjs-dist/build/pdf.worker.mjs?url";
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
+/**
+ * Where pdf.js finds its runtime files: WebAssembly decoders (JPEG 2000, JBIG2), CMaps, standard fonts and ICC
+ * profiles. vite.config.ts serves them under /pdfjs/ (dev) and copies them to dist/pdfjs/ (build). Absolute URLs
+ * with a trailing slash, resolved against the page, so they work on http://localhost:1420 and on tauri://localhost.
+ */
+export function pdfjsAssetUrls(base: string = location.href): {
+  wasmUrl: string;
+  cMapUrl: string;
+  standardFontDataUrl: string;
+  iccUrl: string;
+} {
+  return {
+    wasmUrl: new URL("/pdfjs/wasm/", base).href,
+    cMapUrl: new URL("/pdfjs/cmaps/", base).href,
+    standardFontDataUrl: new URL("/pdfjs/standard_fonts/", base).href,
+    iccUrl: new URL("/pdfjs/iccs/", base).href,
+  };
+}
+
 /** Bytes per request. pdf.js asks for the tail and the xref first, then only the pages it renders. */
 export const RANGE_CHUNK_SIZE = 64 * 1024;
 
@@ -114,6 +133,8 @@ export async function openPdfByRanges(
     rangeChunkSize: RANGE_CHUNK_SIZE,
     disableAutoFetch: true,
     disableStream: true,
+    ...pdfjsAssetUrls(),
+    cMapPacked: true,
   });
   transport.onError = () => void task.destroy();
   return task;
