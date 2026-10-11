@@ -52,6 +52,7 @@ type Book = {
   favorite: boolean;
   missing: boolean;
   scanState: "pending" | "done" | "failed";
+  currentPage: number | null; // página guardada en reading_state (para "p. 112 de 176"); null si nunca se abrió
   progress: number | null;  // 0–1 = page / pageCount, calculado al leer; null si nunca se abrió o no hay pageCount
   addedAt: string;
   lastOpenedAt: string | null;
@@ -95,7 +96,7 @@ Valores por defecto: `language: "system"`, `theme: "dark"`, `defaultZoom: "page_
 | `get_book` | `{ bookId: string }` | `Book` | `not_found`, `db` |
 | `save_reading_state` | `{ bookId: string; state: { page; offsetInPage; zoom; viewMode; pageCount } }` | `null`. `pageCount` solo se guarda la primera vez (si el libro aún no lo tenía); después manda el valor guardado | `not_found`, `invalid_input`, `db` |
 
-### Fase 2 (propuesta v0.3, pendiente de revisión)
+### Fase 2 (v0.3, aprobada)
 
 **Biblioteca y consultas (2.B2)**
 | Comando | Argumentos | Devuelve | Errores |
@@ -103,7 +104,7 @@ Valores por defecto: `language: "system"`, `theme: "dark"`, `defaultZoom: "page_
 | `get_home` | — | `HomeData` | `db` |
 | `list_books` | `{ query: BookQuery }` (`{}` = todos los libros, por título) | `Book[]` (sin los quitados) | `invalid_input`, `db` |
 | `set_favorite` | `{ bookId: string; favorite: boolean }` | `Book` | `not_found`, `db` |
-| `remove_book` | `{ bookId: string }` | `null`. Solo lo quita de la biblioteca; nunca borra el archivo. **Propuesta a decidir:** marca `removed_at` (migración 0002) en vez de borrar, así los subrayados, el progreso y las Salas vuelven si se importa el mismo archivo | `not_found`, `db` |
+| `remove_book` | `{ bookId: string }` | `null`. Solo lo quita de la biblioteca; nunca borra el archivo. Marca `removed_at` (migración 0002) en vez de borrar, así los subrayados, el progreso y las Salas vuelven si se importa el mismo archivo | `not_found`, `db` |
 
 **Carpetas y escaneo (2.B1)**
 | Comando | Argumentos | Devuelve | Errores |
@@ -112,6 +113,7 @@ Valores por defecto: `language: "system"`, `theme: "dark"`, `defaultZoom: "page_
 | `add_library_folder` | `{ path: string }` | `LibraryFolder`. Si la carpeta ya estaba, devuelve la existente. Lanza el escaneo en segundo plano (`library://changed`, `reason: "scan"`) | `invalid_input` (no es una carpeta), `io`, `db` |
 | `remove_library_folder` | `{ folderId: string }` | `null`. Deja de vigilar la carpeta; sus libros se quedan en la biblioteca | `not_found`, `db` |
 | `rescan_library` | — | `null`. El resultado llega por `library://changed` | `db` |
+| `get_scan_status` | — | `ScanStatus` (para pintar el estado "escaneando" al entrar en la biblioteca) | — |
 | `import_files` | `{ paths: string[] }` | `ImportResult`. Cada ruta se procesa por separado; los fallos van en `rejected` y no detienen el resto | `invalid_input` (lista vacía), `db` |
 
 **Indexador (2.B2, lo usa el front con pdf.js)**
@@ -162,6 +164,8 @@ type Collection = {
   bookCount: number;
   sampleBooks: Book[];     // hasta 4 obras (por fecha de alta, sin missing) para el rótulo de la Sala
 };
+
+type ScanStatus = { running: boolean; found: number }; // found: PDFs nuevos encontrados en el escaneo en curso o el último
 
 type LibraryFolder = { id: string; path: string; addedAt: string };
 
