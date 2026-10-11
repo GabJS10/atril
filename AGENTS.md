@@ -11,7 +11,7 @@ Guía para agentes de IA (y personas) que trabajen en este repositorio.
 - Brief de diseño ("museo de arte de noche"): [`docs/DESIGN-BRIEF.md`](docs/DESIGN-BRIEF.md). El sistema de diseño definitivo irá en `DESIGN.md` y el contexto de producto en `PRODUCT.md` (los escribe `frontend` cuando el usuario elija una propuesta)
 - QA manual por fase: [`docs/QA.md`](docs/QA.md)
 
-**Estado actual:** fases 0 y 1 cerradas (tags `fase-0`, `fase-1`); fase 2 (biblioteca) en curso. El backend tiene hechas sus tareas hasta la fase 5.
+**Estado actual:** fases 0, 1 y 2 cerradas (tags `fase-0` a `fase-2`); fase 3 (subrayados) en curso. El backend tiene hechas sus tareas hasta la fase 5.
 
 ## Forma de trabajo (multi-agente)
 El proyecto se desarrolla con **3 agentes en paralelo**, cada uno en un panel de la misma tab (`plan`) del workspace `atril` de [Herdr](https://herdr.dev): `plan` a la izquierda, `frontend` arriba a la derecha y `backend` abajo a la derecha. **Este `AGENTS.md` es la fuente de verdad**; `CLAUDE.md` solo lo importa.
