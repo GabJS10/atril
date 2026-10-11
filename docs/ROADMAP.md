@@ -22,7 +22,7 @@ Esfuerzos: `low` (renombres, textos, configs), `medium` (componente o comando co
 - [x] **0.F1 Propuestas de diseño, ronda 1** (`high`): leer [`DESIGN-BRIEF.md`](DESIGN-BRIEF.md) y crear en Claude Design el lienzo "Atril: propuestas" con 2–3 direcciones. Pasar el enlace a `plan`. **No** construir pantallas todavía.
 - [x] **0.F2 Tooling** (`medium`): Tailwind 4 (`@tailwindcss/vite`), TanStack Router (basado en archivos, `src/routes/`) y Query, Zustand, ESLint + Prettier, Vitest + Testing Library + jsdom. Scripts `lint`, `typecheck`, `test`, `format` en `package.json` (como en YTS). Quitar la demo de la plantilla.
 - [x] **0.F3 Carcasa** (`medium`): i18n es/en (`useT()`, `getT()`, idioma del sistema por defecto), rutas `/` (biblioteca, vacía) y `/read/$bookId` (lector, vacío), `src/api/tauri.ts` con `get_settings`/`update_settings` según `IPC.md`, y un test con `mockIPC`. Estilos neutros provisionales (fondo negro, texto blanco hueso) hasta que haya `DESIGN.md`.
-- [ ] **0.F4 Sistema de diseño** (`high`, cuando el usuario elija): ronda 2 de Claude Design, `DESIGN.md` + `PRODUCT.md`, tokens en el tema de Tailwind y fuentes empaquetadas (OFL).
+- [x] **0.F4 Sistema de diseño** (`high`, cuando el usuario elija): ronda 2 de Claude Design, `DESIGN.md` + `PRODUCT.md`, tokens en el tema de Tailwind y fuentes empaquetadas (OFL).
 
 **backend**
 - [x] **0.B1 Base** (`medium`): dependencias (`rusqlite` con `bundled`, `thiserror`, `tracing` + `tracing-subscriber`, `dirs`, `serde`), `error.rs` (`AppError { code, message }` según `IPC.md`), rutas de datos (`~/.local/share/atril/`), `db.rs` con migraciones versionadas (todas las tablas de `PLAN.md`), `settings.rs` + comandos `get_settings`/`update_settings`. Quitar el comando `greet` de la plantilla. Ventana: título "Atril", 1280×800, mínimo 900×600, `productName` "Atril".
@@ -32,8 +32,8 @@ Esfuerzos: `low` (renombres, textos, configs), `medium` (componente o comando co
 
 ## Fase 1. Lector
 **backend**
-- [ ] **1.B1 Protocolo `atril://`** (`xhigh`): `atril://localhost/book/<id>` con `Range` (206, `Accept-Ranges`, `Content-Range`, `Content-Length`), 404 si el ID no existe o falta el archivo; `atril://localhost/cover/<id>`. Tests de Range.
-- [ ] **1.B2 Libros y posición** (`medium`): huella, `open_path`, `open_book`, `get_book`, `save_reading_state` (según `IPC.md`).
+- [x] **1.B1 Protocolo `atril://`** (`xhigh`): `atril://localhost/book/<id>` con `Range` (206, `Accept-Ranges`, `Content-Range`, `Content-Length`), 404 si el ID no existe o falta el archivo; `atril://localhost/cover/<id>`. Tests de Range.
+- [x] **1.B2 Libros y posición** (`medium`): huella, `open_path`, `open_book`, `get_book`, `save_reading_state` (según `IPC.md`).
 
 **frontend**
 - [ ] **1.F1 Spike de carga** (`high`): pdf.js abriendo `atril://…` con rangos en WebKitGTK (con el backend real). Si falla, aplicar el plan B de `PLAN.md` y avisar.
