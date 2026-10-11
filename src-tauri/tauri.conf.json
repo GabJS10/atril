@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "atril",
+  "productName": "Atril",
   "version": "0.1.0",
   "identifier": "io.github.gabjs10.atril",
   "build": {
@@ -12,9 +12,12 @@
   "app": {
     "windows": [
       {
-        "title": "atril",
-        "width": 800,
-        "height": 600
+        "label": "main",
+        "title": "Atril",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 600
       }
     ],
     "security": {
