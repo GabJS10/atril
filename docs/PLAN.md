@@ -20,7 +20,7 @@ Estética: "museo de arte de noche", monocroma (ver [`DESIGN-BRIEF.md`](DESIGN-B
 | MVP extra | Modo noche/sepia, índice + búsqueda, notas + exportar a Markdown, abrir los PDF desde el sistema |
 | Plataformas | Linux primero (.deb + AppImage; WebKitGTK 2.52). Windows queda en el backlog |
 | Idioma de la UI | Español e inglés (`src/i18n/es.ts` y `en.ts`); por defecto sigue al sistema |
-| Agentes | `frontend` y `backend` en Haiku 5.5, con el esfuerzo por tarea que asigna `plan` (solo `high`, `xhigh` o `max`) |
+| Agentes | `frontend` y `backend` en Haiku 5.5, con el esfuerzo por tarea que asigna `plan` (solo `xhigh` o `max`) |
 | Commits | Sin `Co-Authored-By: Claude …`. Mensajes en inglés, `feat(frontend): …` |
 
 ## Arquitectura

@@ -23,7 +23,7 @@ El proyecto se desarrolla con **3 agentes en paralelo**, cada uno en un panel de
 | `backend` | abajo a la derecha | Core en Rust: biblioteca (escaneo, vigilancia, huella), protocolo `atril://`, SQLite, subrayados, ajustes, comandos Tauri e integración con el sistema | `src-tauri/` (incluye `Cargo.toml`, `tauri.conf.json` y `capabilities/`) |
 
 ### Modelo y esfuerzo
-- `frontend` y `backend` corren en **Haiku 5.5** (`claude-haiku-5-5`). `plan` asigna el esfuerzo de cada tarea según su dificultad, **solo con `high`, `xhigh` o `max`** (`low` y `medium` no se usan; `high` es el mínimo, incluso para tareas pequeñas) y lo cambia con `/effort <nivel>` antes de mandarla. El nivel de cada tarea figura en `docs/ROADMAP.md`.
+- `frontend` y `backend` corren en **Haiku 5.5** (`claude-haiku-5-5`). `plan` asigna el esfuerzo de cada tarea según su dificultad, **solo con `xhigh` o `max`** (`low`, `medium` y `high` no se usan; `xhigh` es el mínimo, incluso para tareas pequeñas) y lo cambia con `/effort <nivel>` antes de mandarla. El nivel de cada tarea figura en `docs/ROADMAP.md`.
 - Si una tarea resulta más difícil de lo previsto, no la fuerces: avisa a `plan` (puede subir el esfuerzo o partirla).
 
 ### Reglas de coordinación
