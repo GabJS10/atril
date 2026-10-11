@@ -258,8 +258,8 @@ pub fn commit_file(
              file_mtime = excluded.file_mtime,
              missing = 0,
              removed_at = NULL,
-             -- Mientras no haya metadatos del PDF, el título sigue al nombre del archivo.
-             title = CASE WHEN books.scan_state = 'done' THEN books.title ELSE excluded.title END",
+             -- Mientras el título venga del nombre del archivo, sigue al nombre.
+             title = CASE WHEN books.title_source = 'filename' THEN excluded.title ELSE books.title END",
         params![
             file.id,
             file.path,
@@ -498,6 +498,7 @@ pub fn save_book_scan(
              title = COALESCE(?2, title),
              author = COALESCE(?3, author),
              scan_state = 'done',
+             title_source = CASE WHEN ?2 IS NULL THEN title_source ELSE 'metadata' END,
              has_cover = 1
          WHERE id = ?4",
         params![scan.page_count, scan.title, scan.author, id],
@@ -938,6 +939,14 @@ mod tests {
             &webp_bytes(64),
         )
         .expect("scan");
+        let source: String = conn
+            .query_row(
+                "SELECT title_source FROM books WHERE id = ?1",
+                params![book.id],
+                |row| row.get(0),
+            )
+            .expect("source");
+        assert_eq!(source, "metadata");
         let back = dir.path().join("otro-nombre.pdf");
         std::fs::rename(&renamed, &back).expect("rename again");
         assert_eq!(

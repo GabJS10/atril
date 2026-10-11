@@ -11,6 +11,7 @@ use crate::error::AppError;
 const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0001_initial.sql"),
     include_str!("migrations/0002_library.sql"),
+    include_str!("migrations/0003_title_source.sql"),
 ];
 
 const APP_DIR_NAME: &str = "atril";
