@@ -7,7 +7,7 @@ Fases del MVP, qué hace cada agente (con el **esfuerzo** que le asigna `plan`),
 | 0 | Andamiaje + propuestas de diseño | terminada (tag `fase-0`) |
 | 1 | Lector | terminada (tag `fase-1`) |
 | 2 | Biblioteca | terminada (tag `fase-2`) |
-| 3 | Subrayados y notas | lista, pendiente de visto bueno |
+| 3 | Subrayados y notas | terminada (tag `fase-3`) |
 | 4 | Lectura cómoda | en curso |
 | 5 | Sistema y release para Linux (v1.0.0) | pendiente |
 
