@@ -49,8 +49,8 @@ Esfuerzos: `low` (renombres, textos, configs), `medium` (componente o comando co
 - [x] **2.B2 Consultas y Salas** (`medium`): `get_home`, `list_books`, favoritos, CRUD de Salas, `save_book_scan` + portadas en disco, `list_pending_scans`.
 
 **frontend**
-- [ ] **2.F1 Indexador** (`high`): metadatos y portadas con pdf.js en segundo plano, de uno en uno.
-- [ ] **2.F2 Biblioteca** (`high`): muro de galería según `DESIGN.md` (Seguir leyendo, Favoritos, Salas, Todos), búsqueda y orden.
+- [x] **2.F1 Indexador** (`high`): metadatos y portadas con pdf.js en segundo plano, de uno en uno.
+- [x] **2.F2 Biblioteca** (`high`): muro de galería según `DESIGN.md` (Seguir leyendo, Favoritos, Salas, Todos), búsqueda y orden.
 - [ ] **2.F3 Salas y archivos** (`medium`): crear/renombrar/borrar Salas, añadir por menú contextual y arrastrando, soltar PDFs en la ventana, Ajustes › Carpetas.
 
 **Cierre:** añadir una carpeta real, ver las portadas, crear una Sala y mover un archivo sin perder el progreso.
