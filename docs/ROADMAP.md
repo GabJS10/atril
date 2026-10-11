@@ -70,6 +70,8 @@ Esfuerzos: `low` (renombres, textos, configs), `medium` (componente o comando co
 - [x] **4.B1** (`low`): campos de ajustes de lectura por defecto (`defaultZoom` y `defaultViewMode`, ya en la fase 0).
 
 ## Fase 5. Sistema y release para Linux
+> **Pausa antes de empezar:** al cerrar la fase 4, el usuario prueba la app a fondo. No se reparte ninguna tarea de la fase 5 (salvo 5.B1, ya hecha) hasta que el usuario dé el visto bueno o pase sus observaciones.
+
 - [x] **5.B1** (`high`): `fileAssociations`, `tauri-plugin-single-instance`, `app://open-file`, `set_default_pdf_reader` (`xdg-mime`), iconos.
 - [ ] **5.F1** (`medium`): abrir el libro recibido por `app://open-file`, botón de lector predeterminado, pulido de estados vacíos y de error.
 - [ ] **5.P1** (plan): workflow de release (.deb + AppImage), `QA.md` completo, README y CHANGELOG, **v1.0.0**.
