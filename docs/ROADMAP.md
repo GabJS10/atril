@@ -20,8 +20,8 @@ Esfuerzos: `low` (renombres, textos, configs), `medium` (componente o comando co
 
 **frontend**
 - [x] **0.F1 Propuestas de diseño, ronda 1** (`high`): leer [`DESIGN-BRIEF.md`](DESIGN-BRIEF.md) y crear en Claude Design el lienzo "Atril: propuestas" con 2–3 direcciones. Pasar el enlace a `plan`. **No** construir pantallas todavía.
-- [ ] **0.F2 Tooling** (`medium`): Tailwind 4 (`@tailwindcss/vite`), TanStack Router (basado en archivos, `src/routes/`) y Query, Zustand, ESLint + Prettier, Vitest + Testing Library + jsdom. Scripts `lint`, `typecheck`, `test`, `format` en `package.json` (como en YTS). Quitar la demo de la plantilla.
-- [ ] **0.F3 Carcasa** (`medium`): i18n es/en (`useT()`, `getT()`, idioma del sistema por defecto), rutas `/` (biblioteca, vacía) y `/read/$bookId` (lector, vacío), `src/api/tauri.ts` con `get_settings`/`update_settings` según `IPC.md`, y un test con `mockIPC`. Estilos neutros provisionales (fondo negro, texto blanco hueso) hasta que haya `DESIGN.md`.
+- [x] **0.F2 Tooling** (`medium`): Tailwind 4 (`@tailwindcss/vite`), TanStack Router (basado en archivos, `src/routes/`) y Query, Zustand, ESLint + Prettier, Vitest + Testing Library + jsdom. Scripts `lint`, `typecheck`, `test`, `format` en `package.json` (como en YTS). Quitar la demo de la plantilla.
+- [x] **0.F3 Carcasa** (`medium`): i18n es/en (`useT()`, `getT()`, idioma del sistema por defecto), rutas `/` (biblioteca, vacía) y `/read/$bookId` (lector, vacío), `src/api/tauri.ts` con `get_settings`/`update_settings` según `IPC.md`, y un test con `mockIPC`. Estilos neutros provisionales (fondo negro, texto blanco hueso) hasta que haya `DESIGN.md`.
 - [ ] **0.F4 Sistema de diseño** (`high`, cuando el usuario elija): ronda 2 de Claude Design, `DESIGN.md` + `PRODUCT.md`, tokens en el tema de Tailwind y fuentes empaquetadas (OFL).
 
 **backend**
