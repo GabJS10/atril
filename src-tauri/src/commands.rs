@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use chrono::Utc;
 use percent_encoding::percent_decode_str;
 use tauri::State;
 use tauri::http::HeaderMap;
@@ -9,6 +10,7 @@ use crate::AppState;
 use crate::collections::{self, Collection};
 use crate::error::AppError;
 use crate::folders::{self, LibraryFolder};
+use crate::highlights::{self, ExportResult, Highlight, HighlightInput, Language};
 use crate::library::{self, Book, ImportResult, OpenedBook, ReadingStateInput, ScanInput};
 use crate::query::{self, BookQuery, HomeData};
 use crate::scan::ScanStatus;
@@ -227,6 +229,64 @@ pub fn remove_from_collection(
 ) -> Result<(), AppError> {
     let mut conn = app.db()?;
     collections::remove_books(&mut conn, &collection_id, &book_ids)
+}
+
+#[tauri::command]
+pub fn list_highlights(
+    app: State<'_, AppState>,
+    book_id: String,
+    page: Option<i64>,
+) -> Result<Vec<Highlight>, AppError> {
+    let conn = app.db()?;
+    highlights::list(&conn, &book_id, page)
+}
+
+/// `highlight` llega como JSON crudo para que un campo mal formado sea `invalid_input`.
+#[tauri::command]
+pub fn create_highlight(
+    app: State<'_, AppState>,
+    highlight: serde_json::Value,
+) -> Result<Highlight, AppError> {
+    let input: HighlightInput = serde_json::from_value(highlight)
+        .map_err(|error| AppError::invalid_input(error.to_string()))?;
+    let conn = app.db()?;
+    highlights::create(&conn, input)
+}
+
+/// El cuerpo entero son los argumentos: así `note` ausente (no cambia) y `null` (la borra) se distinguen.
+#[tauri::command]
+pub fn update_highlight(
+    app: State<'_, AppState>,
+    request: Request<'_>,
+) -> Result<Highlight, AppError> {
+    let InvokeBody::Json(body) = request.body() else {
+        return Err(AppError::invalid_input(
+            "update_highlight expects JSON arguments",
+        ));
+    };
+    let (id, patch) = highlights::parse_update(body)?;
+    let conn = app.db()?;
+    highlights::update(&conn, &id, &patch)
+}
+
+#[tauri::command]
+pub fn delete_highlight(app: State<'_, AppState>, highlight_id: String) -> Result<(), AppError> {
+    let conn = app.db()?;
+    highlights::delete(&conn, &highlight_id)
+}
+
+/// Escribe el Markdown en `dest_path` (ruta absoluta que eligió el usuario en el diálogo).
+#[tauri::command]
+pub fn export_highlights(
+    app: State<'_, AppState>,
+    book_id: String,
+    dest_path: String,
+    language: String,
+) -> Result<ExportResult, AppError> {
+    let language = Language::parse(&language)?;
+    let date = Utc::now().format("%Y-%m-%d").to_string();
+    let conn = app.db()?;
+    highlights::export(&conn, &book_id, Path::new(&dest_path), language, &date)
 }
 
 /// Lee las cabeceras de `save_book_scan`. Títulos y autores van URL-encoded en UTF-8.

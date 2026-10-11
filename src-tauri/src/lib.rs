@@ -3,6 +3,7 @@ pub mod commands;
 pub mod db;
 pub mod error;
 pub mod folders;
+pub mod highlights;
 pub mod library;
 pub mod protocol;
 pub mod query;
@@ -101,7 +102,12 @@ pub fn run() {
             commands::rename_collection,
             commands::delete_collection,
             commands::add_to_collection,
-            commands::remove_from_collection
+            commands::remove_from_collection,
+            commands::list_highlights,
+            commands::create_highlight,
+            commands::update_highlight,
+            commands::delete_highlight,
+            commands::export_highlights
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
