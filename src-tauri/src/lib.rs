@@ -49,6 +49,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let data_dir = db::data_dir()?;
             let conn = db::open_app_database(&data_dir)?;
