@@ -4,9 +4,9 @@ Fases del MVP, qué hace cada agente (con el **esfuerzo** que le asigna `plan`),
 
 | Fase | Contenido | Estado |
 |---|---|---|
-| 0 | Andamiaje + propuestas de diseño | en curso |
-| 1 | Lector | pendiente |
-| 2 | Biblioteca | pendiente |
+| 0 | Andamiaje + propuestas de diseño | terminada (tag `fase-0`) |
+| 1 | Lector | en curso |
+| 2 | Biblioteca | en curso (backend listo) |
 | 3 | Subrayados y notas | pendiente |
 | 4 | Lectura cómoda | pendiente |
 | 5 | Sistema y release para Linux (v1.0.0) | pendiente |
