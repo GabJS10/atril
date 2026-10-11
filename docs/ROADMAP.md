@@ -8,7 +8,7 @@ Fases del MVP, qué hace cada agente (con el **esfuerzo** que le asigna `plan`),
 | 1 | Lector | terminada (tag `fase-1`) |
 | 2 | Biblioteca | terminada (tag `fase-2`) |
 | 3 | Subrayados y notas | terminada (tag `fase-3`) |
-| 4 | Lectura cómoda | lista, pendiente de visto bueno |
+| 4 | Lectura cómoda | terminada (tag `fase-4`) |
 | 5 | Sistema y release para Linux (v1.0.0) | pendiente |
 
 Esfuerzos: `low` (renombres, textos, configs), `medium` (componente o comando con especificación clara), `high` (funciones que cruzan módulos, propuestas de diseño), `xhigh` (lo difícil) y `max` **solo para lo imprescindible** (bugs muy difíciles o tareas en las que `xhigh` ya se quedó corto).

@@ -11,7 +11,7 @@ Guía para agentes de IA (y personas) que trabajen en este repositorio.
 - Brief de diseño ("museo de arte de noche"): [`docs/DESIGN-BRIEF.md`](docs/DESIGN-BRIEF.md). El sistema de diseño definitivo irá en `DESIGN.md` y el contexto de producto en `PRODUCT.md` (los escribe `frontend` cuando el usuario elija una propuesta)
 - QA manual por fase: [`docs/QA.md`](docs/QA.md)
 
-**Estado actual:** fases 0 a 3 cerradas (tags `fase-0` a `fase-3`); fase 4 (lectura cómoda) en curso; después, pausa de pruebas del usuario antes de la fase 5. El backend tiene hechas sus tareas hasta la fase 5.
+**Estado actual:** fases 0 a 4 cerradas (tags `fase-0` a `fase-4`). **Pausa de pruebas del usuario:** no se empieza la fase 5 hasta su visto bueno. El backend tiene hechas sus tareas hasta la fase 5.
 
 ## Forma de trabajo (multi-agente)
 El proyecto se desarrolla con **3 agentes en paralelo**, cada uno en un panel de la misma tab (`plan`) del workspace `atril` de [Herdr](https://herdr.dev): `plan` a la izquierda, `frontend` arriba a la derecha y `backend` abajo a la derecha. **Este `AGENTS.md` es la fuente de verdad**; `CLAUDE.md` solo lo importa.
@@ -99,4 +99,5 @@ Dependencias del sistema (Ubuntu/Mint): `libwebkit2gtk-4.1-dev build-essential l
 - `README.md`, `CHANGELOG.md` y las notas de las releases van en **inglés**. La documentación interna (`docs/`, `AGENTS.md`) va en español.
 - Tests: PDFs pequeños generados como fixtures (nunca libros con copyright en el repo), migraciones en una DB temporal, huella estable al mover/renombrar, `Range` → 206, ida y vuelta de coordenadas de subrayados (PDF ⇄ viewport) con varios zooms.
 - Mantener `docs/PLAN.md` y `docs/IPC.md` al día si cambian las decisiones o el contrato.
+- **Cierra lo que arrancas:** al terminar una verificación, para `npm run tauri dev`, vite, la app y cualquier Xvfb que hayas lanzado (y comprueba que el puerto 1420 queda libre). Usa un `XDG_DATA_HOME` temporal para no dejar libros de prueba en los datos reales del usuario (`~/.local/share/atril/`).
 - **Esperar procesos y logs sin colgarse:** los bucles `until grep …` llevan siempre un tiempo máximo (`timeout 300 bash -c '…'`). Para buscar texto en salidas de cargo/tauri/vite, desactiva los colores (`NO_COLOR=1 CARGO_TERM_COLOR=never`) o quita los códigos ANSI (`sed 's/\x1b\[[0-9;]*m//g'`).
