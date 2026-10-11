@@ -28,6 +28,8 @@ thiserror = "2.0.21"
 tracing = "0.1.44"
 dirs = "7.0.0"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+sha2 = "0.11.0"
+chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

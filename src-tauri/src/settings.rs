@@ -50,7 +50,7 @@ pub enum Zoom {
 }
 
 impl Zoom {
-    fn is_valid(self) -> bool {
+    pub(crate) fn is_valid(self) -> bool {
         match self {
             Zoom::Preset(_) => true,
             Zoom::Scale(scale) => scale.is_finite() && (MIN_SCALE..=MAX_SCALE).contains(&scale),

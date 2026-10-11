@@ -1,6 +1,8 @@
 pub mod commands;
 pub mod db;
 pub mod error;
+pub mod library;
+pub mod protocol;
 pub mod settings;
 
 use std::sync::{Mutex, MutexGuard};
@@ -43,7 +45,11 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_settings,
-            commands::update_settings
+            commands::update_settings,
+            commands::open_path,
+            commands::open_book,
+            commands::get_book,
+            commands::save_reading_state
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
