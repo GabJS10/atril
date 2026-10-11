@@ -183,15 +183,90 @@ type ImportResult = {
 - Sin paginación: una biblioteca de cientos de libros cabe en una respuesta. Si crece, se añade `limit`/`offset` en v0.4.
 - La búsqueda usa `LIKE` con normalización en Rust (sin acentos), no FTS, en esta fase.
 
+### Fase 3 (propuesta v0.4, pendiente de revisión)
+
+Los subrayados viven en la tabla `highlights` (migración 0001; no hace falta migración nueva). Los rectángulos se guardan como JSON en coordenadas PDF, así que sirven a cualquier zoom.
+
+**Comandos (3.B1)**
+| Comando | Argumentos | Devuelve | Errores |
+|---|---|---|---|
+| `list_highlights` | `{ bookId: string; page?: number }` (sin `page`: todos los del libro) | `Highlight[]`, por página y, dentro de la página, por `createdAt` | `not_found`, `invalid_input`, `db` |
+| `create_highlight` | `{ highlight: HighlightInput }` | `Highlight` completo, con `id` generado por el backend | `not_found` (libro), `invalid_input`, `db` |
+| `update_highlight` | `{ highlightId: string; color?: HighlightColor; note?: string \| null }` | `Highlight` actualizado | `not_found`, `invalid_input`, `db` |
+| `delete_highlight` | `{ highlightId: string }` | `null` | `not_found`, `db` |
+| `export_highlights` | `{ bookId: string; destPath: string }` | `{ count: number }`: subrayados exportados | `not_found`, `invalid_input` (ruta no absoluta o carpeta que no existe), `io`, `db` |
+
+Notas de cada comando:
+- **`create_highlight`** está pensado para la UI optimista: una sola inserción por clave primaria y el `Highlight` completo de vuelta, sin esperar nada más. No emite evento; el front actualiza su propia caché.
+- **`update_highlight`**: `note` tiene tres estados. Ausente = no cambia; `null` = borra la nota; cadena = la reemplaza. Hace falta al menos uno de `color` o `note`; si no, `invalid_input`.
+- **`delete_highlight`** borra solo el subrayado; no toca el libro ni el progreso.
+- **`export_highlights`** escribe a un fichero temporal junto a `destPath` y lo renombra al final. Sobrescribe si existe: el front confirma antes con el diálogo de guardar. Si el libro no tiene subrayados, se escribe igualmente el encabezado y la línea de "sin subrayados".
+- Un libro quitado de la biblioteca (`removed_at`) devuelve `not_found` en todos estos comandos, pero sus subrayados se conservan y vuelven si se importa el mismo archivo.
+
+**Tipos de la fase 3**
+```ts
+type HighlightColor = "ochre" | "sienna" | "sage" | "slate";
+type PdfRect = [number, number, number, number]; // x1, y1, x2, y2 en el espacio de usuario PDF (origen abajo a la izquierda)
+
+type HighlightInput = {
+  bookId: string;
+  page: number;        // 1-based; si el libro ya tiene pageCount, page <= pageCount
+  rects: PdfRect[];    // 1 a 500 rectángulos; el backend los normaliza (x1 <= x2, y1 <= y2) y rechaza área cero
+  text: string;        // texto seleccionado; hasta 10 000 caracteres; puede estar vacío (subrayado de imagen)
+  color: HighlightColor;
+  note?: string | null; // hasta 10 000 caracteres; null o ausente = sin nota
+};
+
+type Highlight = {
+  id: string;          // uuid v4, generado por el backend
+  bookId: string;
+  page: number;
+  rects: PdfRect[];
+  text: string;
+  color: HighlightColor;
+  note: string | null;
+  createdAt: string;   // ISO 8601 UTC
+  updatedAt: string;
+};
+```
+
+**Formato del Markdown (`export_highlights`)**
+
+Un único fichero UTF-8, con saltos de línea `\n` y un salto final. Ejemplo para *Pedro Páramo*, con dos páginas:
+
+```markdown
+# Pedro Páramo
+*Juan Rulfo*
+
+Subrayados exportados desde Atril el 2026-10-11 · 3 subrayados
+
+## Página 2
+
+> Vine a Comala porque me dijeron que acá vivía mi padre
+
+Esta es la primera frase, la que lo cambia todo.
+
+> Un subrayado sin nota
+
+## Página 7
+
+> Ya no hay nada que hacer, cuando todo está perdido
+```
+
+Reglas exactas:
+1. Línea 1: `# <título>`. Si el libro tiene autor: línea 2 `*<autor>*`. Después, una línea en blanco, la línea "Subrayados exportados desde Atril el AAAA-MM-DD · N subrayados" (fecha UTC del momento de exportar, `N` en singular o plural según corresponda: "1 subrayado", "3 subrayados") y otra línea en blanco.
+2. Sin subrayados: en lugar de las páginas, la línea `*Sin subrayados.*`.
+3. Por cada página con subrayados, en orden ascendente: `## Página <n>`, línea en blanco, y los subrayados de esa página.
+4. Orden dentro de una página: de arriba abajo (mayor `y2` primero) y, a igual altura, de izquierda a derecha (menor `x1` primero).
+5. Cada subrayado es una cita: su texto en una sola línea con `> ` delante. Los espacios y saltos de línea internos se colapsan a un espacio. Si el texto está vacío: `> *(sin texto)*`.
+6. Si tiene nota, un párrafo debajo, sin `>`, con sus saltos de línea tal cual. Un subrayado sin nota no lleva nada más.
+7. Subrayados separados por una línea en blanco.
+8. Escape: `\`, `*`, `_`, `#`, `[`, `]`, `<`, `>` y `` ` `` del texto y de la nota se preceden de `\` para que no se interpreten como Markdown.
+9. El título y el autor se escriben sin escapar en la cabecera pero con el mismo escape que las citas (son texto del usuario).
+
+**Lo que queda fuera de esta fase:** buscar dentro de los subrayados, exportar a otros formatos y el "modo subrayador" (es solo de front).
+
 ### Fases 3–5 (borrador, se detalla al empezar cada fase)
-- Carpetas y Salas: ver fase 2.
-- Subrayados: `list_highlights`, `create_highlight`, `update_highlight` (color o nota), `delete_highlight`, `export_highlights(bookId, destPath)`
-  ```ts
-  type HighlightColor = "ochre" | "sienna" | "sage" | "slate";
-  type PdfRect = [number, number, number, number]; // x1, y1, x2, y2 en el espacio de usuario PDF de la página
-  type Highlight = { id: string; bookId: string; page: number; rects: PdfRect[]; text: string;
-                     color: HighlightColor; note: string | null; createdAt: string; updatedAt: string };
-  ```
 - Metadatos: `update_book_metadata` (editar título y autor a mano; fuera del alcance de la fase 2).
 - Ajustes: `set_default_pdf_reader`
 
