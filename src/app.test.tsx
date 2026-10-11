@@ -2,23 +2,33 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { createMemoryHistory } from "@tanstack/react-router";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { createQueryClient } from "./api/queries";
 import type { Settings } from "./api/types";
 import { createAppRouter } from "./router";
 
+// The reader is lazy and loads the whole pdf.js viewer; these tests only check the reader messages.
+vi.mock("./reader/PdfViewer", () => ({ PdfViewer: () => null }));
+
+/** Answers for an empty library, so the screens that mount with the app have data. */
+const emptyLibrary = {
+  get_home: () => ({ continueReading: [], favorites: [], favoriteCount: 0, bookCount: 0, collections: [] }),
+  list_books: () => [],
+  get_scan_status: () => ({ running: false, found: 0 }),
+  list_pending_scans: () => [],
+  list_library_folders: () => [],
+};
+
 function mockSettings(language: Settings["language"], theme: Settings["theme"] = "dark") {
-  mockIPC((cmd) => {
-    if (cmd === "get_settings") {
-      return {
+  mockCommands({
+    get_settings: () =>
+      ({
         language,
         theme,
         defaultZoom: "page_width",
         defaultViewMode: "normal",
-      } satisfies Settings;
-    }
-    throw new Error(`unexpected command ${cmd}`);
+      }) satisfies Settings,
   });
 }
 
@@ -39,18 +49,20 @@ const book = {
   lastOpenedAt: null,
 };
 
-/** Answers `get_settings` and the given commands; any other command fails the test. */
+/** Answers the given commands on top of an empty library and Spanish settings; anything else fails the test. */
 function mockCommands(handlers: Record<string, (args: unknown) => unknown>) {
+  const answers: Record<string, (args: unknown) => unknown> = {
+    get_settings: () => ({
+      language: "es",
+      theme: "dark",
+      defaultZoom: "page_width",
+      defaultViewMode: "normal",
+    }),
+    ...emptyLibrary,
+    ...handlers,
+  };
   mockIPC((cmd, args) => {
-    if (cmd === "get_settings") {
-      return {
-        language: "es",
-        theme: "dark",
-        defaultZoom: "page_width",
-        defaultViewMode: "normal",
-      } satisfies Settings;
-    }
-    const handler = handlers[cmd];
+    const handler = answers[cmd];
     if (handler) return handler(args);
     throw new Error(`unexpected command ${cmd}`);
   });
@@ -116,7 +128,7 @@ describe("app shell", () => {
     });
     renderAt("/");
 
-    await userEvent.click(await screen.findByRole("button", { name: "Abrir un PDF…" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Abrir un PDF suelto" }));
 
     expect(await screen.findByText("El archivo ya no está en su ruta.")).toBeInTheDocument();
     expect(calls).toEqual([JSON.stringify({ bookId: "abc123" })]);
@@ -126,9 +138,9 @@ describe("app shell", () => {
     mockCommands({ "plugin:dialog|open": () => null });
     renderAt("/");
 
-    await userEvent.click(await screen.findByRole("button", { name: "Abrir un PDF…" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Abrir un PDF suelto" }));
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "Abrir un PDF…" })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Abrir un PDF suelto" })).toBeEnabled());
     expect(screen.getByText("Tu biblioteca está vacía")).toBeInTheDocument();
   });
 
