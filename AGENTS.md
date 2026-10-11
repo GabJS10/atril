@@ -88,6 +88,7 @@ Dependencias del sistema (Ubuntu/Mint): `libwebkit2gtk-4.1-dev build-essential l
 
 ## Reglas y convenciones
 - **Toda la E/S de disco va en Rust.** El frontend solo llama a comandos Tauri (vía `src/api/tauri.ts`) y escucha eventos. pdf.js lee los libros desde las URLs `atril://…` que devuelve el backend; **el front nunca construye URLs ni maneja rutas de archivos** (salvo pasar al backend la ruta que eligió el usuario en un diálogo o que soltó en la ventana).
+- **Todo `getDocument` de pdf.js pasa por `openPdfByRanges` (`src/reader/pdfLoader.ts`),** que es quien le da los rangos por `atril://` y las URLs de los recursos de pdf.js (wasm, cmaps, fuentes estándar, ICC). No llames a `getDocument` en otro sitio.
 - **El PDF original nunca se modifica.** Los archivos se abren en solo lectura. Subrayados, notas, progreso y colecciones viven en SQLite.
 - **Identidad de un libro = huella de su contenido** (`sha256(tamaño + primer MiB + último MiB)`, hex): mover o renombrar un archivo conserva su progreso, subrayados y Salas.
 - El protocolo `atril://` **solo sirve IDs que estén en la base de datos**, nunca rutas arbitrarias.
