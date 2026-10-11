@@ -21,6 +21,8 @@ export type ReaderBarProps = {
   onToggleHighlights: () => void;
   outlineOpen: boolean;
   onToggleOutline: () => void;
+  /** Opens the search bar (also Ctrl+F). */
+  onOpenSearch: () => void;
 };
 
 const CONTROL_CLASS = "flex h-8 min-w-8 items-center justify-center text-ink hover:text-ink-2";
@@ -42,6 +44,7 @@ export function ReaderBar({
   onToggleHighlights,
   outlineOpen,
   onToggleOutline,
+  onOpenSearch,
 }: ReaderBarProps) {
   const t = useT();
   const locale = useLocaleStore((state) => state.locale);
@@ -63,6 +66,9 @@ export function ReaderBar({
       <span className="min-w-0 truncate font-serif text-cartela text-ink">{title}</span>
       <span>{t("reader.pageOf", { page: String(page), pages: String(pageCount) })}</span>
       <span className="flex-1" />
+      <button type="button" onClick={onOpenSearch} className={CONTROL_CLASS}>
+        {t("search.open")}
+      </button>
       <button
         type="button"
         aria-pressed={outlineOpen}

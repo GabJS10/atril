@@ -1,6 +1,12 @@
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import "./pdfjsGlobal";
-import { EventBus, PDFLinkService, PDFViewer as PdfJsViewer } from "pdfjs-dist/web/pdf_viewer.mjs";
+import {
+  EventBus,
+  FindState,
+  PDFFindController,
+  PDFLinkService,
+  PDFViewer as PdfJsViewer,
+} from "pdfjs-dist/web/pdf_viewer.mjs";
 import "pdfjs-dist/web/pdf_viewer.css";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { Highlight, Zoom } from "../api/types";
@@ -24,6 +30,11 @@ const LINE_SCROLL_PX = 80;
 
 export type ViewSnapshot = { position: ReaderPosition; zoom: Zoom; scale: number };
 
+/** Where the search stands: the match in focus out of all matches, and whether it found none. */
+export type FindResult = { current: number; total: number; notFound: boolean };
+
+export type FindOptions = { again?: boolean; findPrevious?: boolean };
+
 export type PdfViewerProps = {
   pdf: PDFDocumentProxy;
   /** Zoom and position to start from. Applied once, before the view is shown. */
@@ -40,11 +51,15 @@ export type PdfViewerProps = {
   onSelectionClear: () => void;
   /** The user clicked on a highlight. */
   onHighlightPress: (id: string, anchor: DOMRect) => void;
+  /** The search moved or changed: the match counter for the search bar. */
+  onFindResult: (result: FindResult) => void;
 };
 
 /** Commands the reader's keyboard map sends to the viewer. */
 export type PdfViewerHandle = {
   goToPage: (page: number) => void;
+  /** Searches the book without case or accents. An empty query clears the matches. */
+  find: (query: string, options?: FindOptions) => void;
   /** Goes to a destination of the book (an entry of its index): the page and the place on it. */
   goToDestination: (dest: string | unknown[]) => void;
   /** Scrolls the highlight into view (the panel's click). */
@@ -75,13 +90,24 @@ function pageGeometry(container: HTMLElement, instance: PdfJsViewer): PageGeomet
  * This component restores the saved position before the view is shown, and reports every move after that.
  */
 export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function PdfViewer(
-  { pdf, start, onChange, onRestored, highlights, onSelectionEnd, onSelectionClear, onHighlightPress },
+  {
+    pdf,
+    start,
+    onChange,
+    onRestored,
+    highlights,
+    onSelectionEnd,
+    onSelectionClear,
+    onHighlightPress,
+    onFindResult,
+  },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
   const viewer = useRef<PdfJsViewer | null>(null);
   const links = useRef<PDFLinkService | null>(null);
+  const finder = useRef<EventBus | null>(null);
   const [revealed, setRevealed] = useState(false);
   const paintRef = useRef<(() => void) | null>(null);
 
@@ -99,6 +125,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     onSelectionEnd,
     onSelectionClear,
     onHighlightPress,
+    onFindResult,
   });
   useEffect(() => {
     latest.current = {
@@ -109,8 +136,18 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       onSelectionEnd,
       onSelectionClear,
       onHighlightPress,
+      onFindResult,
     };
-  }, [start, onChange, onRestored, highlights, onSelectionEnd, onSelectionClear, onHighlightPress]);
+  }, [
+    start,
+    onChange,
+    onRestored,
+    highlights,
+    onSelectionEnd,
+    onSelectionClear,
+    onHighlightPress,
+    onFindResult,
+  ]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -119,15 +156,32 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
 
     const eventBus = new EventBus();
     const linkService = new PDFLinkService({ eventBus });
+    const findController = new PDFFindController({ linkService, eventBus });
     const instance = new PdfJsViewer({
       container,
       viewer: viewerElement,
       eventBus,
       linkService,
+      findController,
       removePageBorders: true,
     });
     linkService.setViewer(instance);
     links.current = linkService;
+    finder.current = eventBus;
+    // pdf.js counts the matches after it has started the search: the count comes in its own event.
+    let notFound = false;
+    const reportFind = (matchesCount: { current: number; total: number }) =>
+      latest.current.onFindResult({ current: matchesCount.current, total: matchesCount.total, notFound });
+    eventBus.on(
+      "updatefindcontrolstate",
+      (event: { state: number; matchesCount: { current: number; total: number } }) => {
+        notFound = event.state === FindState.NOT_FOUND;
+        reportFind(event.matchesCount);
+      },
+    );
+    eventBus.on("updatefindmatchescount", (event: { matchesCount: { current: number; total: number } }) =>
+      reportFind(event.matchesCount),
+    );
     viewer.current = instance;
 
     let restored = false;
@@ -205,6 +259,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       instance.setDocument(null);
       linkService.setDocument(null, null);
       links.current = null;
+      finder.current = null;
       viewer.current = null;
     };
   }, [pdf]);
@@ -214,6 +269,19 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     () => ({
       goToPage(page) {
         if (viewer.current) viewer.current.currentPageNumber = page;
+      },
+      find(query, options = {}) {
+        // "again" repeats the last search (Enter moves to the next match); a new query starts over.
+        finder.current?.dispatch("find", {
+          source: window,
+          type: options.again ? "again" : "",
+          query,
+          caseSensitive: false,
+          entireWord: false,
+          highlightAll: true,
+          findPrevious: options.findPrevious ?? false,
+          matchDiacritics: false,
+        });
       },
       goToDestination(dest) {
         void links.current?.goToDestination(dest);

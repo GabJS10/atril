@@ -42,3 +42,18 @@
 .atril-viewer .textLayer .endOfContent {
   display: none;
 }
+
+/*
+ * Search matches (pdf.js paints them in the text layer). Monochrome, as the rest of the UI: a tint of the reader's
+ * ink, stronger on the match in focus. The reader's ink is used so the marks read on every paper (DESIGN.md).
+ */
+.atril-viewer .textLayer .highlight {
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  background-color: color-mix(in srgb, var(--paper-ink) 22%, transparent);
+}
+
+.atril-viewer .textLayer .highlight.selected {
+  background-color: color-mix(in srgb, var(--paper-ink) 55%, transparent);
+}

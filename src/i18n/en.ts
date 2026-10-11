@@ -115,4 +115,11 @@ export const en: Record<TranslationKey, string> = {
   "outline.expand": "Expand {title}",
   "outline.collapse": "Collapse {title}",
   "outline.page": "p. {page}",
+  "search.label": "Search in the book",
+  "search.count": "{current} of {total}",
+  "search.none": "No results",
+  "search.previous": "Previous result",
+  "search.next": "Next result",
+  "search.close": "Close search",
+  "search.open": "Search",
 };

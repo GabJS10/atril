@@ -5,7 +5,8 @@ import { useSettings } from "../api/queries";
 import { exportHighlights, isAppError, openBook, pickExportPath } from "../api/tauri";
 import type { Book, ReadingStateInput, Zoom, ViewMode } from "../api/types";
 import { useLocaleStore, useT } from "../i18n";
-import { PdfViewer, type PdfViewerHandle, type ViewSnapshot } from "./PdfViewer";
+import { type FindResult, PdfViewer, type PdfViewerHandle, type ViewSnapshot } from "./PdfViewer";
+import { SearchBar } from "./SearchBar";
 import { ReaderBar } from "./ReaderBar";
 import { initialReadingStart, type ReaderPosition, type ReadingStart } from "./position";
 import { type ReaderAction, useReaderShortcuts } from "./shortcuts";
@@ -78,6 +79,27 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
   const [sidePanel, setSidePanel] = useState<"highlights" | "outline" | null>(null);
   const [exporting, setExporting] = useState(false);
   const outline = useOutline(pdfState.status === "ready" ? pdfState.pdf : null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [findResult, setFindResult] = useState<FindResult | null>(null);
+
+  const openSearch = useCallback(() => setSearchOpen(true), []);
+  const closeSearch = useCallback(() => {
+    viewer.current?.find("");
+    setFindResult(null);
+    setSearchOpen(false);
+  }, []);
+
+  // Ctrl+F (Cmd+F on macOS) opens the book's search instead of the browser's.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        openSearch();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [openSearch]);
 
   const exportBook = async () => {
     if (exporting) return;
@@ -182,6 +204,7 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
         onSelectionEnd={highlightSession.handlers.onSelectionEnd}
         onSelectionClear={highlightSession.handlers.onSelectionClear}
         onHighlightPress={highlightSession.handlers.onHighlightPress}
+        onFindResult={setFindResult}
       />
       {highlightSession.selection && !highlightSession.editing ? (
         <SelectionToolbar
@@ -230,7 +253,15 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
         onToggleHighlights={() => setSidePanel((open) => (open === "highlights" ? null : "highlights"))}
         outlineOpen={sidePanel === "outline"}
         onToggleOutline={() => setSidePanel((open) => (open === "outline" ? null : "outline"))}
+        onOpenSearch={openSearch}
       />
+      {searchOpen ? (
+        <SearchBar
+          result={findResult}
+          onFind={(query, options) => viewer.current?.find(query, options)}
+          onClose={closeSearch}
+        />
+      ) : null}
       {sidePanel === "outline" ? (
         <OutlinePanel
           items={outline}

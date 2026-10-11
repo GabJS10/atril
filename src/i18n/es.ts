@@ -115,6 +115,13 @@ export const es = {
   "outline.expand": "Desplegar {title}",
   "outline.collapse": "Plegar {title}",
   "outline.page": "p. {page}",
+  "search.label": "Buscar en el libro",
+  "search.count": "{current} de {total}",
+  "search.none": "Sin resultados",
+  "search.previous": "Resultado anterior",
+  "search.next": "Resultado siguiente",
+  "search.close": "Cerrar búsqueda",
+  "search.open": "Buscar",
 };
 
 export type TranslationKey = keyof typeof es;
