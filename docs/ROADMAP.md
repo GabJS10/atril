@@ -7,8 +7,8 @@ Fases del MVP, qué hace cada agente (con el **esfuerzo** que le asigna `plan`),
 | 0 | Andamiaje + propuestas de diseño | terminada (tag `fase-0`) |
 | 1 | Lector | terminada (tag `fase-1`) |
 | 2 | Biblioteca | terminada (tag `fase-2`) |
-| 3 | Subrayados y notas | en curso (backend listo) |
-| 4 | Lectura cómoda | pendiente |
+| 3 | Subrayados y notas | lista, pendiente de visto bueno |
+| 4 | Lectura cómoda | en curso |
 | 5 | Sistema y release para Linux (v1.0.0) | pendiente |
 
 Esfuerzos: `low` (renombres, textos, configs), `medium` (componente o comando con especificación clara), `high` (funciones que cruzan módulos, propuestas de diseño), `xhigh` (lo difícil) y `max` **solo para lo imprescindible** (bugs muy difíciles o tareas en las que `xhigh` ya se quedó corto).
@@ -59,7 +59,7 @@ Esfuerzos: `low` (renombres, textos, configs), `medium` (componente o comando co
 - [x] **3.B1** (`medium`): CRUD de subrayados y `export_highlights` a Markdown.
 - [x] **3.F1 Geometría** (`xhigh`): selección → rectángulos en coordenadas PDF y vuelta (`geometry.ts`, con tests en varios zooms y rotaciones).
 - [x] **3.F2 Subrayar** (`high`): barra de selección (4 pigmentos + nota + copiar), modo subrayador (H), capa de subrayados, editar color/nota y borrar.
-- [ ] **3.F3 Panel** (`medium`): panel de subrayados (clic → salta a la página) y exportar.
+- [x] **3.F3 Panel** (`medium`): panel de subrayados (clic → salta a la página) y exportar.
 
 **Cierre:** subrayar con 3 zooms distintos y que encajen; cerrar sin "guardar" sin perder nada.
 
