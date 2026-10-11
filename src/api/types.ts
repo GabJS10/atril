@@ -19,3 +19,43 @@ export type AppError = {
   code: ErrorCode;
   message: string;
 };
+
+// Reading and library types (docs/IPC.md, "Tipos compartidos").
+
+export type Book = {
+  id: string;
+  title: string;
+  author: string | null;
+  fileName: string;
+  pageCount: number | null;
+  fileUrl: string;
+  coverUrl: string | null;
+  favorite: boolean;
+  missing: boolean;
+  scanState: "pending" | "done" | "failed";
+  currentPage: number | null;
+  progress: number | null;
+  addedAt: string;
+  lastOpenedAt: string | null;
+};
+
+export type ReadingState = {
+  page: number;
+  offsetInPage: number;
+  zoom: Zoom;
+  viewMode: ViewMode;
+  updatedAt: string;
+};
+
+export type OpenedBook = {
+  book: Book;
+  readingState: ReadingState | null;
+};
+
+export type ReadingStateInput = {
+  page: number;
+  offsetInPage: number;
+  zoom: Zoom;
+  viewMode: ViewMode;
+  pageCount: number;
+};

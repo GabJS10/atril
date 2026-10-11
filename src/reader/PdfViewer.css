@@ -1,0 +1,8 @@
+/* pdf.js viewer skin: the paper color comes from the reader tokens, and pages carry no shadow or border. */
+.atril-viewer .pdfViewer {
+  --page-bg-color: var(--paper);
+}
+
+.atril-viewer .pdfViewer .page {
+  box-shadow: none;
+}
