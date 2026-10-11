@@ -36,8 +36,8 @@
 }
 
 /*
- * pdf.js covers the text layer with an end-of-content element while the pointer is down, so a drag that ends
- * in a gap between words selects down to the end of the page. Hidden, the gap resolves to the nearest word.
+ * pdf.js moves this element next to the selection end while a drag runs. In WebKit that move keeps the drag on the
+ * first line, so it stays hidden: dragSelection.ts does the mapping (see attachDragSelection).
  */
 .atril-viewer .textLayer .endOfContent {
   display: none;

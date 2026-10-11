@@ -6,6 +6,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import type { Highlight, Zoom } from "../api/types";
 import "./PdfViewer.css";
 import { highlightAt, type PageAtScale1, paintHighlightLayer } from "./highlightLayer";
+import { attachDragSelection } from "./dragSelection";
 import type { PageMapping } from "./geometry";
 import { positionAtScroll, type PageGeometry, type ReaderPosition, scrollForPosition } from "./position";
 import { readSelection, type SelectionPart } from "./selectionReader";
@@ -179,6 +180,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       }, 0);
     };
     container.addEventListener("mouseup", onMouseUp);
+    const detachDragSelection = attachDragSelection(container);
     paintRef.current = paint;
 
     instance.setDocument(pdf);
@@ -188,6 +190,7 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       cancelled = true;
       container.removeEventListener("scroll", emit);
       container.removeEventListener("mouseup", onMouseUp);
+      detachDragSelection();
       paintRef.current = null;
       instance.setDocument(null);
       linkService.setDocument(null, null);
