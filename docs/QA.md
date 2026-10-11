@@ -18,3 +18,7 @@ Lista de comprobación que se pasa sobre la app real (`npm run tauri dev`, y en 
 - [ ] Soltar PDFs desde el escritorio o el gestor de archivos sobre la ventana (import_files): no se pudo simular en Xvfb.
 - [ ] Selección de texto con arrastre (la app gestiona los arrastres de un clic sobre la capa de texto, `dragSelection.ts`): desde el margen, desde huecos entre palabras, hacia arriba y entre páginas; doble y triple clic.
 - [ ] Guardado de la posición tras un uso largo (una vez dejó de guardarse tras recargas en caliente en desarrollo; no reproducido en arranques normales).
+- [ ] Atajos del modo foco: F entra y Esc sale (decisión de frontend; DESIGN.md no los fijaba). ¿Te convencen?
+- [ ] Pantalla completa con F11.
+- [ ] PDF escaneados: no tienen capa de texto, así que no se pueden seleccionar, subrayar ni buscar (no hay OCR). ¿Es aceptable o va al backlog?
+- [ ] "Abrir con Atril" desde el gestor de archivos: solo se puede probar con el `.deb` instalado (fase 5).

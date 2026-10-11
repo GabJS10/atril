@@ -8,7 +8,7 @@ Fases del MVP, qué hace cada agente (con el **esfuerzo** que le asigna `plan`),
 | 1 | Lector | terminada (tag `fase-1`) |
 | 2 | Biblioteca | terminada (tag `fase-2`) |
 | 3 | Subrayados y notas | terminada (tag `fase-3`) |
-| 4 | Lectura cómoda | en curso |
+| 4 | Lectura cómoda | lista, pendiente de visto bueno |
 | 5 | Sistema y release para Linux (v1.0.0) | pendiente |
 
 Esfuerzos: `low` (renombres, textos, configs), `medium` (componente o comando con especificación clara), `high` (funciones que cruzan módulos, propuestas de diseño), `xhigh` (lo difícil) y `max` **solo para lo imprescindible** (bugs muy difíciles o tareas en las que `xhigh` ya se quedó corto).
@@ -64,9 +64,9 @@ Esfuerzos: `low` (renombres, textos, configs), `medium` (componente o comando co
 **Cierre:** subrayar con 3 zooms distintos y que encajen; cerrar sin "guardar" sin perder nada.
 
 ## Fase 4. Lectura cómoda
-- [ ] **4.F1** (`medium`): índice (outline) en panel lateral.
-- [ ] **4.F2** (`high`): búsqueda con Ctrl+F (`PDFFindController`).
-- [ ] **4.F3** (`medium`): modo noche/sepia, tema cubo blanco, pantalla completa / modo foco.
+- [x] **4.F1** (`medium`): índice (outline) en panel lateral.
+- [x] **4.F2** (`high`): búsqueda con Ctrl+F (`PDFFindController`).
+- [x] **4.F3** (`medium`): modo noche/sepia, tema cubo blanco, pantalla completa / modo foco.
 - [x] **4.B1** (`low`): campos de ajustes de lectura por defecto (`defaultZoom` y `defaultViewMode`, ya en la fase 0).
 
 ## Fase 5. Sistema y release para Linux
