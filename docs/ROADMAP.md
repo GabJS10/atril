@@ -11,7 +11,7 @@ Fases del MVP, qué hace cada agente (con el **esfuerzo** que le asigna `plan`),
 | 4 | Lectura cómoda | terminada (tag `fase-4`) |
 | 5 | Sistema y release para Linux (v1.0.0) | pendiente |
 
-Esfuerzos: **desde el 2026-10-11 solo se usan `xhigh` y `max`**: `xhigh` para todo (los niveles `low`/`medium`/`high` anotados abajo en tareas pasadas quedan como histórico) y `max` para bugs muy difíciles o tareas en las que `xhigh` se quedó corto.
+Esfuerzos: **desde el 2026-10-11 los agentes usan siempre `max`** (los niveles anotados abajo en tareas pasadas quedan como histórico).
 
 ## Fase 0. Andamiaje
 **plan**
