@@ -1,6 +1,6 @@
 # Contrato IPC (frontend ⇄ backend)
 
-**Versión:** v0.1 (borrador). **Dueño:** `plan`. `backend` propone los cambios y `frontend` los implementa en `src/api/tauri.ts`. Un cambio que rompa el contrato se coordina antes con `plan` (ver `AGENTS.md`).
+**Versión:** v0.2 (borrador). **Dueño:** `plan`. `backend` propone los cambios y `frontend` los implementa en `src/api/tauri.ts`. Un cambio que rompa el contrato se coordina antes con `plan` (ver `AGENTS.md`).
 
 Este documento es la única fuente de verdad sobre los comandos Tauri, los eventos, las URLs del protocolo `atril://` y los tipos compartidos. Si el código y este archivo no coinciden, se corrige uno de los dos en el mismo cambio.
 
@@ -34,7 +34,7 @@ type ErrorCode =
 ## Protocolo `atril://`
 | URL | Respuesta |
 |---|---|
-| `atril://localhost/book/<id>` | El PDF. `200` o `206` con `Range`; `Accept-Ranges: bytes`, `Content-Type: application/pdf`. `404` si el ID no existe o falta el archivo |
+| `atril://localhost/book/<id>` | El PDF. `200` sin `Range` (carga el archivo entero: evitarlo), `206` con `Range` (sirve **exactamente** el rango pedido, con `Content-Range` y `Content-Length`; solo el primer rango si piden varios), `416` si el rango es inválido. `Accept-Ranges: bytes`, `Content-Type: application/pdf`, CORS para el origen de la app con `Content-Range`, `Accept-Ranges` y `Content-Length` expuestas. `404` si el ID no existe o falta el archivo (y lo marca `missing`) |
 | `atril://localhost/cover/<id>` | La portada (`image/webp`). `404` si no hay portada |
 
 En Windows la forma es `http://atril.localhost/…`: por eso las URLs vienen siempre del backend (`Book.fileUrl`, `Book.coverUrl`).
@@ -52,7 +52,7 @@ type Book = {
   favorite: boolean;
   missing: boolean;
   scanState: "pending" | "done" | "failed";
-  progress: number | null;  // 0–1; null si nunca se abrió
+  progress: number | null;  // 0–1 = page / pageCount, calculado al leer; null si nunca se abrió o no hay pageCount
   addedAt: string;
   lastOpenedAt: string | null;
 };
@@ -93,7 +93,7 @@ Valores por defecto: `language: "system"`, `theme: "dark"`, `defaultZoom: "page_
 | `open_path` | `{ path: string }` | `Book` (lo registra si es nuevo; si la huella ya existe con otra ruta, actualiza la ruta) | `invalid_pdf`, `io`, `db` |
 | `open_book` | `{ bookId: string }` | `{ book: Book; readingState: ReadingState \| null }` (marca `lastOpenedAt`) | `not_found`, `file_missing`, `db` |
 | `get_book` | `{ bookId: string }` | `Book` | `not_found`, `db` |
-| `save_reading_state` | `{ bookId: string; state: { page; offsetInPage; zoom; viewMode; pageCount } }` | `null` (actualiza también `progress` y, si faltaba, `pageCount`) | `not_found`, `invalid_input`, `db` |
+| `save_reading_state` | `{ bookId: string; state: { page; offsetInPage; zoom; viewMode; pageCount } }` | `null`. `pageCount` solo se guarda la primera vez (si el libro aún no lo tenía); después manda el valor guardado | `not_found`, `invalid_input`, `db` |
 
 ### Fases 2–5 (borrador, se detalla al empezar cada fase)
 - Biblioteca: `get_home`, `list_books(query)`, `import_files(paths)`, `remove_book` (solo lo quita de la biblioteca, nunca borra el archivo), `set_favorite`, `update_book_metadata`, `save_book_scan(bookId, { pageCount, title?, author?, cover: bytes })`, `list_pending_scans`
