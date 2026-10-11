@@ -1,6 +1,6 @@
 //! Conexión SQLite y migraciones versionadas (`PRAGMA user_version`).
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use rusqlite::Connection;
 
@@ -13,14 +13,17 @@ const MIGRATIONS: &[&str] = &[include_str!("migrations/0001_initial.sql")];
 const APP_DIR_NAME: &str = "atril";
 const DB_FILE_NAME: &str = "atril.db";
 
-/// Abre la base de datos de la app en `~/.local/share/atril/atril.db`
-/// (crea la carpeta si no existe) y la deja al día con las migraciones.
-pub fn open_app_database() -> Result<Connection, AppError> {
+/// Carpeta de datos de la app (`~/.local/share/atril/`), creada si no existe.
+pub fn data_dir() -> Result<PathBuf, AppError> {
     let data_dir = dirs::data_local_dir()
         .ok_or_else(|| AppError::internal("no data directory for this user"))?
         .join(APP_DIR_NAME);
     std::fs::create_dir_all(&data_dir)?;
+    Ok(data_dir)
+}
 
+/// Abre la base de datos de la app dentro de `data_dir` y la deja al día con las migraciones.
+pub fn open_app_database(data_dir: &Path) -> Result<Connection, AppError> {
     open(&data_dir.join(DB_FILE_NAME))
 }
 

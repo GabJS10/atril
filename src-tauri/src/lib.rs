@@ -5,7 +5,8 @@ pub mod library;
 pub mod protocol;
 pub mod settings;
 
-use std::sync::{Mutex, MutexGuard};
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use rusqlite::Connection;
 use tauri::Manager;
@@ -13,9 +14,11 @@ use tracing_subscriber::EnvFilter;
 
 use crate::error::AppError;
 
-/// Estado compartido de la app: la conexión SQLite única.
+/// Estado compartido de la app: la conexión SQLite única y la carpeta de portadas.
+/// La conexión va en `Arc` para que el protocolo `atril://` la use desde un hilo de bloqueo.
 pub struct AppState {
-    db: Mutex<Connection>,
+    pub db: Arc<Mutex<Connection>>,
+    pub covers_dir: PathBuf,
 }
 
 impl AppState {
@@ -37,12 +40,17 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            let conn = db::open_app_database()?;
+            let data_dir = db::data_dir()?;
+            let conn = db::open_app_database(&data_dir)?;
+            let covers_dir = data_dir.join("covers");
+            std::fs::create_dir_all(&covers_dir)?;
             app.manage(AppState {
-                db: Mutex::new(conn),
+                db: Arc::new(Mutex::new(conn)),
+                covers_dir,
             });
             Ok(())
         })
+        .register_asynchronous_uri_scheme_protocol(protocol::SCHEME, protocol::handle)
         .invoke_handler(tauri::generate_handler![
             commands::get_settings,
             commands::update_settings,
