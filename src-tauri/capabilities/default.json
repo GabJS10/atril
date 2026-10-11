@@ -8,6 +8,8 @@
     "opener:default",
     "dialog:allow-open",
     "dialog:allow-save",
-    "core:window:allow-destroy"
+    "core:window:allow-destroy",
+    "core:window:allow-set-fullscreen",
+    "core:window:allow-is-fullscreen"
   ]
 }
