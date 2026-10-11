@@ -257,7 +257,9 @@ pub fn commit_file(
              file_size = excluded.file_size,
              file_mtime = excluded.file_mtime,
              missing = 0,
-             removed_at = NULL",
+             removed_at = NULL,
+             -- Mientras no haya metadatos del PDF, el título sigue al nombre del archivo.
+             title = CASE WHEN books.scan_state = 'done' THEN books.title ELSE excluded.title END",
         params![
             file.id,
             file.path,
@@ -909,6 +911,40 @@ mod tests {
         let restored = import(&mut conn, &path);
         assert_eq!(restored.id, book.id);
         assert_eq!(restored.progress, Some(0.3));
+    }
+
+    #[test]
+    fn title_follows_the_file_name_until_pdf_metadata_is_saved() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let covers = tempfile::tempdir().expect("covers");
+        let (_db, mut conn) = open_temp_db();
+        let original = write_pdf(dir.path(), "viejo.pdf", 1);
+        let book = import(&mut conn, &original);
+        assert_eq!(book.title, "viejo");
+
+        let renamed = dir.path().join("meditaciones-prueba.pdf");
+        std::fs::rename(&original, &renamed).expect("rename");
+        assert_eq!(import(&mut conn, &renamed).title, "meditaciones-prueba");
+
+        save_book_scan(
+            &conn,
+            covers.path(),
+            &book.id,
+            &ScanInput {
+                page_count: 10,
+                title: Some("Meditaciones".into()),
+                author: None,
+            },
+            &webp_bytes(64),
+        )
+        .expect("scan");
+        let back = dir.path().join("otro-nombre.pdf");
+        std::fs::rename(&renamed, &back).expect("rename again");
+        assert_eq!(
+            import(&mut conn, &back).title,
+            "Meditaciones",
+            "metadata title is kept"
+        );
     }
 
     #[test]
