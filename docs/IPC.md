@@ -199,4 +199,5 @@ type ImportResult = {
 | Evento | Payload | Cuándo |
 |---|---|---|
 | `library://changed` | `{ reason: "scan" \| "watch" \| "import" }` | Cambió la biblioteca por algo que no pidió el front (escaneo de una carpeta, vigilancia, importación en segundo plano): el front invalida sus consultas. Los comandos que pide el propio front no emiten el evento; el front invalida lo suyo |
+| `library://scan` | `ScanStatus` | Empieza, avanza (como mucho una vez por segundo) o termina un escaneo |
 | `app://open-file` | `{ bookId: string }` | El sistema pidió abrir un PDF (segundo doble clic con la app abierta) |
