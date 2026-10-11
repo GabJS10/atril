@@ -59,3 +59,43 @@ export type ReadingStateInput = {
   viewMode: ViewMode;
   pageCount: number;
 };
+
+// Library types (docs/IPC.md, fase 2).
+
+export type BookSort = "title" | "author" | "added" | "last_opened" | "progress";
+export type BookStatus = "unread" | "reading" | "finished";
+
+export type BookQuery = {
+  text?: string;
+  collectionId?: string;
+  favoritesOnly?: boolean;
+  status?: BookStatus;
+  sort?: BookSort;
+  descending?: boolean;
+};
+
+export type Collection = {
+  id: string;
+  name: string;
+  position: number;
+  bookCount: number;
+  sampleBooks: Book[];
+};
+
+export type HomeData = {
+  continueReading: Book[];
+  favorites: Book[];
+  favoriteCount: number;
+  bookCount: number;
+  collections: Collection[];
+};
+
+export type ScanStatus = { running: boolean; found: number };
+
+export type LibraryFolder = { id: string; path: string; addedAt: string };
+
+export type ScanMetadata = {
+  pageCount: number;
+  title?: string;
+  author?: string;
+};

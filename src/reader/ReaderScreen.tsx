@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSettings } from "../api/queries";
 import { isAppError, openBook } from "../api/tauri";
 import type { Book, ReadingStateInput, Zoom, ViewMode } from "../api/types";
@@ -12,6 +12,7 @@ import { type ReaderAction, useReaderShortcuts } from "./shortcuts";
 import { useChromeVisibility } from "./useChromeVisibility";
 import { usePdfDocument } from "./usePdfDocument";
 import { useReadingPosition } from "./useReadingPosition";
+import { readerClosed, readerOpened } from "../library/readerActivity";
 
 export function ReaderScreen({ bookId }: { bookId: string }) {
   const t = useT();
@@ -64,6 +65,12 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
   const [page, setPage] = useState(start.position?.page ?? 1);
   const [view, setView] = useState<{ zoom: Zoom; scale: number }>({ zoom: start.zoom, scale: 1 });
   const pageCount = pdfState.status === "ready" ? pdfState.pdf.numPages : 0;
+
+  // The background indexer waits while a book is open.
+  useEffect(() => {
+    readerOpened();
+    return () => readerClosed();
+  }, []);
 
   const onChange = useCallback(
     (snapshot: ViewSnapshot) => {

@@ -1,7 +1,21 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow, type CloseRequestedEvent } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { AppError, Book, OpenedBook, ReadingStateInput, Settings, SettingsPatch } from "./types";
+import type {
+  AppError,
+  Book,
+  BookQuery,
+  Collection,
+  HomeData,
+  LibraryFolder,
+  OpenedBook,
+  ReadingStateInput,
+  ScanMetadata,
+  ScanStatus,
+  Settings,
+  SettingsPatch,
+} from "./types";
 
 // The only place that talks to Rust: one wrapper per command in docs/IPC.md.
 // Commands reject with an AppError, see isAppError.
@@ -52,6 +66,77 @@ export function onWindowCloseRequested(
 
 export function destroyWindow(): Promise<void> {
   return getCurrentWindow().destroy();
+}
+
+// Library (docs/IPC.md, fase 2)
+
+export function getHome(): Promise<HomeData> {
+  return invoke<HomeData>("get_home");
+}
+
+export function listBooks(query: BookQuery): Promise<Book[]> {
+  return invoke<Book[]>("list_books", { query });
+}
+
+export function setFavorite(bookId: string, favorite: boolean): Promise<Book> {
+  return invoke<Book>("set_favorite", { bookId, favorite });
+}
+
+export function removeBook(bookId: string): Promise<null> {
+  return invoke<null>("remove_book", { bookId });
+}
+
+export function listLibraryFolders(): Promise<LibraryFolder[]> {
+  return invoke<LibraryFolder[]>("list_library_folders");
+}
+
+export function addLibraryFolder(path: string): Promise<LibraryFolder> {
+  return invoke<LibraryFolder>("add_library_folder", { path });
+}
+
+export function getScanStatus(): Promise<ScanStatus> {
+  return invoke<ScanStatus>("get_scan_status");
+}
+
+export function listPendingScans(): Promise<Book[]> {
+  return invoke<Book[]>("list_pending_scans");
+}
+
+/** Sends the cover (WebP bytes) as the binary body; the metadata travels in headers (docs/IPC.md). */
+export function saveBookScan(bookId: string, metadata: ScanMetadata, cover: Uint8Array): Promise<Book> {
+  const headers: Record<string, string> = {
+    "X-Book-Id": bookId,
+    "X-Page-Count": String(metadata.pageCount),
+  };
+  if (metadata.title) headers["X-Title"] = encodeURIComponent(metadata.title);
+  if (metadata.author) headers["X-Author"] = encodeURIComponent(metadata.author);
+  return invoke<Book>("save_book_scan", cover, { headers });
+}
+
+export function markScanFailed(bookId: string): Promise<Book> {
+  return invoke<Book>("mark_scan_failed", { bookId });
+}
+
+export function listCollections(): Promise<Collection[]> {
+  return invoke<Collection[]>("list_collections");
+}
+
+/** Native folder dialog. Resolves to the chosen path, or null if cancelled. */
+export async function pickFolderPath(): Promise<string | null> {
+  const selected = await open({ multiple: false, directory: true });
+  return typeof selected === "string" ? selected : null;
+}
+
+export type ScanEvent = { reason: "scan" | "watch" | "import" };
+
+/** The library changed for a reason the front did not ask for (scan, watcher, import). */
+export function onLibraryChanged(handler: (event: ScanEvent) => void): Promise<UnlistenFn> {
+  return listen<ScanEvent>("library://changed", (event) => handler(event.payload));
+}
+
+/** A scan started, advanced or finished. */
+export function onScanStatus(handler: (status: ScanStatus) => void): Promise<UnlistenFn> {
+  return listen<ScanStatus>("library://scan", (event) => handler(event.payload));
 }
 
 export function isAppError(error: unknown): error is AppError {
