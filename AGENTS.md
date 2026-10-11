@@ -14,13 +14,13 @@ Guía para agentes de IA (y personas) que trabajen en este repositorio.
 **Estado actual:** fase 0 (andamiaje) en curso.
 
 ## Forma de trabajo (multi-agente)
-El proyecto se desarrolla con **3 agentes en paralelo**, cada uno en su propia tab del workspace `atril` de [Herdr](https://herdr.dev). **Este `AGENTS.md` es la fuente de verdad**; `CLAUDE.md` solo lo importa.
+El proyecto se desarrolla con **3 agentes en paralelo**, cada uno en un panel de la misma tab (`plan`) del workspace `atril` de [Herdr](https://herdr.dev): `plan` a la izquierda, `frontend` arriba a la derecha y `backend` abajo a la derecha. **Este `AGENTS.md` es la fuente de verdad**; `CLAUDE.md` solo lo importa.
 
-| Agente (nombre en Herdr) | Tab | Responsabilidad | Es dueño de |
+| Agente (nombre en Herdr) | Panel | Responsabilidad | Es dueño de |
 |---|---|---|---|
-| `plan` | `plan` | Orquestación, planificación, decisiones de arquitectura, contrato IPC, tareas comunes (CI, E2E, empaquetado, releases) | `docs/`, `AGENTS.md`, `CLAUDE.md`, `README.md`, `CHANGELOG.md`, `.github/`, `e2e/`, configs de la raíz no específicas del front |
-| `frontend` | `frontend` | UI en React, diseño (propuestas en Claude Design), visor pdf.js, estado del cliente y wrappers de `invoke()` | `src/`, `public/`, `DESIGN.md`, `PRODUCT.md`, `index.html`, `vite.config.*`, `tsconfig*.json`, configs de ESLint/Prettier/Vitest, `package.json` y `package-lock.json` |
-| `backend` | `backend` | Core en Rust: biblioteca (escaneo, vigilancia, huella), protocolo `atril://`, SQLite, subrayados, ajustes, comandos Tauri e integración con el sistema | `src-tauri/` (incluye `Cargo.toml`, `tauri.conf.json` y `capabilities/`) |
+| `plan` | izquierda | Orquestación, planificación, decisiones de arquitectura, contrato IPC, tareas comunes (CI, E2E, empaquetado, releases) | `docs/`, `AGENTS.md`, `CLAUDE.md`, `README.md`, `CHANGELOG.md`, `.github/`, `e2e/`, configs de la raíz no específicas del front |
+| `frontend` | arriba a la derecha | UI en React, diseño (propuestas en Claude Design), visor pdf.js, estado del cliente y wrappers de `invoke()` | `src/`, `public/`, `DESIGN.md`, `PRODUCT.md`, `index.html`, `vite.config.*`, `tsconfig*.json`, configs de ESLint/Prettier/Vitest, `package.json` y `package-lock.json` |
+| `backend` | abajo a la derecha | Core en Rust: biblioteca (escaneo, vigilancia, huella), protocolo `atril://`, SQLite, subrayados, ajustes, comandos Tauri e integración con el sistema | `src-tauri/` (incluye `Cargo.toml`, `tauri.conf.json` y `capabilities/`) |
 
 ### Modelo y esfuerzo
 - `frontend` y `backend` corren en **Haiku 5.5** (`claude-haiku-5-5`). `plan` asigna el esfuerzo de cada tarea según su dificultad (`low`, `medium`, `high` o `xhigh`; **`max` solo cuando de verdad haga falta**: bugs muy difíciles o tareas en las que `xhigh` ya se quedó corto) y lo cambia con `/effort <nivel>` antes de mandarla. El nivel de cada tarea figura en `docs/ROADMAP.md`.
@@ -45,7 +45,7 @@ El proyecto se desarrolla con **3 agentes en paralelo**, cada uno en su propia t
   herdr agent read frontend --source recent-unwrapped --lines 120
   ```
 - No mandes un prompt a un agente que está `working` o `blocked` sin revisar antes su estado (`herdr agent get <nombre>`). Excepción: el aviso de "terminé / bloqueado" a `plan` se manda siempre.
-- No cierres ni muevas tabs/panes de otros agentes. Los push, tags y releases los hace `plan`.
+- No cierres ni muevas paneles de otros agentes. Los push, tags y releases los hace `plan`.
 - Decisiones de arquitectura nuevas: las registra `plan` en `docs/PLAN.md`.
 
 ## Stack
