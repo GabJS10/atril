@@ -27,6 +27,19 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "linux": {
+      "deb": {
+        "desktopTemplate": "linux/atril.desktop.hbs"
+      }
+    },
+    "fileAssociations": [
+      {
+        "ext": ["pdf"],
+        "mimeType": "application/pdf",
+        "role": "Viewer",
+        "description": "PDF document"
+      }
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

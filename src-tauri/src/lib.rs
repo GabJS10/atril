@@ -9,11 +9,12 @@ pub mod protocol;
 pub mod query;
 pub mod scan;
 pub mod settings;
+pub mod system;
 #[cfg(test)]
 pub mod test_support;
 pub mod watch;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -23,6 +24,7 @@ use tracing_subscriber::EnvFilter;
 
 use crate::error::AppError;
 use crate::scan::SharedScanStatus;
+use crate::system::PendingOpen;
 
 /// Estado compartido de la app: la conexión SQLite única, la carpeta de portadas,
 /// el canal del hilo de biblioteca y el estado del escaneo.
@@ -32,6 +34,7 @@ pub struct AppState {
     pub covers_dir: PathBuf,
     pub worker: Sender<watch::Msg>,
     pub scan: SharedScanStatus,
+    pub pending_open: PendingOpen,
 }
 
 impl AppState {
@@ -49,6 +52,10 @@ pub fn run() {
         .try_init();
 
     tauri::Builder::default()
+        // La instancia única va primero: así un segundo lanzamiento no llega a arrancar nada.
+        .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+            system::handle_second_instance(app, &args, Path::new(&cwd));
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
@@ -58,6 +65,14 @@ pub fn run() {
             std::fs::create_dir_all(&covers_dir)?;
 
             let db = Arc::new(Mutex::new(conn));
+            // Primer lanzamiento con PDF en la línea de comandos: el front lo recoge con take_pending_open_file.
+            let pending_open = PendingOpen::default();
+            let argv: Vec<String> = std::env::args().collect();
+            let cwd = std::env::current_dir().unwrap_or_default();
+            pending_open.push_all(system::open_paths(
+                &db,
+                &system::pdf_paths_from_args(&argv, &cwd),
+            ));
             let scan = SharedScanStatus::default();
             let (tx, rx) = mpsc::channel();
             watch::spawn(
@@ -73,6 +88,7 @@ pub fn run() {
                 covers_dir,
                 worker: tx,
                 scan,
+                pending_open,
             });
             Ok(())
         })
@@ -107,7 +123,10 @@ pub fn run() {
             commands::create_highlight,
             commands::update_highlight,
             commands::delete_highlight,
-            commands::export_highlights
+            commands::export_highlights,
+            commands::take_pending_open_file,
+            commands::set_default_pdf_reader,
+            commands::is_default_pdf_reader
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
