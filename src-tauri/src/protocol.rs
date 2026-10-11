@@ -26,15 +26,23 @@ const ALLOWED_ORIGINS: &[&str] = &[
 
 const EXPOSED_HEADERS: &str = "Content-Range, Accept-Ranges, Content-Length";
 
-/// URL del PDF de un libro, lista para pdf.js.
-/// En Windows el esquema se sirve como `http://atril.localhost/`.
-pub fn book_file_url(id: &str) -> String {
-    let origin = if cfg!(windows) {
+/// Origen del protocolo. En Windows el esquema se sirve como `http://atril.localhost`.
+fn origin() -> &'static str {
+    if cfg!(windows) {
         "http://atril.localhost"
     } else {
         "atril://localhost"
-    };
-    format!("{origin}/book/{id}")
+    }
+}
+
+/// URL del PDF de un libro, lista para pdf.js.
+pub fn book_file_url(id: &str) -> String {
+    format!("{}/book/{id}", origin())
+}
+
+/// URL de la portada de un libro (solo si tiene una guardada).
+pub fn book_cover_url(id: &str) -> String {
+    format!("{}/cover/{id}", origin())
 }
 
 /// Resultado de interpretar la cabecera `Range` para un archivo de `len` bytes.
@@ -304,9 +312,11 @@ fn lookup_book_path(db: &Mutex<Connection>, id: &str) -> Result<Option<String>, 
         .lock()
         .map_err(|_| AppError::internal("database connection lock was poisoned"))?;
     let path = conn
-        .query_row("SELECT path FROM books WHERE id = ?1", params![id], |row| {
-            row.get(0)
-        })
+        .query_row(
+            "SELECT path FROM books WHERE id = ?1 AND removed_at IS NULL",
+            params![id],
+            |row| row.get(0),
+        )
         .optional()?;
     Ok(path)
 }

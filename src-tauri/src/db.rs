@@ -8,7 +8,10 @@ use crate::error::AppError;
 
 /// Migraciones en orden: la número `n` (1-based) deja `user_version` en `n`.
 /// No se edita una migración ya publicada: se añade un archivo nuevo.
-const MIGRATIONS: &[&str] = &[include_str!("migrations/0001_initial.sql")];
+const MIGRATIONS: &[&str] = &[
+    include_str!("migrations/0001_initial.sql"),
+    include_str!("migrations/0002_library.sql"),
+];
 
 const APP_DIR_NAME: &str = "atril";
 const DB_FILE_NAME: &str = "atril.db";

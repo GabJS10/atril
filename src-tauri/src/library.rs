@@ -1,8 +1,10 @@
-//! Biblioteca: huella de los archivos, alta de libros y posición de lectura.
+//! Libros: huella, alta (importación y escaneo), consulta, posición de lectura,
+//! favoritos, quitar de la biblioteca y portadas.
 
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard};
 use std::time::UNIX_EPOCH;
 
 use chrono::{SecondsFormat, Utc};
@@ -14,11 +16,13 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::error::{AppError, ErrorCode};
-use crate::protocol::book_file_url;
+use crate::protocol::{book_cover_url, book_file_url};
 use crate::settings::{ViewMode, Zoom};
 
 const CHUNK_SIZE: u64 = 1024 * 1024;
 const PDF_MAGIC: &[u8] = b"%PDF-";
+/// Tamaño máximo de una portada WebP.
+const MAX_COVER_BYTES: usize = 2 * 1024 * 1024;
 /// Ruta provisional de un libro cuyo archivo fue sustituido por otro contenido
 /// en la misma ruta: conserva su progreso y subrayados, pero ya no tiene ruta real.
 const DETACHED_PREFIX: &str = "detached:";
@@ -46,6 +50,7 @@ pub struct Book {
     pub missing: bool,
     pub scan_state: ScanState,
     pub progress: Option<f64>,
+    pub current_page: Option<i64>,
     pub added_at: String,
     pub last_opened_at: Option<String>,
 }
@@ -98,6 +103,14 @@ impl ReadingStateInput {
     }
 }
 
+/// Datos de `save_book_scan` que no son la portada (vienen en cabeceras).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScanInput {
+    pub page_count: i64,
+    pub title: Option<String>,
+    pub author: Option<String>,
+}
+
 /// Huella del libro: sha256(tamaño + primer MiB + último MiB), en hex minúsculas.
 /// Para archivos de hasta un MiB, el "primer" y el "último" trozo son el archivo entero.
 pub fn fingerprint(path: &Path) -> Result<String, AppError> {
@@ -131,9 +144,18 @@ fn has_pdf_header(path: &Path) -> Result<bool, AppError> {
     Ok(head == PDF_MAGIC)
 }
 
-/// Registra el PDF en `path` (o actualiza su ruta si su huella ya existe)
-/// y devuelve el libro. Rechaza lo que no empiece por `%PDF-`.
-pub fn open_path(conn: &mut Connection, path: &Path) -> Result<Book, AppError> {
+/// Lo que se sabe de un archivo PDF antes de tocar la base de datos.
+/// Se calcula sin el lock de la base, porque lee el archivo.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreparedFile {
+    pub id: String,
+    pub path: String,
+    pub file_size: i64,
+    pub file_mtime: Option<i64>,
+    pub title: String,
+}
+
+pub fn prepare_file(path: &Path) -> Result<PreparedFile, AppError> {
     let stored_path = path
         .to_str()
         .ok_or_else(|| AppError::invalid_input("path is not valid UTF-8"))?;
@@ -159,12 +181,64 @@ pub fn open_path(conn: &mut Connection, path: &Path) -> Result<Book, AppError> {
         |stem| stem.to_string_lossy().into_owned(),
     );
 
+    Ok(PreparedFile {
+        id,
+        path: stored_path.to_owned(),
+        file_size,
+        file_mtime,
+        title,
+    })
+}
+
+/// Quién registra el archivo. Cambia lo que pasa con libros quitados y copias.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Origin {
+    /// El usuario lo importa: vuelve a la biblioteca si estaba quitado y su ruta pasa a ser esta.
+    Import,
+    /// Lo encontró un escaneo de carpeta: no devuelve libros quitados y, si ya hay
+    /// otra copia existente con esa huella, la ruta conocida se mantiene.
+    Scan,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Commit {
+    pub book: Book,
+    /// `true` si el libro no estaba en la base de datos.
+    pub created: bool,
+}
+
+/// Inserta o actualiza el libro. `Ok(None)` si un escaneo decide no tocarlo.
+pub fn commit_file(
+    conn: &mut Connection,
+    file: &PreparedFile,
+    origin: Origin,
+) -> Result<Option<Commit>, AppError> {
     let tx = conn.transaction()?;
 
+    let existing: Option<(String, bool)> = tx
+        .query_row(
+            "SELECT path, removed_at IS NOT NULL FROM books WHERE id = ?1",
+            params![file.id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+
+    if let (Some((known_path, removed)), Origin::Scan) = (&existing, origin) {
+        if *removed {
+            return Ok(None);
+        }
+        if known_path != &file.path && Path::new(known_path).is_file() {
+            return Ok(None);
+        }
+    }
+    let created = existing.is_none();
+
+    // Otra huella ocupaba esta ruta: el archivo se reemplazó. Esa entrada ya no tiene archivo;
+    // se conserva (progreso, subrayados) sin ruta real.
     let displaced: Option<String> = tx
         .query_row(
             "SELECT id FROM books WHERE path = ?1 AND id <> ?2",
-            params![stored_path, id],
+            params![file.path, file.id],
             |row| row.get(0),
         )
         .optional()?;
@@ -182,20 +256,84 @@ pub fn open_path(conn: &mut Connection, path: &Path) -> Result<Book, AppError> {
              path = excluded.path,
              file_size = excluded.file_size,
              file_mtime = excluded.file_mtime,
-             missing = 0",
-        params![id, stored_path, file_size, file_mtime, title, now_iso()],
+             missing = 0,
+             removed_at = NULL",
+        params![
+            file.id,
+            file.path,
+            file.file_size,
+            file.file_mtime,
+            file.title,
+            now_iso()
+        ],
     )?;
 
-    let book = find_record(&tx, &id)?
+    let book = find_record(&tx, &file.id)?
         .ok_or_else(|| AppError::internal("book missing right after upsert"))?
         .book;
     tx.commit()?;
-    Ok(book)
+    Ok(Some(Commit { book, created }))
+}
+
+/// Prepara el archivo (sin lock) y lo registra (con lock, un momento).
+pub fn register(
+    db: &Mutex<Connection>,
+    path: &Path,
+    origin: Origin,
+) -> Result<Option<Commit>, AppError> {
+    let prepared = prepare_file(path)?;
+    let mut conn = lock_db(db)?;
+    commit_file(&mut conn, &prepared, origin)
+}
+
+/// Registra el PDF en `path` (o actualiza su ruta si su huella ya existe) y devuelve el libro.
+pub fn open_path(conn: &mut Connection, path: &Path) -> Result<Book, AppError> {
+    let prepared = prepare_file(path)?;
+    commit_file(conn, &prepared, Origin::Import)?
+        .map(|commit| commit.book)
+        .ok_or_else(|| AppError::internal("import did not register the book"))
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Rejection {
+    pub path: String,
+    pub error: AppError,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportResult {
+    pub imported: Vec<Book>,
+    pub rejected: Vec<Rejection>,
+}
+
+/// Importa archivos sueltos. Cada ruta va por separado: un fallo no para el resto.
+pub fn import_files(db: &Mutex<Connection>, paths: &[PathBuf]) -> Result<ImportResult, AppError> {
+    if paths.is_empty() {
+        return Err(AppError::invalid_input("no files to import"));
+    }
+
+    let mut result = ImportResult {
+        imported: Vec::new(),
+        rejected: Vec::new(),
+    };
+    for path in paths {
+        match register(db, path, Origin::Import) {
+            Ok(Some(commit)) => result.imported.push(commit.book),
+            Ok(None) => {}
+            Err(error) => result.rejected.push(Rejection {
+                path: path.display().to_string(),
+                error,
+            }),
+        }
+    }
+    Ok(result)
 }
 
 /// Abre un libro: marca `lastOpenedAt` y devuelve también su posición guardada.
 pub fn open_book(conn: &Connection, id: &str) -> Result<OpenedBook, AppError> {
-    let record = find_record(conn, id)?.ok_or_else(|| not_found(id))?;
+    let record = find_visible(conn, id)?.ok_or_else(|| not_found(id))?;
 
     if !Path::new(&record.path).is_file() {
         conn.execute("UPDATE books SET missing = 1 WHERE id = ?1", params![id])?;
@@ -219,9 +357,17 @@ pub fn open_book(conn: &Connection, id: &str) -> Result<OpenedBook, AppError> {
 }
 
 pub fn get_book(conn: &Connection, id: &str) -> Result<Book, AppError> {
-    find_record(conn, id)?
+    find_visible(conn, id)?
         .map(|record| record.book)
         .ok_or_else(|| not_found(id))
+}
+
+/// Todos los libros de la biblioteca (sin quitados). El orden lo decide quien llama.
+pub fn visible_books(conn: &Connection) -> Result<Vec<Book>, AppError> {
+    Ok(query_records(conn, "WHERE b.removed_at IS NULL", [])?
+        .into_iter()
+        .map(|record| record.book)
+        .collect())
 }
 
 /// Guarda la posición. `pageCount` se fija la primera vez; después manda el valor guardado.
@@ -236,7 +382,7 @@ pub fn save_reading_state(
 
     let stored_count: Option<i64> = tx
         .query_row(
-            "SELECT page_count FROM books WHERE id = ?1",
+            "SELECT page_count FROM books WHERE id = ?1 AND removed_at IS NULL",
             params![id],
             |row| row.get(0),
         )
@@ -285,31 +431,150 @@ pub fn save_reading_state(
     Ok(())
 }
 
+pub fn set_favorite(conn: &Connection, id: &str, favorite: bool) -> Result<Book, AppError> {
+    let changed = conn.execute(
+        "UPDATE books SET favorite = ?1 WHERE id = ?2 AND removed_at IS NULL",
+        params![favorite, id],
+    )?;
+    if changed == 0 {
+        return Err(not_found(id));
+    }
+    get_book(conn, id)
+}
+
+/// Quita el libro de la biblioteca. Nunca borra el archivo ni el progreso.
+pub fn remove_book(conn: &Connection, id: &str) -> Result<(), AppError> {
+    let changed = conn.execute(
+        "UPDATE books SET removed_at = ?1 WHERE id = ?2 AND removed_at IS NULL",
+        params![now_iso(), id],
+    )?;
+    if changed == 0 {
+        return Err(not_found(id));
+    }
+    Ok(())
+}
+
+/// Libros con portada pendiente, sin `missing`, por fecha de alta.
+pub fn list_pending_scans(conn: &Connection) -> Result<Vec<Book>, AppError> {
+    Ok(query_records(
+        conn,
+        "WHERE b.removed_at IS NULL AND b.scan_state = 'pending' AND b.missing = 0
+         ORDER BY b.added_at, b.id",
+        [],
+    )?
+    .into_iter()
+    .map(|record| record.book)
+    .collect())
+}
+
+/// Guarda los metadatos y la portada (WebP) que calculó el indexador.
+pub fn save_book_scan(
+    conn: &Connection,
+    covers_dir: &Path,
+    id: &str,
+    scan: &ScanInput,
+    cover: &[u8],
+) -> Result<Book, AppError> {
+    if scan.page_count < 1 {
+        return Err(AppError::invalid_input("pageCount must be at least 1"));
+    }
+    if !is_webp(cover) {
+        return Err(AppError::invalid_input("cover is not a WebP image"));
+    }
+    if cover.len() > MAX_COVER_BYTES {
+        return Err(AppError::invalid_input("cover is larger than 2 MiB"));
+    }
+    if find_visible(conn, id)?.is_none() {
+        return Err(not_found(id));
+    }
+
+    write_cover(covers_dir, id, cover)?;
+
+    conn.execute(
+        "UPDATE books SET
+             page_count = COALESCE(page_count, ?1),
+             title = COALESCE(?2, title),
+             author = COALESCE(?3, author),
+             scan_state = 'done',
+             has_cover = 1
+         WHERE id = ?4",
+        params![scan.page_count, scan.title, scan.author, id],
+    )?;
+    get_book(conn, id)
+}
+
+pub fn mark_scan_failed(conn: &Connection, id: &str) -> Result<Book, AppError> {
+    let changed = conn.execute(
+        "UPDATE books SET scan_state = 'failed' WHERE id = ?1 AND removed_at IS NULL",
+        params![id],
+    )?;
+    if changed == 0 {
+        return Err(not_found(id));
+    }
+    get_book(conn, id)
+}
+
+/// Bloquea la base de datos compartida; un lock envenenado es un error interno.
+pub fn lock_db(db: &Mutex<Connection>) -> Result<MutexGuard<'_, Connection>, AppError> {
+    db.lock()
+        .map_err(|_| AppError::internal("database connection lock was poisoned"))
+}
+
+fn is_webp(bytes: &[u8]) -> bool {
+    bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP"
+}
+
+/// Escribe la portada con fichero temporal y renombrado, para no dejar un WebP a medias.
+fn write_cover(covers_dir: &Path, id: &str, cover: &[u8]) -> Result<(), AppError> {
+    let temp = covers_dir.join(format!("{id}.webp.tmp"));
+    std::fs::write(&temp, cover)?;
+    std::fs::rename(&temp, covers_dir.join(format!("{id}.webp")))?;
+    Ok(())
+}
+
 struct BookRecord {
     book: Book,
     /// Ruta tal como está en la base de datos (puede ser provisional).
     path: String,
+    removed: bool,
 }
 
 const BOOK_SELECT: &str = "SELECT b.id, b.path, b.title, b.author, b.page_count, b.scan_state,
-        b.favorite, b.missing, b.added_at, b.last_opened_at, r.page
+        b.favorite, b.missing, b.added_at, b.last_opened_at, r.page,
+        b.removed_at IS NOT NULL, b.has_cover
     FROM books b
     LEFT JOIN reading_state r ON r.book_id = b.id";
 
+/// Busca un libro por id, aunque esté quitado (lo usa el registro para restaurarlo).
 fn find_record(conn: &Connection, id: &str) -> Result<Option<BookRecord>, AppError> {
-    let sql = format!("{BOOK_SELECT} WHERE b.id = ?1");
-    Ok(conn
-        .query_row(&sql, params![id], record_from_row)
-        .optional()?)
+    Ok(query_records(conn, "WHERE b.id = ?1", params![id])?.pop())
+}
+
+/// Busca un libro por id entre los que están en la biblioteca.
+fn find_visible(conn: &Connection, id: &str) -> Result<Option<BookRecord>, AppError> {
+    Ok(find_record(conn, id)?.filter(|record| !record.removed))
+}
+
+fn query_records(
+    conn: &Connection,
+    tail: &str,
+    params: impl rusqlite::Params,
+) -> Result<Vec<BookRecord>, AppError> {
+    let mut stmt = conn.prepare(&format!("{BOOK_SELECT} {tail}"))?;
+    let records = stmt
+        .query_map(params, record_from_row)?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(records)
 }
 
 fn record_from_row(row: &Row<'_>) -> rusqlite::Result<BookRecord> {
     let id: String = row.get(0)?;
     let path: String = row.get(1)?;
     let page_count: Option<i64> = row.get(4)?;
-    let page: Option<i64> = row.get(10)?;
+    let current_page: Option<i64> = row.get(10)?;
+    let has_cover: bool = row.get(12)?;
 
-    let progress = match (page, page_count) {
+    let progress = match (current_page, page_count) {
         (Some(page), Some(count)) if count > 0 => Some(page as f64 / count as f64),
         _ => None,
     };
@@ -319,20 +584,25 @@ fn record_from_row(row: &Row<'_>) -> rusqlite::Result<BookRecord> {
 
     let book = Book {
         file_url: book_file_url(&id),
+        cover_url: has_cover.then(|| book_cover_url(&id)),
         id,
         title: row.get(2)?,
         author: row.get(3)?,
         file_name,
         page_count,
-        cover_url: None,
         favorite: row.get(6)?,
         missing: row.get(7)?,
         scan_state: parse_enum(row, 5)?,
         progress,
+        current_page,
         added_at: row.get(8)?,
         last_opened_at: row.get(9)?,
     };
-    Ok(BookRecord { book, path })
+    Ok(BookRecord {
+        book,
+        path,
+        removed: row.get(11)?,
+    })
 }
 
 fn find_reading_state(conn: &Connection, id: &str) -> Result<Option<ReadingState>, AppError> {
@@ -382,91 +652,67 @@ fn not_found(id: &str) -> AppError {
     AppError::new(ErrorCode::NotFound, format!("no book with id {id}"))
 }
 
-fn now_iso() -> String {
+pub fn now_iso() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db;
-    use std::path::{Path, PathBuf};
-
-    fn open_temp_db() -> (tempfile::TempDir, Connection) {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let conn = db::open(&dir.path().join("atril.db")).expect("open");
-        (dir, conn)
-    }
-
-    /// PDF mínimo de `len` bytes: cabecera `%PDF-` y relleno determinista según `seed`.
-    fn pdf_bytes(len: usize, seed: u8) -> Vec<u8> {
-        let mut bytes = b"%PDF-1.4\n".to_vec();
-        while bytes.len() < len {
-            bytes.push(seed.wrapping_add(bytes.len() as u8));
-        }
-        bytes.truncate(len);
-        bytes
-    }
-
-    fn write_file(dir: &Path, name: &str, bytes: &[u8]) -> PathBuf {
-        let path = dir.join(name);
-        std::fs::write(&path, bytes).expect("write fixture");
-        path
-    }
+    use crate::settings::ZoomPreset;
+    use crate::test_support::{import, open_temp_db, pdf_bytes, webp_bytes, write_pdf};
 
     fn save_input(page: i64, page_count: i64) -> ReadingStateInput {
         ReadingStateInput {
             page,
             offset_in_page: 0.25,
-            zoom: Zoom::Preset(crate::settings::ZoomPreset::PageFit),
+            zoom: Zoom::Preset(ZoomPreset::PageFit),
             view_mode: ViewMode::Night,
             page_count,
         }
     }
 
+    fn scan_input(page_count: i64) -> ScanInput {
+        ScanInput {
+            page_count,
+            title: None,
+            author: None,
+        }
+    }
+
+    fn error_code<T: std::fmt::Debug>(result: Result<T, AppError>) -> ErrorCode {
+        result.expect_err("expected an error").code
+    }
+
     #[test]
     fn fingerprint_is_lowercase_hex_sha256() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let path = write_file(dir.path(), "a.pdf", &pdf_bytes(4096, 1));
+        let path = write_pdf(dir.path(), "a.pdf", 1);
 
         let id = fingerprint(&path).expect("fingerprint");
 
         assert_eq!(id.len(), 64);
         assert!(
-            id.chars()
-                .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+            id.bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
         );
     }
 
     #[test]
-    fn fingerprint_survives_copy_and_rename() {
+    fn fingerprint_survives_copy_and_rename_and_changes_with_content() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let original = write_file(dir.path(), "original.pdf", &pdf_bytes(3 * 1024 * 1024, 7));
-        let copied = dir.path().join("copia.pdf");
-        std::fs::copy(&original, &copied).expect("copy");
+        let original = write_pdf(dir.path(), "original.pdf", 7);
+        let base = fingerprint(&original).expect("base");
         let renamed = dir.path().join("renamed.pdf");
-        std::fs::rename(&copied, &renamed).expect("rename");
+        std::fs::copy(&original, &renamed).expect("copy");
+        std::fs::remove_file(&original).expect("remove");
+        assert_eq!(fingerprint(&renamed).expect("renamed"), base);
 
-        assert_eq!(
-            fingerprint(&original).expect("original"),
-            fingerprint(&renamed).expect("renamed")
-        );
-    }
-
-    #[test]
-    fn fingerprint_changes_when_content_changes() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let bytes = pdf_bytes(4096, 1);
-        let base = write_file(dir.path(), "base.pdf", &bytes);
-        let base_id = fingerprint(&base).expect("base");
-
-        let mut edited = bytes.clone();
+        let mut edited = pdf_bytes(4096, 7);
         edited[100] ^= 0xFF;
-        let edited_path = write_file(dir.path(), "edited.pdf", &edited);
-        let longer = write_file(dir.path(), "longer.pdf", &pdf_bytes(4097, 1));
-
-        assert_ne!(base_id, fingerprint(&edited_path).expect("edited"));
-        assert_ne!(base_id, fingerprint(&longer).expect("longer"));
+        let edited_path = dir.path().join("edited.pdf");
+        std::fs::write(&edited_path, &edited).expect("write");
+        assert_ne!(fingerprint(&edited_path).expect("edited"), base);
     }
 
     #[test]
@@ -474,57 +720,59 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let len = 3 * 1024 * 1024;
         let bytes = pdf_bytes(len, 3);
-        let base = write_file(dir.path(), "base.pdf", &bytes);
-        let base_id = fingerprint(&base).expect("base");
+        let base_path = dir.path().join("base.pdf");
+        std::fs::write(&base_path, &bytes).expect("write");
+        let base = fingerprint(&base_path).expect("base");
 
         let mut middle = bytes.clone();
-        middle[3 * 1024 * 1024 / 2] ^= 0xFF;
-        let middle_path = write_file(dir.path(), "middle.pdf", &middle);
-        let mut tail = bytes.clone();
-        tail[len - 1] ^= 0xFF;
-        let tail_path = write_file(dir.path(), "tail.pdf", &tail);
+        middle[len / 2] ^= 0xFF;
+        let middle_path = dir.path().join("middle.pdf");
+        std::fs::write(&middle_path, &middle).expect("write");
+        assert_eq!(fingerprint(&middle_path).expect("middle"), base);
 
-        assert_eq!(base_id, fingerprint(&middle_path).expect("middle"));
-        assert_ne!(base_id, fingerprint(&tail_path).expect("tail"));
+        let mut tail = bytes;
+        tail[len - 1] ^= 0xFF;
+        let tail_path = dir.path().join("tail.pdf");
+        std::fs::write(&tail_path, &tail).expect("write");
+        assert_ne!(fingerprint(&tail_path).expect("tail"), base);
     }
 
     #[test]
-    fn open_path_registers_a_new_pdf() {
+    fn open_path_registers_a_new_pdf_with_title_from_the_name() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let (_db_dir, mut conn) = open_temp_db();
-        let path = write_file(dir.path(), "Mi libro.pdf", &pdf_bytes(2048, 1));
+        let (_db, mut conn) = open_temp_db();
+        let path = write_pdf(dir.path(), "Mi libro.pdf", 1);
 
-        let book = open_path(&mut conn, &path).expect("open_path");
+        let book = import(&mut conn, &path);
 
         assert_eq!(book.id, fingerprint(&path).expect("fingerprint"));
         assert_eq!(book.title, "Mi libro");
         assert_eq!(book.file_name, "Mi libro.pdf");
-        assert_eq!(book.file_url, book_file_url(&book.id));
+        assert_eq!(book.file_url, crate::protocol::book_file_url(&book.id));
+        assert_eq!(book.cover_url, None);
         assert_eq!(book.scan_state, ScanState::Pending);
-        assert_eq!(book.page_count, None);
         assert_eq!(book.progress, None);
+        assert_eq!(book.current_page, None);
         assert!(!book.missing);
-        assert_eq!(book.last_opened_at, None);
     }
 
     #[test]
-    fn open_path_on_a_moved_file_keeps_identity_and_updates_path() {
+    fn open_path_on_a_moved_file_keeps_identity_and_progress() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let (_db_dir, mut conn) = open_temp_db();
-        let original = write_file(dir.path(), "viejo.pdf", &pdf_bytes(2048, 1));
-        let book = open_path(&mut conn, &original).expect("first open");
-        save_reading_state_for(&mut conn, &book.id, &save_input(2, 4));
+        let (_db, mut conn) = open_temp_db();
+        let original = write_pdf(dir.path(), "viejo.pdf", 1);
+        let book = import(&mut conn, &original);
+        save_reading_state(&mut conn, &book.id, &save_input(2, 4)).expect("save");
 
         let moved = dir.path().join("nuevo.pdf");
         std::fs::rename(&original, &moved).expect("rename");
-        let open_result = open_book(&conn, &book.id);
         assert_eq!(
-            open_result.expect_err("file moved").code,
+            error_code(open_book(&conn, &book.id)),
             ErrorCode::FileMissing
         );
         assert!(get_book(&conn, &book.id).expect("get").missing);
 
-        let reopened = open_path(&mut conn, &moved).expect("open moved");
+        let reopened = import(&mut conn, &moved);
 
         assert_eq!(reopened.id, book.id);
         assert!(!reopened.missing);
@@ -540,120 +788,279 @@ mod tests {
     }
 
     #[test]
-    fn open_path_rejects_files_that_are_not_pdf() {
+    fn open_path_rejects_non_pdf_and_reports_missing_files() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let (_db_dir, mut conn) = open_temp_db();
-        let path = write_file(dir.path(), "notas.pdf", b"hola, no soy un PDF");
+        let (_db, mut conn) = open_temp_db();
+        let text = dir.path().join("notas.pdf");
+        std::fs::write(&text, b"hola").expect("write");
 
-        let error = open_path(&mut conn, &path).expect_err("must reject");
-
-        assert_eq!(error.code, ErrorCode::InvalidPdf);
-        let count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM books", [], |row| row.get(0))
-            .expect("count");
-        assert_eq!(count, 0);
-    }
-
-    #[test]
-    fn open_path_reports_io_for_missing_files() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let (_db_dir, mut conn) = open_temp_db();
-
-        let error = open_path(&mut conn, &dir.path().join("no-existe.pdf")).expect_err("missing");
-
-        assert_eq!(error.code, ErrorCode::Io);
-    }
-
-    #[test]
-    fn open_book_returns_not_found_for_unknown_id() {
-        let (_db_dir, conn) = open_temp_db();
-
-        let error = open_book(&conn, "desconocido").expect_err("unknown");
-
-        assert_eq!(error.code, ErrorCode::NotFound);
         assert_eq!(
-            get_book(&conn, "desconocido").expect_err("unknown").code,
-            ErrorCode::NotFound
+            error_code(open_path(&mut conn, &text)),
+            ErrorCode::InvalidPdf
         );
+        assert_eq!(
+            error_code(open_path(&mut conn, &dir.path().join("no-existe.pdf"))),
+            ErrorCode::Io
+        );
+        assert!(visible_books(&conn).expect("list").is_empty());
     }
 
     #[test]
     fn open_book_marks_last_opened_and_returns_saved_position() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let (_db_dir, mut conn) = open_temp_db();
-        let path = write_file(dir.path(), "a.pdf", &pdf_bytes(2048, 1));
-        let book = open_path(&mut conn, &path).expect("open_path");
+        let (_db, mut conn) = open_temp_db();
+        let book = import(&mut conn, &write_pdf(dir.path(), "a.pdf", 1));
 
         let first = open_book(&conn, &book.id).expect("first open");
         assert_eq!(first.reading_state, None);
         assert!(first.book.last_opened_at.is_some());
 
-        save_reading_state_for(&mut conn, &book.id, &save_input(1, 10));
+        save_reading_state(&mut conn, &book.id, &save_input(1, 10)).expect("save");
         let second = open_book(&conn, &book.id).expect("second open");
         let state = second.reading_state.expect("saved position");
         assert_eq!(state.page, 1);
         assert_eq!(state.view_mode, ViewMode::Night);
-        assert_eq!(
-            state.zoom,
-            Zoom::Preset(crate::settings::ZoomPreset::PageFit)
-        );
+        assert_eq!(second.book.current_page, Some(1));
     }
 
     #[test]
-    fn save_reading_state_sets_page_count_and_progress() {
+    fn save_reading_state_sets_page_count_progress_and_keeps_the_first_page_count() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let (_db_dir, mut conn) = open_temp_db();
-        let path = write_file(dir.path(), "a.pdf", &pdf_bytes(2048, 1));
-        let book = open_path(&mut conn, &path).expect("open_path");
+        let (_db, mut conn) = open_temp_db();
+        let book = import(&mut conn, &write_pdf(dir.path(), "a.pdf", 1));
 
-        save_reading_state(&mut conn, &book.id, &save_input(5, 10)).expect("save");
-
+        save_reading_state(&mut conn, &book.id, &save_input(5, 10)).expect("first save");
         let saved = get_book(&conn, &book.id).expect("get");
         assert_eq!(saved.page_count, Some(10));
         assert_eq!(saved.progress, Some(0.5));
-    }
-
-    #[test]
-    fn save_reading_state_keeps_the_first_page_count() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let (_db_dir, mut conn) = open_temp_db();
-        let path = write_file(dir.path(), "a.pdf", &pdf_bytes(2048, 1));
-        let book = open_path(&mut conn, &path).expect("open_path");
-        save_reading_state(&mut conn, &book.id, &save_input(5, 10)).expect("first save");
+        assert_eq!(saved.current_page, Some(5));
 
         save_reading_state(&mut conn, &book.id, &save_input(10, 20)).expect("second save");
-
-        let saved = get_book(&conn, &book.id).expect("get");
-        assert_eq!(saved.page_count, Some(10));
-        assert_eq!(saved.progress, Some(1.0));
+        let again = get_book(&conn, &book.id).expect("get");
+        assert_eq!(again.page_count, Some(10));
+        assert_eq!(again.progress, Some(1.0));
     }
 
     #[test]
     fn save_reading_state_rejects_unknown_books_and_bad_input() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let (_db_dir, mut conn) = open_temp_db();
-        let path = write_file(dir.path(), "a.pdf", &pdf_bytes(2048, 1));
-        let book = open_path(&mut conn, &path).expect("open_path");
+        let (_db, mut conn) = open_temp_db();
+        let book = import(&mut conn, &write_pdf(dir.path(), "a.pdf", 1));
 
-        let unknown = save_reading_state(&mut conn, "desconocido", &save_input(1, 10));
-        assert_eq!(unknown.expect_err("unknown").code, ErrorCode::NotFound);
-
-        let page_zero = save_reading_state(&mut conn, &book.id, &save_input(0, 10));
-        assert_eq!(page_zero.expect_err("page 0").code, ErrorCode::InvalidInput);
-
-        let beyond = save_reading_state(&mut conn, &book.id, &save_input(11, 10));
-        assert_eq!(beyond.expect_err("beyond").code, ErrorCode::InvalidInput);
-
+        assert_eq!(
+            error_code(save_reading_state(&mut conn, "nope", &save_input(1, 10))),
+            ErrorCode::NotFound
+        );
+        assert_eq!(
+            error_code(save_reading_state(&mut conn, &book.id, &save_input(0, 10))),
+            ErrorCode::InvalidInput
+        );
+        assert_eq!(
+            error_code(save_reading_state(&mut conn, &book.id, &save_input(11, 10))),
+            ErrorCode::InvalidInput
+        );
         let mut bad_offset = save_input(1, 10);
         bad_offset.offset_in_page = 1.5;
-        let offset = save_reading_state(&mut conn, &book.id, &bad_offset);
-        assert_eq!(offset.expect_err("offset").code, ErrorCode::InvalidInput);
-
+        assert_eq!(
+            error_code(save_reading_state(&mut conn, &book.id, &bad_offset)),
+            ErrorCode::InvalidInput
+        );
         assert_eq!(get_book(&conn, &book.id).expect("get").progress, None);
     }
 
-    /// Guarda una posición que ya se sabe válida y falla el test si no.
-    fn save_reading_state_for(conn: &mut Connection, id: &str, input: &ReadingStateInput) {
-        save_reading_state(conn, id, input).expect("save reading state");
+    #[test]
+    fn favorites_toggle_and_unknown_ids_are_not_found() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (_db, mut conn) = open_temp_db();
+        let book = import(&mut conn, &write_pdf(dir.path(), "a.pdf", 1));
+
+        assert!(set_favorite(&conn, &book.id, true).expect("fav").favorite);
+        assert!(
+            !set_favorite(&conn, &book.id, false)
+                .expect("unfav")
+                .favorite
+        );
+        assert_eq!(
+            error_code(set_favorite(&conn, "nope", true)),
+            ErrorCode::NotFound
+        );
+    }
+
+    #[test]
+    fn remove_book_hides_it_and_importing_again_restores_progress() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (_db, mut conn) = open_temp_db();
+        let path = write_pdf(dir.path(), "a.pdf", 1);
+        let book = import(&mut conn, &path);
+        save_reading_state(&mut conn, &book.id, &save_input(3, 10)).expect("save");
+
+        remove_book(&conn, &book.id).expect("remove");
+        assert!(visible_books(&conn).expect("list").is_empty());
+        assert_eq!(error_code(get_book(&conn, &book.id)), ErrorCode::NotFound);
+        assert_eq!(
+            error_code(remove_book(&conn, &book.id)),
+            ErrorCode::NotFound
+        );
+        assert!(
+            path.exists(),
+            "removing from the library never deletes the file"
+        );
+
+        let restored = import(&mut conn, &path);
+        assert_eq!(restored.id, book.id);
+        assert_eq!(restored.progress, Some(0.3));
+    }
+
+    #[test]
+    fn save_book_scan_stores_the_cover_and_metadata() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let covers = tempfile::tempdir().expect("covers");
+        let (_db, mut conn) = open_temp_db();
+        let book = import(&mut conn, &write_pdf(dir.path(), "a.pdf", 1));
+        let scan = ScanInput {
+            page_count: 176,
+            title: Some("Pedro Páramo".into()),
+            author: Some("Juan Rulfo".into()),
+        };
+
+        let saved =
+            save_book_scan(&conn, covers.path(), &book.id, &scan, &webp_bytes(100)).expect("scan");
+
+        assert_eq!(saved.scan_state, ScanState::Done);
+        assert_eq!(saved.page_count, Some(176));
+        assert_eq!(saved.title, "Pedro Páramo");
+        assert_eq!(saved.author.as_deref(), Some("Juan Rulfo"));
+        assert_eq!(
+            saved.cover_url,
+            Some(crate::protocol::book_cover_url(&book.id))
+        );
+        assert!(covers.path().join(format!("{}.webp", book.id)).is_file());
+        assert!(!covers.path().join(format!("{}.webp.tmp", book.id)).exists());
+    }
+
+    #[test]
+    fn save_book_scan_validates_the_cover_and_the_page_count() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let covers = tempfile::tempdir().expect("covers");
+        let (_db, mut conn) = open_temp_db();
+        let book = import(&mut conn, &write_pdf(dir.path(), "a.pdf", 1));
+
+        assert_eq!(
+            error_code(save_book_scan(
+                &conn,
+                covers.path(),
+                &book.id,
+                &scan_input(10),
+                b"not webp!!!"
+            )),
+            ErrorCode::InvalidInput
+        );
+        let too_big = webp_bytes(2 * 1024 * 1024 + 1);
+        assert_eq!(
+            error_code(save_book_scan(
+                &conn,
+                covers.path(),
+                &book.id,
+                &scan_input(10),
+                &too_big
+            )),
+            ErrorCode::InvalidInput
+        );
+        assert_eq!(
+            error_code(save_book_scan(
+                &conn,
+                covers.path(),
+                &book.id,
+                &scan_input(0),
+                &webp_bytes(64)
+            )),
+            ErrorCode::InvalidInput
+        );
+        assert_eq!(
+            error_code(save_book_scan(
+                &conn,
+                covers.path(),
+                "nope",
+                &scan_input(10),
+                &webp_bytes(64)
+            )),
+            ErrorCode::NotFound
+        );
+        assert!(!covers.path().join(format!("{}.webp", book.id)).exists());
+    }
+
+    #[test]
+    fn pending_scans_drop_done_failed_and_missing_books() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let covers = tempfile::tempdir().expect("covers");
+        let (_db, mut conn) = open_temp_db();
+        let pending = import(&mut conn, &write_pdf(dir.path(), "pendiente.pdf", 1));
+        let done = import(&mut conn, &write_pdf(dir.path(), "hecho.pdf", 2));
+        let failed = import(&mut conn, &write_pdf(dir.path(), "roto.pdf", 3));
+        save_book_scan(
+            &conn,
+            covers.path(),
+            &done.id,
+            &scan_input(5),
+            &webp_bytes(64),
+        )
+        .expect("done");
+        mark_scan_failed(&conn, &failed.id).expect("failed");
+
+        let list = list_pending_scans(&conn).expect("pending");
+
+        assert_eq!(
+            list.iter().map(|b| b.id.as_str()).collect::<Vec<_>>(),
+            vec![pending.id.as_str()]
+        );
+        assert_eq!(
+            error_code(mark_scan_failed(&conn, "nope")),
+            ErrorCode::NotFound
+        );
+    }
+
+    #[test]
+    fn import_files_reports_rejections_without_stopping() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (_db, conn) = open_temp_db();
+        let db = Mutex::new(conn);
+        let good = write_pdf(dir.path(), "bueno.pdf", 1);
+        let bad = dir.path().join("malo.pdf");
+        std::fs::write(&bad, b"no es pdf").expect("write");
+
+        let result = import_files(&db, &[bad.clone(), good.clone()]).expect("import");
+
+        assert_eq!(result.imported.len(), 1);
+        assert_eq!(result.imported[0].file_name, "bueno.pdf");
+        assert_eq!(result.rejected.len(), 1);
+        assert_eq!(result.rejected[0].error.code, ErrorCode::InvalidPdf);
+        assert_eq!(error_code(import_files(&db, &[])), ErrorCode::InvalidInput);
+    }
+
+    #[test]
+    fn scan_origin_does_not_restore_removed_books_nor_replace_a_known_copy() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (_db, mut conn) = open_temp_db();
+        let original = write_pdf(dir.path(), "a.pdf", 1);
+        let book = import(&mut conn, &original);
+        let copy = dir.path().join("copia.pdf");
+        std::fs::copy(&original, &copy).expect("copy");
+
+        let prepared_copy = prepare_file(&copy).expect("prepare");
+        assert!(
+            commit_file(&mut conn, &prepared_copy, Origin::Scan)
+                .expect("commit")
+                .is_none()
+        );
+        assert_eq!(get_book(&conn, &book.id).expect("get").file_name, "a.pdf");
+
+        remove_book(&conn, &book.id).expect("remove");
+        let prepared_original = prepare_file(&original).expect("prepare");
+        assert!(
+            commit_file(&mut conn, &prepared_original, Origin::Scan)
+                .expect("commit")
+                .is_none()
+        );
+        assert!(visible_books(&conn).expect("list").is_empty());
     }
 }

@@ -1,11 +1,19 @@
+pub mod collections;
 pub mod commands;
 pub mod db;
 pub mod error;
+pub mod folders;
 pub mod library;
 pub mod protocol;
+pub mod query;
+pub mod scan;
 pub mod settings;
+#[cfg(test)]
+pub mod test_support;
+pub mod watch;
 
 use std::path::PathBuf;
+use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use rusqlite::Connection;
@@ -13,19 +21,21 @@ use tauri::Manager;
 use tracing_subscriber::EnvFilter;
 
 use crate::error::AppError;
+use crate::scan::SharedScanStatus;
 
-/// Estado compartido de la app: la conexión SQLite única y la carpeta de portadas.
+/// Estado compartido de la app: la conexión SQLite única, la carpeta de portadas,
+/// el canal del hilo de biblioteca y el estado del escaneo.
 /// La conexión va en `Arc` para que el protocolo `atril://` la use desde un hilo de bloqueo.
 pub struct AppState {
     pub db: Arc<Mutex<Connection>>,
     pub covers_dir: PathBuf,
+    pub worker: Sender<watch::Msg>,
+    pub scan: SharedScanStatus,
 }
 
 impl AppState {
     pub fn db(&self) -> Result<MutexGuard<'_, Connection>, AppError> {
-        self.db
-            .lock()
-            .map_err(|_| AppError::internal("database connection lock was poisoned"))
+        library::lock_db(&self.db)
     }
 }
 
@@ -44,9 +54,23 @@ pub fn run() {
             let conn = db::open_app_database(&data_dir)?;
             let covers_dir = data_dir.join("covers");
             std::fs::create_dir_all(&covers_dir)?;
+
+            let db = Arc::new(Mutex::new(conn));
+            let scan = SharedScanStatus::default();
+            let (tx, rx) = mpsc::channel();
+            watch::spawn(
+                app.handle().clone(),
+                Arc::clone(&db),
+                Arc::clone(&scan),
+                tx.clone(),
+                rx,
+            );
+
             app.manage(AppState {
-                db: Arc::new(Mutex::new(conn)),
+                db,
                 covers_dir,
+                worker: tx,
+                scan,
             });
             Ok(())
         })
@@ -57,7 +81,26 @@ pub fn run() {
             commands::open_path,
             commands::open_book,
             commands::get_book,
-            commands::save_reading_state
+            commands::save_reading_state,
+            commands::get_home,
+            commands::list_books,
+            commands::set_favorite,
+            commands::remove_book,
+            commands::list_library_folders,
+            commands::add_library_folder,
+            commands::remove_library_folder,
+            commands::rescan_library,
+            commands::get_scan_status,
+            commands::import_files,
+            commands::list_pending_scans,
+            commands::save_book_scan,
+            commands::mark_scan_failed,
+            commands::list_collections,
+            commands::create_collection,
+            commands::rename_collection,
+            commands::delete_collection,
+            commands::add_to_collection,
+            commands::remove_from_collection
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

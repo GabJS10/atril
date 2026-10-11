@@ -1,11 +1,19 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+use percent_encoding::percent_decode_str;
 use tauri::State;
+use tauri::http::HeaderMap;
+use tauri::ipc::{InvokeBody, Request};
 
 use crate::AppState;
+use crate::collections::{self, Collection};
 use crate::error::AppError;
-use crate::library::{self, Book, OpenedBook, ReadingStateInput};
+use crate::folders::{self, LibraryFolder};
+use crate::library::{self, Book, ImportResult, OpenedBook, ReadingStateInput, ScanInput};
+use crate::query::{self, BookQuery, HomeData};
+use crate::scan::ScanStatus;
 use crate::settings::{self, Settings, SettingsPatch};
+use crate::watch;
 
 #[tauri::command]
 pub fn get_settings(app: State<'_, AppState>) -> Result<Settings, AppError> {
@@ -55,4 +63,244 @@ pub fn save_reading_state(
         .map_err(|error| AppError::invalid_input(error.to_string()))?;
     let mut conn = app.db()?;
     library::save_reading_state(&mut conn, &book_id, &input)
+}
+
+#[tauri::command]
+pub fn get_home(app: State<'_, AppState>) -> Result<HomeData, AppError> {
+    let conn = app.db()?;
+    query::get_home(&conn)
+}
+
+/// `query` llega como JSON crudo para que un filtro mal formado sea `invalid_input`.
+#[tauri::command]
+pub fn list_books(
+    app: State<'_, AppState>,
+    query: serde_json::Value,
+) -> Result<Vec<Book>, AppError> {
+    let query: BookQuery = serde_json::from_value(query)
+        .map_err(|error| AppError::invalid_input(error.to_string()))?;
+    let conn = app.db()?;
+    query::list_books(&conn, &query)
+}
+
+#[tauri::command]
+pub fn set_favorite(
+    app: State<'_, AppState>,
+    book_id: String,
+    favorite: bool,
+) -> Result<Book, AppError> {
+    let conn = app.db()?;
+    library::set_favorite(&conn, &book_id, favorite)
+}
+
+#[tauri::command]
+pub fn remove_book(app: State<'_, AppState>, book_id: String) -> Result<(), AppError> {
+    let conn = app.db()?;
+    library::remove_book(&conn, &book_id)
+}
+
+#[tauri::command]
+pub fn list_library_folders(app: State<'_, AppState>) -> Result<Vec<LibraryFolder>, AppError> {
+    let conn = app.db()?;
+    folders::list(&conn)
+}
+
+#[tauri::command]
+pub fn add_library_folder(
+    app: State<'_, AppState>,
+    path: String,
+) -> Result<LibraryFolder, AppError> {
+    let folder = {
+        let conn = app.db()?;
+        folders::add(&conn, Path::new(&path))?
+    };
+    watch::request_scan(&app.worker);
+    Ok(folder)
+}
+
+#[tauri::command]
+pub fn remove_library_folder(app: State<'_, AppState>, folder_id: String) -> Result<(), AppError> {
+    {
+        let conn = app.db()?;
+        folders::remove(&conn, &folder_id)?;
+    }
+    watch::request_scan(&app.worker);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn rescan_library(app: State<'_, AppState>) -> Result<(), AppError> {
+    watch::request_scan(&app.worker);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_scan_status(app: State<'_, AppState>) -> Result<ScanStatus, AppError> {
+    let status = app
+        .scan
+        .lock()
+        .map_err(|_| AppError::internal("scan status lock was poisoned"))?;
+    Ok(*status)
+}
+
+#[tauri::command]
+pub fn import_files(
+    app: State<'_, AppState>,
+    paths: Vec<String>,
+) -> Result<ImportResult, AppError> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    library::import_files(&app.db, &paths)
+}
+
+#[tauri::command]
+pub fn list_pending_scans(app: State<'_, AppState>) -> Result<Vec<Book>, AppError> {
+    let conn = app.db()?;
+    library::list_pending_scans(&conn)
+}
+
+/// Metadatos en cabeceras (`X-Book-Id`, `X-Page-Count`, opcionales `X-Title`, `X-Author`)
+/// y la portada WebP como cuerpo binario (`docs/IPC.md`, fase 2).
+#[tauri::command]
+pub fn save_book_scan(app: State<'_, AppState>, request: Request<'_>) -> Result<Book, AppError> {
+    let (book_id, scan) = parse_scan_headers(request.headers())?;
+    let cover = match request.body() {
+        InvokeBody::Raw(bytes) => bytes,
+        InvokeBody::Json(_) => {
+            return Err(AppError::invalid_input(
+                "the cover must be sent as a binary body",
+            ));
+        }
+    };
+    let conn = app.db()?;
+    library::save_book_scan(&conn, &app.covers_dir, &book_id, &scan, cover)
+}
+
+#[tauri::command]
+pub fn mark_scan_failed(app: State<'_, AppState>, book_id: String) -> Result<Book, AppError> {
+    let conn = app.db()?;
+    library::mark_scan_failed(&conn, &book_id)
+}
+
+#[tauri::command]
+pub fn list_collections(app: State<'_, AppState>) -> Result<Vec<Collection>, AppError> {
+    let conn = app.db()?;
+    collections::list(&conn)
+}
+
+#[tauri::command]
+pub fn create_collection(app: State<'_, AppState>, name: String) -> Result<Collection, AppError> {
+    let conn = app.db()?;
+    collections::create(&conn, &name)
+}
+
+#[tauri::command]
+pub fn rename_collection(
+    app: State<'_, AppState>,
+    collection_id: String,
+    name: String,
+) -> Result<Collection, AppError> {
+    let conn = app.db()?;
+    collections::rename(&conn, &collection_id, &name)
+}
+
+#[tauri::command]
+pub fn delete_collection(app: State<'_, AppState>, collection_id: String) -> Result<(), AppError> {
+    let conn = app.db()?;
+    collections::delete(&conn, &collection_id)
+}
+
+#[tauri::command]
+pub fn add_to_collection(
+    app: State<'_, AppState>,
+    book_ids: Vec<String>,
+    collection_id: String,
+) -> Result<(), AppError> {
+    let mut conn = app.db()?;
+    collections::add_books(&mut conn, &collection_id, &book_ids)
+}
+
+#[tauri::command]
+pub fn remove_from_collection(
+    app: State<'_, AppState>,
+    book_ids: Vec<String>,
+    collection_id: String,
+) -> Result<(), AppError> {
+    let mut conn = app.db()?;
+    collections::remove_books(&mut conn, &collection_id, &book_ids)
+}
+
+/// Lee las cabeceras de `save_book_scan`. Títulos y autores van URL-encoded en UTF-8.
+fn parse_scan_headers(headers: &HeaderMap) -> Result<(String, ScanInput), AppError> {
+    let text = |name: &str| -> Result<Option<String>, AppError> {
+        match headers.get(name) {
+            None => Ok(None),
+            Some(value) => {
+                let raw = value
+                    .to_str()
+                    .map_err(|_| AppError::invalid_input(format!("{name} is not ASCII")))?;
+                let decoded = percent_decode_str(raw)
+                    .decode_utf8()
+                    .map_err(|_| AppError::invalid_input(format!("{name} is not UTF-8")))?
+                    .trim()
+                    .to_owned();
+                Ok((!decoded.is_empty()).then_some(decoded))
+            }
+        }
+    };
+
+    let book_id =
+        text("x-book-id")?.ok_or_else(|| AppError::invalid_input("missing X-Book-Id header"))?;
+    let page_count = text("x-page-count")?
+        .ok_or_else(|| AppError::invalid_input("missing X-Page-Count header"))?
+        .parse::<i64>()
+        .map_err(|_| AppError::invalid_input("X-Page-Count is not a number"))?;
+
+    Ok((
+        book_id,
+        ScanInput {
+            page_count,
+            title: text("x-title")?,
+            author: text("x-author")?,
+        },
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tauri::http::HeaderValue;
+
+    #[test]
+    fn scan_headers_are_parsed_and_decoded() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-book-id", HeaderValue::from_static("abc"));
+        headers.insert("x-page-count", HeaderValue::from_static("176"));
+        headers.insert("x-title", HeaderValue::from_static("Pedro%20P%C3%A1ramo"));
+        headers.insert("x-author", HeaderValue::from_static("%20"));
+
+        let (id, scan) = parse_scan_headers(&headers).expect("parse");
+
+        assert_eq!(id, "abc");
+        assert_eq!(scan.page_count, 176);
+        assert_eq!(scan.title.as_deref(), Some("Pedro Páramo"));
+        assert_eq!(scan.author, None);
+    }
+
+    #[test]
+    fn scan_headers_require_id_and_page_count() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-page-count", HeaderValue::from_static("10"));
+        assert_eq!(
+            parse_scan_headers(&headers).expect_err("no id").code,
+            crate::error::ErrorCode::InvalidInput
+        );
+
+        let mut headers = HeaderMap::new();
+        headers.insert("x-book-id", HeaderValue::from_static("abc"));
+        headers.insert("x-page-count", HeaderValue::from_static("diez"));
+        assert_eq!(
+            parse_scan_headers(&headers).expect_err("not a number").code,
+            crate::error::ErrorCode::InvalidInput
+        );
+    }
 }
