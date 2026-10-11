@@ -480,9 +480,11 @@ pub fn save_book_scan(
     if scan.page_count < 1 {
         return Err(AppError::invalid_input("pageCount must be at least 1"));
     }
-    if !is_webp(cover) {
-        return Err(AppError::invalid_input("cover is not a WebP image"));
-    }
+    let Some(format) = CoverFormat::detect(cover) else {
+        return Err(AppError::invalid_input(
+            "cover must be a JPEG or WebP image",
+        ));
+    };
     if cover.len() > MAX_COVER_BYTES {
         return Err(AppError::invalid_input("cover is larger than 2 MiB"));
     }
@@ -490,7 +492,7 @@ pub fn save_book_scan(
         return Err(not_found(id));
     }
 
-    write_cover(covers_dir, id, cover)?;
+    write_cover(covers_dir, id, format, cover)?;
 
     conn.execute(
         "UPDATE books SET
@@ -523,16 +525,64 @@ pub fn lock_db(db: &Mutex<Connection>) -> Result<MutexGuard<'_, Connection>, App
         .map_err(|_| AppError::internal("database connection lock was poisoned"))
 }
 
-fn is_webp(bytes: &[u8]) -> bool {
-    bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP"
+/// Formatos de portada aceptados. Se reconocen por la firma del contenido, no por la extensión.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CoverFormat {
+    Jpeg,
+    Webp,
 }
 
-/// Escribe la portada con fichero temporal y renombrado, para no dejar un WebP a medias.
-fn write_cover(covers_dir: &Path, id: &str, cover: &[u8]) -> Result<(), AppError> {
-    let temp = covers_dir.join(format!("{id}.webp.tmp"));
+impl CoverFormat {
+    pub fn detect(bytes: &[u8]) -> Option<Self> {
+        if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+            Some(CoverFormat::Jpeg)
+        } else if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+            Some(CoverFormat::Webp)
+        } else {
+            None
+        }
+    }
+
+    pub fn extension(self) -> &'static str {
+        match self {
+            CoverFormat::Jpeg => "jpg",
+            CoverFormat::Webp => "webp",
+        }
+    }
+
+    pub fn mime(self) -> &'static str {
+        match self {
+            CoverFormat::Jpeg => "image/jpeg",
+            CoverFormat::Webp => "image/webp",
+        }
+    }
+
+    fn other(self) -> Self {
+        match self {
+            CoverFormat::Jpeg => CoverFormat::Webp,
+            CoverFormat::Webp => CoverFormat::Jpeg,
+        }
+    }
+}
+
+/// Guarda la portada tal cual en `covers/<id>.<ext>` (temporal + renombrado) y quita la
+/// del otro formato si la había, para que solo quede una.
+fn write_cover(
+    covers_dir: &Path,
+    id: &str,
+    format: CoverFormat,
+    cover: &[u8],
+) -> Result<(), AppError> {
+    let extension = format.extension();
+    let temp = covers_dir.join(format!("{id}.{extension}.tmp"));
     std::fs::write(&temp, cover)?;
-    std::fs::rename(&temp, covers_dir.join(format!("{id}.webp")))?;
-    Ok(())
+    std::fs::rename(&temp, covers_dir.join(format!("{id}.{extension}")))?;
+
+    match std::fs::remove_file(covers_dir.join(format!("{id}.{}", format.other().extension()))) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
+    }
 }
 
 struct BookRecord {
@@ -1032,6 +1082,74 @@ mod tests {
             ErrorCode::NotFound
         );
         assert!(!covers.path().join(format!("{}.webp", book.id)).exists());
+    }
+
+    #[test]
+    fn jpeg_cover_is_stored_as_jpg_and_replacing_formats_leaves_one_file() {
+        use crate::test_support::jpeg_bytes;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let covers = tempfile::tempdir().expect("covers");
+        let (_db, mut conn) = open_temp_db();
+        let book = import(&mut conn, &write_pdf(dir.path(), "a.pdf", 1));
+        let jpg = covers.path().join(format!("{}.jpg", book.id));
+        let webp = covers.path().join(format!("{}.webp", book.id));
+
+        let saved = save_book_scan(
+            &conn,
+            covers.path(),
+            &book.id,
+            &scan_input(10),
+            &jpeg_bytes(64),
+        )
+        .expect("jpeg");
+        assert_eq!(
+            saved.cover_url,
+            Some(crate::protocol::book_cover_url(&book.id))
+        );
+        assert!(jpg.is_file());
+
+        save_book_scan(
+            &conn,
+            covers.path(),
+            &book.id,
+            &scan_input(10),
+            &webp_bytes(64),
+        )
+        .expect("webp");
+        assert!(webp.is_file());
+        assert!(!jpg.exists(), "the JPEG is replaced by the WebP");
+
+        save_book_scan(
+            &conn,
+            covers.path(),
+            &book.id,
+            &scan_input(10),
+            &jpeg_bytes(64),
+        )
+        .expect("jpeg again");
+        assert!(jpg.is_file());
+        assert!(!webp.exists(), "the WebP is replaced by the JPEG");
+    }
+
+    #[test]
+    fn png_covers_are_rejected_by_signature() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let covers = tempfile::tempdir().expect("covers");
+        let (_db, mut conn) = open_temp_db();
+        let book = import(&mut conn, &write_pdf(dir.path(), "a.pdf", 1));
+        let png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR".to_vec();
+
+        assert_eq!(
+            error_code(save_book_scan(
+                &conn,
+                covers.path(),
+                &book.id,
+                &scan_input(10),
+                &png
+            )),
+            ErrorCode::InvalidInput
+        );
+        assert_eq!(CoverFormat::detect(&png), None);
     }
 
     #[test]

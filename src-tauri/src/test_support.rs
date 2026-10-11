@@ -46,3 +46,12 @@ pub fn webp_bytes(len: usize) -> Vec<u8> {
 pub fn import(conn: &mut Connection, path: &Path) -> Book {
     library::open_path(conn, path).expect("import")
 }
+
+/// Imita una portada JPEG (firma FF D8 FF y relleno).
+pub fn jpeg_bytes(len: usize) -> Vec<u8> {
+    let mut bytes = vec![0xFF, 0xD8, 0xFF, 0xE0];
+    while bytes.len() < len {
+        bytes.push(0xCD);
+    }
+    bytes
+}

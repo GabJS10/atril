@@ -12,6 +12,7 @@ use tauri::{Manager, Runtime, UriSchemeContext, UriSchemeResponder};
 
 use crate::AppState;
 use crate::error::AppError;
+use crate::library::CoverFormat;
 
 pub const SCHEME: &str = "atril";
 
@@ -289,22 +290,33 @@ fn serve_cover(
     }
 
     // `id` ya tiene forma de huella, así que no puede salirse de `covers_dir`.
-    match std::fs::read(covers_dir.join(format!("{id}.webp"))) {
-        Ok(body) => reply(
-            StatusCode::OK,
-            origin,
-            vec![
-                ("Content-Type", "image/webp".to_owned()),
-                ("Content-Length", body.len().to_string()),
-            ],
-            body,
-        ),
-        Err(error) if error.kind() == ErrorKind::NotFound => empty(StatusCode::NOT_FOUND, origin),
-        Err(error) => {
-            tracing::error!(%error, "could not read cover file");
-            empty(StatusCode::INTERNAL_SERVER_ERROR, origin)
+    // Solo hay una portada (JPEG o WebP); el Content-Type sale de su firma.
+    for format in [CoverFormat::Jpeg, CoverFormat::Webp] {
+        let path = covers_dir.join(format!("{id}.{}", format.extension()));
+        match std::fs::read(&path) {
+            Ok(body) => {
+                let Some(detected) = CoverFormat::detect(&body) else {
+                    tracing::error!(path = %path.display(), "cover file is not JPEG or WebP");
+                    return empty(StatusCode::INTERNAL_SERVER_ERROR, origin);
+                };
+                return reply(
+                    StatusCode::OK,
+                    origin,
+                    vec![
+                        ("Content-Type", detected.mime().to_owned()),
+                        ("Content-Length", body.len().to_string()),
+                    ],
+                    body,
+                );
+            }
+            Err(error) if error.kind() == ErrorKind::NotFound => {}
+            Err(error) => {
+                tracing::error!(%error, "could not read cover file");
+                return empty(StatusCode::INTERNAL_SERVER_ERROR, origin);
+            }
         }
     }
+    empty(StatusCode::NOT_FOUND, origin)
 }
 
 fn lookup_book_path(db: &Mutex<Connection>, id: &str) -> Result<Option<String>, AppError> {
@@ -749,6 +761,30 @@ mod tests {
             Some("image/webp")
         );
         assert_eq!(present.body(), &cover);
+    }
+
+    #[test]
+    fn jpeg_cover_is_served_with_its_real_content_type() {
+        let fixture = fixture();
+        let jpeg = crate::test_support::jpeg_bytes(128);
+        std::fs::write(
+            fixture.covers_dir.join(format!("{}.jpg", fixture.id)),
+            &jpeg,
+        )
+        .expect("write cover");
+
+        let response = respond(
+            &fixture.db,
+            &fixture.covers_dir,
+            &get(&format!("/cover/{}", fixture.id), None, None),
+        );
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            header_value(&response, header::CONTENT_TYPE).as_deref(),
+            Some("image/jpeg")
+        );
+        assert_eq!(response.body(), &jpeg);
     }
 
     #[test]
