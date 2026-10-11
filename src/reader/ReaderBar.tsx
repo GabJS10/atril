@@ -15,6 +15,10 @@ export type ReaderBarProps = {
   /** The highlighter mode (H): every selection is highlighted with the last pigment. */
   highlightMode: boolean;
   onToggleHighlightMode: () => void;
+  /** The side panel with the book's highlights (DESIGN.md, barra del lector: subrayados). */
+  highlightCount: number;
+  panelOpen: boolean;
+  onTogglePanel: () => void;
 };
 
 const CONTROL_CLASS = "flex h-8 min-w-8 items-center justify-center text-ink hover:text-ink-2";
@@ -31,6 +35,9 @@ export function ReaderBar({
   onFocusWithin,
   highlightMode,
   onToggleHighlightMode,
+  highlightCount,
+  panelOpen,
+  onTogglePanel,
 }: ReaderBarProps) {
   const t = useT();
   const locale = useLocaleStore((state) => state.locale);
@@ -52,6 +59,16 @@ export function ReaderBar({
       <span className="min-w-0 truncate font-serif text-cartela text-ink">{title}</span>
       <span>{t("reader.pageOf", { page: String(page), pages: String(pageCount) })}</span>
       <span className="flex-1" />
+      <button
+        type="button"
+        aria-pressed={panelOpen}
+        onClick={onTogglePanel}
+        className={`flex items-center gap-2 border px-2.5 py-1 text-label ${
+          panelOpen ? "border-ink bg-ink text-ink-inverse" : "border-line text-ink-2"
+        }`}
+      >
+        {t("highlightPanel.toggle")} · {highlightCount}
+      </button>
       <button
         type="button"
         aria-pressed={highlightMode}

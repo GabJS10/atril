@@ -2,13 +2,14 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow, type CloseRequestedEvent } from "@tauri-apps/api/window";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import type {
   AppError,
   Book,
   BookQuery,
   Collection,
   Highlight,
+  HighlightExport,
   HighlightInput,
   HighlightPatch,
   HomeData,
@@ -126,6 +127,11 @@ export function listCollections(): Promise<Collection[]> {
   return invoke<Collection[]>("list_collections");
 }
 
+/** Native "save file" dialog for a Markdown export. Resolves to the chosen path, or null if cancelled. */
+export async function pickExportPath(suggestedName: string): Promise<string | null> {
+  return save({ defaultPath: suggestedName, filters: [{ name: "Markdown", extensions: ["md"] }] });
+}
+
 /** Native folder dialog. Resolves to the chosen path, or null if cancelled. */
 export async function pickFolderPath(): Promise<string | null> {
   const selected = await open({ multiple: false, directory: true });
@@ -196,6 +202,15 @@ export function createHighlight(highlight: HighlightInput): Promise<Highlight> {
 /** `note: null` clears the note; leaving it out keeps it. */
 export function updateHighlight(highlightId: string, patch: HighlightPatch): Promise<Highlight> {
   return invoke<Highlight>("update_highlight", { highlightId, ...patch });
+}
+
+/** Writes the book's highlights to a Markdown file at `destPath` (absolute). */
+export function exportHighlights(
+  bookId: string,
+  destPath: string,
+  language: "es" | "en",
+): Promise<HighlightExport> {
+  return invoke<HighlightExport>("export_highlights", { bookId, destPath, language });
 }
 
 export function deleteHighlight(highlightId: string): Promise<null> {

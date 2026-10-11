@@ -133,3 +133,6 @@ export type Highlight = {
 };
 
 export type HighlightPatch = { color?: HighlightColor; note?: string | null };
+
+/** Result of `export_highlights`: how many highlights were written to the Markdown file. */
+export type HighlightExport = { count: number };

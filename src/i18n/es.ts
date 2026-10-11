@@ -98,6 +98,16 @@ export const es = {
   "highlight.saveNote": "Guardar nota",
   "highlight.delete": "Borrar subrayado",
   "highlight.close": "Cerrar",
+  "highlightPanel.label": "Panel de subrayados",
+  "highlightPanel.title": "Subrayados",
+  "highlightPanel.empty":
+    "Todavía no hay subrayados en este libro. Selecciona un texto para crear el primero.",
+  "highlightPanel.page": "Página {page}",
+  "highlightPanel.export": "Exportar a Markdown",
+  "highlightPanel.exporting": "Exportando…",
+  "highlightPanel.exported": "Subrayados exportados: {count}.",
+  "highlightPanel.exportFailed": "No se pudieron exportar los subrayados.",
+  "highlightPanel.toggle": "Subrayados",
 };
 
 export type TranslationKey = keyof typeof es;

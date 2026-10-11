@@ -99,4 +99,13 @@ export const en: Record<TranslationKey, string> = {
   "highlight.saveNote": "Save note",
   "highlight.delete": "Delete highlight",
   "highlight.close": "Close",
+  "highlightPanel.label": "Highlights panel",
+  "highlightPanel.title": "Highlights",
+  "highlightPanel.empty": "No highlights in this book yet. Select some text to make the first one.",
+  "highlightPanel.page": "Page {page}",
+  "highlightPanel.export": "Export to Markdown",
+  "highlightPanel.exporting": "Exporting…",
+  "highlightPanel.exported": "Highlights exported: {count}.",
+  "highlightPanel.exportFailed": "The highlights could not be exported.",
+  "highlightPanel.toggle": "Highlights",
 };

@@ -110,6 +110,7 @@ export function useHighlightSession(bookId: string) {
         ? { highlight: current, anchor: editing.anchor, focusNote: editing.focusNote }
         : null,
     notice,
+    showNotice: (message: string) => setNotice(message),
     dismissNotice: () => setNotice(null),
     handlers: { onSelectionEnd, onSelectionClear, onHighlightPress },
     toolbar: { pick, note, copy },

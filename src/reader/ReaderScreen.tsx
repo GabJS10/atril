@@ -2,9 +2,9 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSettings } from "../api/queries";
-import { isAppError, openBook } from "../api/tauri";
+import { exportHighlights, isAppError, openBook, pickExportPath } from "../api/tauri";
 import type { Book, ReadingStateInput, Zoom, ViewMode } from "../api/types";
-import { useT } from "../i18n";
+import { useLocaleStore, useT } from "../i18n";
 import { PdfViewer, type PdfViewerHandle, type ViewSnapshot } from "./PdfViewer";
 import { ReaderBar } from "./ReaderBar";
 import { initialReadingStart, type ReaderPosition, type ReadingStart } from "./position";
@@ -14,6 +14,8 @@ import { usePdfDocument } from "./usePdfDocument";
 import { useReadingPosition } from "./useReadingPosition";
 import { useHighlightSession } from "./useHighlightSession";
 import { HighlightEditor } from "./HighlightEditor";
+import { HighlightsPanel } from "./HighlightsPanel";
+import { exportBookHighlights } from "./highlightExport";
 import { SelectionToolbar } from "./SelectionToolbar";
 import { readerClosed, readerOpened } from "../library/readerActivity";
 
@@ -70,6 +72,25 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
   const pageCount = pdfState.status === "ready" ? pdfState.pdf.numPages : 0;
   const highlightSession = useHighlightSession(book.id);
   const { toggleHighlightMode } = highlightSession;
+  const locale = useLocaleStore((state) => state.locale);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const exportBook = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const count = await exportBookHighlights(book, locale, {
+        pickPath: pickExportPath,
+        exportTo: exportHighlights,
+      });
+      if (count !== null) highlightSession.showNotice(t("highlightPanel.exported", { count: String(count) }));
+    } catch {
+      highlightSession.showNotice(t("highlightPanel.exportFailed"));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // The background indexer waits while a book is open.
   useEffect(() => {
@@ -201,7 +222,19 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
         onFocusWithin={chrome.pin}
         highlightMode={highlightSession.highlightMode}
         onToggleHighlightMode={toggleHighlightMode}
+        highlightCount={highlightSession.highlights.length}
+        panelOpen={panelOpen}
+        onTogglePanel={() => setPanelOpen((open) => !open)}
       />
+      {panelOpen ? (
+        <HighlightsPanel
+          highlights={highlightSession.highlights}
+          exporting={exporting}
+          onJump={(highlight) => viewer.current?.revealHighlight(highlight)}
+          onExport={() => void exportBook()}
+          onClose={() => setPanelOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

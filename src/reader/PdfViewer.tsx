@@ -7,10 +7,17 @@ import type { Highlight, Zoom } from "../api/types";
 import "./PdfViewer.css";
 import { highlightAt, type PageAtScale1, paintHighlightLayer } from "./highlightLayer";
 import { attachDragSelection } from "./dragSelection";
-import type { PageMapping } from "./geometry";
+import { type PageMapping, pdfRectToPercent } from "./geometry";
+import { scrollTopToReveal } from "./highlightList";
 import { positionAtScroll, type PageGeometry, type ReaderPosition, scrollForPosition } from "./position";
 import { readSelection, type SelectionPart } from "./selectionReader";
 import { nextScale, zoomFromViewer, zoomToScaleValue } from "./zoom";
+
+/** A pdf.js page view as far as the reader uses it. */
+type PageView = {
+  div: HTMLElement;
+  viewport?: PageMapping & PageAtScale1 & { clone: (options: { scale: number }) => PageAtScale1 };
+};
 
 /** Pixels moved by j/k. */
 const LINE_SCROLL_PX = 80;
@@ -38,6 +45,8 @@ export type PdfViewerProps = {
 /** Commands the reader's keyboard map sends to the viewer. */
 export type PdfViewerHandle = {
   goToPage: (page: number) => void;
+  /** Scrolls the highlight into view (the panel's click). */
+  revealHighlight: (highlight: Highlight) => void;
   /** One page forward or back, from the page pdf.js is on (not from React state, which can lag behind key repeats). */
   turnPage: (direction: 1 | -1) => void;
   scrollLines: (direction: 1 | -1) => void;
@@ -147,9 +156,6 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
       });
     });
     // Highlights are painted per page at scale 1 (percentages), so a zoom needs no new geometry.
-    type PageView = {
-      viewport?: PageMapping & PageAtScale1 & { clone: (options: { scale: number }) => PageAtScale1 };
-    };
     const viewportOf = (page: number) => (instance.getPageView(page - 1) as PageView | undefined)?.viewport;
     const pageAtScale1 = (page: number): PageAtScale1 | undefined => viewportOf(page)?.clone({ scale: 1 });
     const mappingOf = (page: number): PageMapping | undefined => viewportOf(page);
@@ -203,6 +209,22 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     () => ({
       goToPage(page) {
         if (viewer.current) viewer.current.currentPageNumber = page;
+      },
+      revealHighlight(highlight) {
+        const instance = viewer.current;
+        const container = containerRef.current;
+        const view = instance?.getPageView(highlight.page - 1) as PageView | undefined;
+        if (!container || !view?.viewport) return;
+        const mapping = view.viewport.clone({ scale: 1 });
+        const percentTop = Math.min(...highlight.rects.map((rect) => pdfRectToPercent(rect, mapping).top));
+        const pageTop =
+          view.div.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
+        container.scrollTop = scrollTopToReveal(
+          pageTop,
+          view.div.clientHeight,
+          percentTop,
+          container.clientHeight,
+        );
       },
       turnPage(direction) {
         const instance = viewer.current;
