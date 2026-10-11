@@ -35,7 +35,7 @@ type ErrorCode =
 | URL | Respuesta |
 |---|---|
 | `atril://localhost/book/<id>` | El PDF. `200` sin `Range` (carga el archivo entero: evitarlo), `206` con `Range` (sirve **exactamente** el rango pedido, con `Content-Range` y `Content-Length`; solo el primer rango si piden varios), `416` si el rango es inválido. `Accept-Ranges: bytes`, `Content-Type: application/pdf`, CORS para el origen de la app con `Content-Range`, `Accept-Ranges` y `Content-Length` expuestas. `404` si el ID no existe o falta el archivo (y lo marca `missing`) |
-| `atril://localhost/cover/<id>` | La portada (`image/webp`). `404` si no hay portada |
+| `atril://localhost/cover/<id>` | La portada, con su `Content-Type` real (`image/jpeg` o `image/webp`, según la firma del archivo guardado). `404` si no hay portada |
 
 En Windows la forma es `http://atril.localhost/…`: por eso las URLs vienen siempre del backend (`Book.fileUrl`, `Book.coverUrl`).
 
@@ -120,7 +120,7 @@ Valores por defecto: `language: "system"`, `theme: "dark"`, `defaultZoom: "page_
 | Comando | Argumentos | Devuelve | Errores |
 |---|---|---|---|
 | `list_pending_scans` | — | `Book[]` con `scanState: "pending"` y sin `missing`, por fecha de alta | `db` |
-| `save_book_scan` | Cabeceras: `X-Book-Id`, `X-Page-Count`; opcionales `X-Title`, `X-Author` (UTF-8, URL-encoded). Cuerpo binario: la portada en WebP (`invoke("save_book_scan", webpBytes, { headers })`) | `Book` (`scanState: "done"`, `coverUrl` listo). Escribe `covers/<id>.webp` con fichero temporal + renombrado | `not_found`, `invalid_input` (portada que no es WebP, de más de 2 MiB o `pageCount < 1`), `io`, `db` |
+| `save_book_scan` | Cabeceras: `X-Book-Id`, `X-Page-Count`; opcionales `X-Title`, `X-Author` (UTF-8, URL-encoded). Cuerpo binario: la portada en **JPEG** (o WebP), detectada por su firma (`invoke("save_book_scan", coverBytes, { headers })`). El front genera JPEG porque WebKitGTK no codifica WebP en `canvas.toBlob` | `Book` (`scanState: "done"`, `coverUrl` listo). Guarda los bytes tal cual en `covers/<id>.jpg` (o `.webp`), con fichero temporal + renombrado, y borra la portada anterior con la otra extensión | `not_found`, `invalid_input` (portada que no es JPEG ni WebP, de más de 2 MiB o `pageCount < 1`), `io`, `db` |
 | `mark_scan_failed` | `{ bookId: string }` | `Book` (`scanState: "failed"`). Evita reintentar un PDF que pdf.js no puede leer | `not_found`, `db` |
 
 > Por qué las cabeceras: con un cuerpo binario, Tauri no serializa la portada como un array JSON (lento). Los metadatos viajan en cabeceras, así que el comando no recibe `{ … }` como en el borrador de `PLAN.md`.
