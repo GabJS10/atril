@@ -277,7 +277,26 @@ Reglas exactas:
 
 ### Fases 3–5 (borrador, se detalla al empezar cada fase)
 - Metadatos: `update_book_metadata` (editar título y autor a mano; fuera del alcance de la fase 2).
-- Ajustes: `set_default_pdf_reader`
+
+### Fase 5 (integración con el sistema, v0.5)
+
+Linux primero. Un PDF llega a Atril de tres formas: doble clic con la app cerrada (argumentos de arranque), doble clic con la app abierta (segunda instancia) o desde el menú "Abrir con". En los tres casos el libro queda registrado como en una importación (`open_path`).
+
+**Comandos (5.B1)**
+| Comando | Argumentos | Devuelve | Errores |
+|---|---|---|---|
+| `take_pending_open_file` | — | `string \| null`: `bookId` de un PDF pendiente de abrir (primer lanzamiento con PDF). Cada id se devuelve una sola vez, en orden | — |
+| `set_default_pdf_reader` | — | `null`. Ejecuta `xdg-mime default Atril.desktop application/pdf`. Falla si el `.desktop` no está instalado (no se puede hacer lector predeterminado desde un ejecutable suelto) | `io` |
+| `is_default_pdf_reader` | — | `boolean`: si `xdg-mime query default application/pdf` devuelve `Atril.desktop` | `io` (`xdg-mime` no disponible) |
+
+**Eventos**
+- `app://open-file` `{ bookId }`: llega cuando una segunda instancia recibe un PDF. La instancia que ya está abierta importa el archivo, se enfoca y emite el evento. El primer lanzamiento no emite este evento: el front llama a `take_pending_open_file` al arrancar.
+
+**Reglas**
+1. Argumentos: el primero es el ejecutable y se ignora. Se aceptan rutas relativas (se resuelven con el directorio actual de la segunda instancia) y URI `file://` (con `%` decodificado). Las opciones (`-…`), lo que no es `.pdf` y los duplicados se ignoran. Un PDF inválido no impide abrir los demás.
+2. `bundle.fileAssociations` declara `pdf` como `application/pdf` con rol `Viewer`: el `.deb` y el AppImage registran Atril como lector.
+3. Con la instancia única, un segundo lanzamiento no arranca una ventana nueva.
+4. Iconos: la app usa todavía los iconos de la plantilla. Los propios los define el diseño; no se añaden hasta que `frontend` los apruebe.
 
 ## Eventos (borrador)
 | Evento | Payload | Cuándo |
