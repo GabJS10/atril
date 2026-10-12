@@ -1,6 +1,6 @@
 # Contrato IPC (frontend ⇄ backend)
 
-**Versión:** v0.3 (borrador; fase 2 propuesta). **Dueño:** `plan`. `backend` propone los cambios y `frontend` los implementa en `src/api/tauri.ts`. Un cambio que rompa el contrato se coordina antes con `plan` (ver `AGENTS.md`).
+**Versión:** v0.6 (la ruta `POST /jpx` es de la v0.6). **Dueño:** `plan`. `backend` propone los cambios y `frontend` los implementa en `src/api/tauri.ts`. Un cambio que rompa el contrato se coordina antes con `plan` (ver `AGENTS.md`).
 
 Este documento es la única fuente de verdad sobre los comandos Tauri, los eventos, las URLs del protocolo `atril://` y los tipos compartidos. Si el código y este archivo no coinciden, se corrige uno de los dos en el mismo cambio.
 
@@ -36,6 +36,7 @@ type ErrorCode =
 |---|---|
 | `atril://localhost/book/<id>` | El PDF. `200` sin `Range` (carga el archivo entero: evitarlo), `206` con `Range` (sirve **exactamente** el rango pedido, con `Content-Range` y `Content-Length`; solo el primer rango si piden varios), `416` si el rango es inválido. `Accept-Ranges: bytes`, `Content-Type: application/pdf`, CORS para el origen de la app con `Content-Range`, `Accept-Ranges` y `Content-Length` expuestas. `404` si el ID no existe o falta el archivo (y lo marca `missing`) |
 | `atril://localhost/cover/<id>` | La portada, con su `Content-Type` real (`image/jpeg` o `image/webp`, según la firma del archivo guardado). `404` si no hay portada |
+| `POST atril://localhost/jpx?components=N&indexed=0\|1&smask=0\|1&reduce=R` | Decodifica un JPX (JP2 o codestream) que va en el cuerpo y devuelve los píxeles. `200` con `application/octet-stream` y las cabeceras `X-Jpx-Width`, `X-Jpx-Height`, `X-Jpx-Channels`; `422` con el motivo en texto; `400` si la query no es válida; `413` si el cuerpo pasa de 64 MiB. Detalle en "JPX (v0.6)" |
 
 En Windows la forma es `http://atril.localhost/…`: por eso las URLs vienen siempre del backend (`Book.fileUrl`, `Book.coverUrl`).
 
@@ -297,6 +298,50 @@ Linux primero. Un PDF llega a Atril de tres formas: doble clic con la app cerrad
 2. `bundle.fileAssociations` declara `pdf` como `application/pdf` con rol `Viewer`: el `.deb` y el AppImage registran Atril como lector.
 3. Con la instancia única, un segundo lanzamiento no arranca una ventana nueva.
 4. Iconos: la app usa todavía los iconos de la plantilla. Los propios los define el diseño; no se añaden hasta que `frontend` los apruebe.
+
+### JPX (v0.6): decodificación de escaneos JPEG 2000
+
+**Por qué:** pdf.js decodifica los JPX de los escaneos con OpenJPEG en WebAssembly o, si WebKitGTK no compila el wasm, con su respaldo en JS: 17–25 s por página en los libros del usuario. El front pide aquí los píxeles y los pinta. El formato de salida es el de `imageData` de pdf.js (`src/decoder.c` y `src/myjs.js` de mozilla/pdf.js.openjpeg), así que no hace falta cambiar nada en pdf.js.
+
+**Petición:** `POST atril://localhost/jpx?components=0&indexed=0&smask=0&reduce=0`, con los bytes del JPX (JP2 o codestream) como cuerpo.
+
+| Parámetro | Valores | Significado (igual que `jp2_decode` de pdf.js) |
+|---|---|---|
+| `components` | 0–255, por defecto `0` | `0`: salida RGBA (4 canales). Mayor que 0: copia los primeros `min(canales, N)` canales sin convertir (solo 1, 3 o 4 son válidos) |
+| `indexed` | `0` o `1`, por defecto `0` | `1`: no aplica la paleta y devuelve los índices sin escalar a 8 bits |
+| `smask` | `0` o `1`, por defecto `0` | `1`: el alfa viene dentro del JPX. Con 4 canales se copian tal cual (el cuarto es el alfa); con gris + alfa se devuelve RGBA |
+| `reduce` | 0–31, por defecto `0` | Reducción de resolución: las dimensiones de salida son `ceil(ancho / 2^reduce)` por `ceil(alto / 2^reduce)` |
+
+Los parámetros que faltan valen lo indicado por defecto; los desconocidos se ignoran. Un valor no válido da `400`.
+
+**Respuesta `200`:** el cuerpo son los píxeles de 8 bits, intercalados, de arriba abajo y de izquierda a derecha, con `X-Jpx-Channels` bytes por píxel. Cabeceras: `Content-Type: application/octet-stream`, `Content-Length`, `X-Jpx-Width`, `X-Jpx-Height` y `X-Jpx-Channels`. Las tres `X-Jpx-*` van en `Access-Control-Expose-Headers`.
+
+**Salida** (con `components=0`, siempre 4 canales):
+- Gris: `(g, g, g, 255)`.
+- RGB: `(r, g, b, 255)`.
+- CMYK: RGB con la fórmula de `color_cmyk_to_rgb` de OpenJPEG, y alfa 255. Solo si no hay `smask` con 4 canales.
+- Gris + alfa con `smask=1`: `(g, g, g, a)`.
+- 4 canales con `smask=1`: tal cual, RGBA.
+- Con `indexed=0`, la paleta se aplica. Los valores se escalan a 8 bits como OpenJPEG: con más de 8 bits se desplazan a la derecha; con menos, `v · 255 / (2^n − 1)` entera.
+- Con `components=N>0`: sin conversión de color, `min(canales, N)` canales (1, 3 o 4).
+
+**Errores:**
+- `422`: datos corruptos o que no son JPEG 2000; imagen con más de 16 Mpx en la resolución original; reducción que deja la imagen sin píxeles o pasa de los niveles de resolución del JPX; combinación que pdf.js no pinta (dos canales sin `smask`, o `components=2`). El cuerpo es texto en inglés con el motivo. Ante un `422` por tamaño, el front puede dejar la página en manos del decodificador de pdf.js, que tarda más pero no tiene este límite.
+- `400`: `components`, `indexed`, `smask` o `reduce` no válidos.
+- `413`: el cuerpo pasa de 64 MiB.
+- `405`: cualquier método distinto de `POST` en `/jpx` (el preflight `OPTIONS` sí se atiende).
+
+**Preflight:** `OPTIONS /jpx` devuelve `204` con `Access-Control-Allow-Methods: POST, OPTIONS` y `Access-Control-Allow-Headers: Content-Type`, para el origen de la app. Las rutas de `GET` no cambian.
+
+**Límites:** 64 MiB de cuerpo y 16 Mpx en la resolución original. El límite de píxeles se mide sobre la imagen sin reducir porque `hayro-jpeg2000` reserva el tamaño completo aunque se pida una reducción.
+
+**Diferencias con pdf.js** (ver `src-tauri/src/jpx.rs`):
+1. Dos canales sin alfa: pdf.js no escribe nada y devuelve `undefined`. Aquí es `422`.
+2. Los valores difieren de los de pdf.js (que usa OpenJPEG) en ±1 en una fracción pequeña de los bytes (en 10 escaneos reales, entre el 0,002 % y el 0,04 %). `hayro-jpeg2000` trabaja en coma flotante.
+3. Sin `colr` y con submuestreo de crominancia, pdf.js adivina sYCC y lo convierte. Aquí no, porque `hayro-jpeg2000` no expone el submuestreo. Un `colr` sYCC sí se convierte.
+4. `indexed=1` no desactiva las cajas `cdef`, porque `hayro-jpeg2000` no tiene ese interruptor.
+
+**Fixtures de los tests:** `src-tauri/tests/fixtures/jpx/*.jp2` (gris, gris + alfa, RGB, RGBA, CMYK, indexado, 16 bits y un patrón plano). Se generan con `python3 src-tauri/tests/fixtures/jpx/generate.py`, que necesita `ffmpeg` compilado con libopenjpeg. Los píxeles son patrones deterministas, no imágenes de nadie.
 
 ## Eventos (borrador)
 | Evento | Payload | Cuándo |
