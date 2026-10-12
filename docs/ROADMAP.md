@@ -11,7 +11,7 @@ Fases del MVP, qué hace cada agente (con el **esfuerzo** que le asigna `plan`),
 | 4 | Lectura cómoda | terminada (tag `fase-4`) |
 | 5 | Sistema y release para Linux (v1.0.0) | pendiente |
 
-Esfuerzos: **desde el 2026-10-11 los agentes usan siempre `max`** (los niveles anotados abajo en tareas pasadas quedan como histórico).
+Modelo y esfuerzo: **desde el 2026-10-12 `plan` los elige por tarea** (ver `AGENTS.md`, «Modelo y esfuerzo»). Los niveles anotados abajo en tareas pasadas quedan como histórico.
 
 ## Fase 0. Andamiaje
 **plan**

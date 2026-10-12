@@ -23,8 +23,11 @@ El proyecto se desarrolla con **3 agentes en paralelo**, cada uno en un panel de
 | `backend` | abajo a la derecha | Core en Rust: biblioteca (escaneo, vigilancia, huella), protocolo `atril://`, SQLite, subrayados, ajustes, comandos Tauri e integración con el sistema | `src-tauri/` (incluye `Cargo.toml`, `tauri.conf.json` y `capabilities/`) |
 
 ### Modelo y esfuerzo
-- `frontend` y `backend` corren en **Haiku 5.5** (`claude-haiku-5-5`). `plan` asigna el esfuerzo de cada tarea **siempre con esfuerzo `max`** (pedido del usuario: ningún otro nivel) y lo cambia con `/effort <nivel>` antes de mandarla. El nivel de cada tarea figura en `docs/ROADMAP.md`.
-- Si una tarea resulta más difícil de lo previsto, no la fuerces: avisa a `plan` (puede subir el esfuerzo o partirla).
+- `plan` elige **modelo y esfuerzo por tarea** para ahorrar tokens sin perder rendimiento, y los cambia con `/model` y `/effort` antes de mandarla:
+  - **Haiku 5.5** (`claude-haiku-5-5`), el modelo por defecto, para tareas bien acotadas: implementar con un contrato claro, tests, docs y cambios mecánicos. Esfuerzo `medium` en lo trivial, `high` en lo normal y `max` en lo complejo.
+  - **Sonnet 5.5** (`claude-sonnet-5-5`) para depuración difícil o entre capas (p. ej. dentro de pdf.js), investigación de rendimiento o cuando un agente en Haiku se atasca. Esfuerzo `high` o `max`.
+  - Al acabar una tarea en Sonnet, el agente vuelve a Haiku.
+- Si una tarea resulta más difícil de lo previsto, no la fuerces: avisa a `plan` (puede subir el modelo o el esfuerzo, o partirla).
 
 ### Reglas de coordinación
 - **Cada agente edita solo sus archivos.** Si necesitas un cambio en otra área, pídeselo a su dueño (o a `plan`) en lugar de hacerlo tú. Excepción: una dependencia npm que pida `backend` (p. ej. un plugin de Tauri) la añade `frontend`.
