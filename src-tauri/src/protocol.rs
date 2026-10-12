@@ -1045,6 +1045,32 @@ mod tests {
     }
 
     #[test]
+    fn jpx_decoder_panic_is_422_and_the_next_request_still_works() {
+        let fixture = fixture();
+        crate::jpx::PANIC_ON_DECODE.with(|flag| flag.set(true));
+
+        let response = respond(
+            &fixture.db,
+            &fixture.covers_dir,
+            &post_jpx("", RGB_JPX.to_vec(), Some("tauri://localhost")),
+        );
+
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(response.body().as_slice(), b"decoder panicked");
+        assert_eq!(
+            header_value(&response, header::ACCESS_CONTROL_ALLOW_ORIGIN).as_deref(),
+            Some("tauri://localhost")
+        );
+
+        let next = respond(
+            &fixture.db,
+            &fixture.covers_dir,
+            &post_jpx("", RGB_JPX.to_vec(), None),
+        );
+        assert_eq!(next.status(), StatusCode::OK);
+    }
+
+    #[test]
     fn jpx_route_only_accepts_post() {
         let fixture = fixture();
         let get_request = Request::builder()

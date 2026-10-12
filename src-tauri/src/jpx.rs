@@ -6,8 +6,10 @@
 //! píxeles salen con el formato de `imageData` de pdf.js (`src/decoder.c` y `src/myjs.js` de
 //! mozilla/pdf.js.openjpeg): RGBA de 8 bits, salvo cuando se piden canales concretos.
 
+use std::any::Any;
 use std::cmp::Ordering;
 use std::fmt;
+use std::panic::{UnwindSafe, catch_unwind};
 
 use hayro_jpeg2000::{ColorSpace, DecodeSettings, DecoderContext, Image};
 
@@ -59,6 +61,9 @@ pub enum JpxError {
     /// Combinación que pdf.js no sabe pintar, como dos canales sin alfa.
     #[error("unsupported output layout: {0}")]
     Unsupported(String),
+    /// hayro entró en pánico con estos datos. Los JPX vienen de PDF que no son de confianza.
+    #[error("decoder panicked")]
+    DecoderPanicked,
 }
 
 /// Decodifica un JPX (JP2 o codestream) y devuelve los píxeles según `options`.
@@ -71,6 +76,45 @@ pub enum JpxError {
 /// - El heurístico de sYCC por submuestreo de pdf.js (imágenes sin `colr`) no se aplica:
 ///   hayro no expone el submuestreo. El sYCC declarado en `colr` sí lo convierte hayro.
 pub fn decode(data: &[u8], options: Options) -> Result<Decoded, JpxError> {
+    guard(|| decode_image(data, options))
+}
+
+/// Ejecuta `decode_image` y convierte un pánico en `DecoderPanicked`. Con `panic = "unwind"`
+/// en el perfil release, el pánico llega aquí en lugar de abortar la app.
+fn guard<F>(decode: F) -> Result<Decoded, JpxError>
+where
+    F: FnOnce() -> Result<Decoded, JpxError> + UnwindSafe,
+{
+    catch_unwind(decode).unwrap_or_else(|payload| {
+        let reason = panic_message(payload.as_ref());
+        tracing::error!(reason, "JPEG 2000 decoder panicked");
+        Err(JpxError::DecoderPanicked)
+    })
+}
+
+/// Texto de un pánico: `panic!("…")` deja un `&str` y `panic!("{…}")` un `String`.
+fn panic_message(payload: &(dyn Any + Send)) -> &str {
+    payload
+        .downcast_ref::<&str>()
+        .copied()
+        .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+        .unwrap_or("unknown panic payload")
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Hace que la siguiente decodificación de este hilo entre en pánico (para probar `guard`).
+    pub(crate) static PANIC_ON_DECODE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+fn decode_image(data: &[u8], options: Options) -> Result<Decoded, JpxError> {
+    #[cfg(test)]
+    {
+        if PANIC_ON_DECODE.with(|flag| flag.replace(false)) {
+            panic!("forced panic for tests");
+        }
+    }
+
     let header = Image::new(data, &settings(options, None)).map_err(invalid)?;
     let (width, height) = (header.width(), header.height());
     let (out_width, out_height) = output_size(width, height, options.reduce)?;
@@ -630,6 +674,42 @@ mod tests {
         );
         assert_eq!((rgb.width, rgb.height), (32, 24));
         assert_eq!(rgb.pixels.len(), 32 * 24 * 4);
+    }
+
+    #[test]
+    fn a_panicking_decoder_becomes_decoder_panicked() {
+        let result = guard(|| -> Result<Decoded, JpxError> { panic!("boom") });
+
+        assert_eq!(result, Err(JpxError::DecoderPanicked));
+    }
+
+    #[test]
+    fn a_normal_result_passes_through_the_guard() {
+        let error = guard(|| Err(JpxError::Unsupported("two channels".to_owned())))
+            .expect_err("unsupported");
+
+        assert!(matches!(error, JpxError::Unsupported(_)), "{error:?}");
+    }
+
+    #[test]
+    fn a_hayro_panic_in_decode_is_decoder_panicked_and_the_next_decode_works() {
+        PANIC_ON_DECODE.with(|flag| flag.set(true));
+
+        assert_eq!(
+            decode(RGB, Options::default()),
+            Err(JpxError::DecoderPanicked)
+        );
+        // La marca es de un solo uso: la siguiente decodificación funciona con normalidad.
+        assert!(decode(RGB, Options::default()).is_ok());
+    }
+
+    #[test]
+    fn panic_payloads_are_read_as_str_or_string() {
+        let plain = catch_unwind(|| -> u8 { panic!("plain") }).expect_err("panic");
+        assert_eq!(panic_message(plain.as_ref()), "plain");
+
+        let formatted = catch_unwind(|| -> u8 { panic!("value {}", 7) }).expect_err("panic");
+        assert_eq!(panic_message(formatted.as_ref()), "value 7");
     }
 
     #[test]

@@ -46,7 +46,8 @@ hayro-jpeg2000 = { version = "0.4.1", default-features = false, features = ["std
 codegen-units = 1
 lto = true
 opt-level = 3
-panic = "abort"
+# unwind (no abort): `jpx::decode` atrapa un pánico de hayro con catch_unwind y responde 422.
+panic = "unwind"
 strip = true
 
 [dev-dependencies]
