@@ -326,7 +326,7 @@ Los parámetros que faltan valen lo indicado por defecto; los desconocidos se ig
 - Con `components=N>0`: sin conversión de color, `min(canales, N)` canales (1, 3 o 4).
 
 **Errores:**
-- `422`: datos corruptos o que no son JPEG 2000; imagen con más de 16 Mpx en la resolución original; reducción que deja la imagen sin píxeles o pasa de los niveles de resolución del JPX; combinación que pdf.js no pinta (dos canales sin `smask`, o `components=2`). El cuerpo es texto en inglés con el motivo. Ante un `422` por tamaño, el front puede dejar la página en manos del decodificador de pdf.js, que tarda más pero no tiene este límite.
+- `422`: datos corruptos o que no son JPEG 2000 (y `decoder panicked` si hayro entra en pánico con ellos: la app sigue funcionando); imagen con más de 16 Mpx en la resolución original; reducción que deja la imagen sin píxeles o pasa de los niveles de resolución del JPX; combinación que pdf.js no pinta (dos canales sin `smask`, o `components=2`). El cuerpo es texto en inglés con el motivo. Ante un `422` por tamaño, el front puede dejar la página en manos del decodificador de pdf.js, que tarda más pero no tiene este límite.
 - `400`: `components`, `indexed`, `smask` o `reduce` no válidos.
 - `413`: el cuerpo pasa de 64 MiB.
 - `405`: cualquier método distinto de `POST` en `/jpx` (el preflight `OPTIONS` sí se atiende).
