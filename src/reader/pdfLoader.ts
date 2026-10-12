@@ -9,8 +9,9 @@ import workerUrl from "pdfjs-dist/build/pdf.worker.mjs?url";
 GlobalWorkerOptions.workerSrc = workerUrl;
 
 /**
- * Where pdf.js finds its runtime files: WebAssembly decoders (JPEG 2000, JBIG2), CMaps, standard fonts and ICC
- * profiles. vite.config.ts serves them under /pdfjs/ (dev) and copies them to dist/pdfjs/ (build). Absolute URLs
+ * Where pdf.js finds its runtime files: WebAssembly decoders (JBIG2; JPEG 2000 goes through src/reader/jpxBridge.js,
+ * which pdf.js loads in place of openjpeg.wasm), CMaps, standard fonts and ICC profiles. vite.config.ts serves them
+ * under /pdfjs/ (dev) and copies them to dist/pdfjs/ (build). Absolute URLs
  * with a trailing slash, resolved against the page, so they work on http://localhost:1420 and on tauri://localhost.
  */
 export function pdfjsAssetUrls(base: string = location.href): {
