@@ -1,4 +1,5 @@
-//! Protocolo `atril://` (docs/IPC.md): sirve los PDF con `Range` y las portadas.
+//! Protocolo `atril://` (docs/IPC.md): sirve los PDF con `Range` y las portadas, y decodifica
+//! los JPX que pide pdf.js (`POST /jpx`, ver `jpx.rs`).
 //! Solo atiende IDs que estén en la base de datos; nunca rutas que vengan en la URL.
 
 use std::fs::File;
@@ -12,6 +13,7 @@ use tauri::{Manager, Runtime, UriSchemeContext, UriSchemeResponder};
 
 use crate::AppState;
 use crate::error::AppError;
+use crate::jpx;
 use crate::library::CoverFormat;
 
 pub const SCHEME: &str = "atril";
@@ -25,7 +27,11 @@ const ALLOWED_ORIGINS: &[&str] = &[
     "http://localhost:1420",
 ];
 
-const EXPOSED_HEADERS: &str = "Content-Range, Accept-Ranges, Content-Length";
+/// Ruta de la decodificación JPX. Solo `POST`, con el JPX crudo en el cuerpo.
+const JPX_PATH: &str = "/jpx";
+
+const EXPOSED_HEADERS: &str =
+    "Content-Range, Accept-Ranges, Content-Length, X-Jpx-Width, X-Jpx-Height, X-Jpx-Channels";
 
 /// Origen del protocolo. En Windows el esquema se sirve como `http://atril.localhost`.
 fn origin() -> &'static str {
@@ -174,28 +180,126 @@ pub fn respond(
 ) -> Response<Vec<u8>> {
     let origin = allowed_origin(request);
     let origin = origin.as_deref();
+    let path = request.uri().path();
 
     if request.method() == Method::OPTIONS {
+        let (methods, allowed_headers) = if path == JPX_PATH {
+            ("POST, OPTIONS", "Content-Type")
+        } else {
+            ("GET, OPTIONS", "Range")
+        };
         return reply(
             StatusCode::NO_CONTENT,
             origin,
             vec![
-                ("Access-Control-Allow-Methods", "GET, OPTIONS".to_owned()),
-                ("Access-Control-Allow-Headers", "Range".to_owned()),
+                ("Access-Control-Allow-Methods", methods.to_owned()),
+                ("Access-Control-Allow-Headers", allowed_headers.to_owned()),
                 ("Access-Control-Max-Age", "86400".to_owned()),
             ],
             Vec::new(),
         );
     }
+    if path == JPX_PATH {
+        return if request.method() == Method::POST {
+            serve_jpx(request, origin)
+        } else {
+            empty(StatusCode::METHOD_NOT_ALLOWED, origin)
+        };
+    }
     if request.method() != Method::GET {
         return empty(StatusCode::METHOD_NOT_ALLOWED, origin);
     }
 
-    match parse_route(request.uri().path()) {
+    match parse_route(path) {
         Some(Route::Book(id)) => serve_book(db, id, request, origin),
         Some(Route::Cover(id)) => serve_cover(db, covers_dir, id, origin),
         None => empty(StatusCode::NOT_FOUND, origin),
     }
+}
+
+/// `POST /jpx?components=N&indexed=0|1&smask=0|1&reduce=R` con el JPX en el cuerpo.
+/// 200 con los píxeles (RGBA u otros canales según `components`); 422 con el motivo como
+/// texto si no se puede decodificar; 400 si la query no es válida; 413 si el cuerpo pasa de 64 MiB.
+fn serve_jpx(request: &Request<Vec<u8>>, origin: Option<&str>) -> Response<Vec<u8>> {
+    let options = match parse_jpx_query(request.uri().query()) {
+        Ok(options) => options,
+        Err(message) => return text(StatusCode::BAD_REQUEST, origin, &message),
+    };
+    let body = request.body();
+    if body.len() > jpx::MAX_BODY_BYTES {
+        return text(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            origin,
+            "JPEG 2000 data is larger than 64 MiB",
+        );
+    }
+
+    match jpx::decode(body, options) {
+        Ok(decoded) => reply(
+            StatusCode::OK,
+            origin,
+            vec![
+                ("Content-Type", "application/octet-stream".to_owned()),
+                ("Content-Length", decoded.pixels.len().to_string()),
+                ("X-Jpx-Width", decoded.width.to_string()),
+                ("X-Jpx-Height", decoded.height.to_string()),
+                ("X-Jpx-Channels", decoded.channels.to_string()),
+            ],
+            decoded.pixels,
+        ),
+        Err(error) => {
+            tracing::warn!(%error, "could not decode JPEG 2000 image");
+            text(StatusCode::UNPROCESSABLE_ENTITY, origin, &error.to_string())
+        }
+    }
+}
+
+/// Lee los parámetros de `/jpx`. Los que faltan valen 0 o `false`, como en pdf.js.
+fn parse_jpx_query(query: Option<&str>) -> Result<jpx::Options, String> {
+    let mut options = jpx::Options::default();
+    for pair in query
+        .unwrap_or_default()
+        .split('&')
+        .filter(|pair| !pair.is_empty())
+    {
+        let (name, value) = pair.split_once('=').unwrap_or((pair, ""));
+        match name {
+            "components" => options.components = parse_number(name, value)?,
+            "indexed" => options.indexed = parse_flag(name, value)?,
+            "smask" => options.smask = parse_flag(name, value)?,
+            "reduce" => {
+                options.reduce = parse_number(name, value)?;
+                if options.reduce > jpx::MAX_REDUCE {
+                    return Err(format!("reduce must be at most {}", jpx::MAX_REDUCE));
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(options)
+}
+
+fn parse_number(name: &str, value: &str) -> Result<u8, String> {
+    value
+        .parse()
+        .map_err(|_| format!("{name} must be a number from 0 to 255"))
+}
+
+fn parse_flag(name: &str, value: &str) -> Result<bool, String> {
+    match value {
+        "0" => Ok(false),
+        "1" => Ok(true),
+        _ => Err(format!("{name} must be 0 or 1")),
+    }
+}
+
+fn text(status: StatusCode, origin: Option<&str>, message: &str) -> Response<Vec<u8>> {
+    reply(
+        status,
+        origin,
+        vec![("Content-Type", "text/plain; charset=utf-8".to_owned())],
+        message.as_bytes().to_vec(),
+    )
 }
 
 fn serve_book(
@@ -370,6 +474,8 @@ pub fn handle<R: Runtime>(
 
 #[cfg(test)]
 mod tests {
+    use tauri::http::HeaderName;
+
     use super::*;
     use crate::db;
     use crate::library;
@@ -801,5 +907,154 @@ mod tests {
         );
 
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    const RGB_JPX: &[u8] = include_bytes!("../tests/fixtures/jpx/rgb.jp2");
+
+    fn post_jpx(query: &str, body: Vec<u8>, origin: Option<&str>) -> Request<Vec<u8>> {
+        let mut builder = Request::builder()
+            .method(Method::POST)
+            .uri(format!("atril://localhost/jpx{query}"));
+        if let Some(origin) = origin {
+            builder = builder.header(header::ORIGIN, origin);
+        }
+        builder.body(body).expect("request")
+    }
+
+    #[test]
+    fn jpx_post_returns_rgba_pixels_and_the_size_in_headers() {
+        let fixture = fixture();
+        let response = respond(
+            &fixture.db,
+            &fixture.covers_dir,
+            &post_jpx("?components=0", RGB_JPX.to_vec(), Some("tauri://localhost")),
+        );
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            header_value(&response, header::CONTENT_TYPE).as_deref(),
+            Some("application/octet-stream")
+        );
+        assert_eq!(
+            header_value(&response, header::ACCESS_CONTROL_ALLOW_ORIGIN).as_deref(),
+            Some("tauri://localhost")
+        );
+        assert_eq!(
+            header_value(&response, header::ACCESS_CONTROL_EXPOSE_HEADERS)
+                .expect("expose")
+                .split(", ")
+                .filter(|name| name.starts_with("X-Jpx-"))
+                .count(),
+            3
+        );
+        assert_eq!(
+            header_value(&response, HeaderName::from_static("x-jpx-width")).as_deref(),
+            Some("64")
+        );
+        assert_eq!(
+            header_value(&response, HeaderName::from_static("x-jpx-height")).as_deref(),
+            Some("48")
+        );
+        assert_eq!(
+            header_value(&response, HeaderName::from_static("x-jpx-channels")).as_deref(),
+            Some("4")
+        );
+        assert_eq!(response.body().len(), 64 * 48 * 4);
+        // Píxel (1, 0) del patrón de rgb.jp2: R = 4, G = 0, B = 3, alfa 255.
+        assert_eq!(&response.body()[4..8], &[4, 0, 3, 255]);
+    }
+
+    #[test]
+    fn jpx_corrupt_data_is_422_with_the_reason_as_text() {
+        let fixture = fixture();
+        let response = respond(
+            &fixture.db,
+            &fixture.covers_dir,
+            &post_jpx(
+                "",
+                b"definitely not JPEG 2000".to_vec(),
+                Some("tauri://localhost"),
+            ),
+        );
+
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(
+            header_value(&response, header::CONTENT_TYPE).as_deref(),
+            Some("text/plain; charset=utf-8")
+        );
+        assert!(!response.body().is_empty());
+        assert_eq!(
+            header_value(&response, header::ACCESS_CONTROL_ALLOW_ORIGIN).as_deref(),
+            Some("tauri://localhost")
+        );
+    }
+
+    #[test]
+    fn jpx_invalid_query_is_400() {
+        let fixture = fixture();
+        for query in ["?smask=yes", "?components=-1", "?reduce=40", "?indexed=2"] {
+            let response = respond(
+                &fixture.db,
+                &fixture.covers_dir,
+                &post_jpx(query, RGB_JPX.to_vec(), None),
+            );
+
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{query}");
+        }
+    }
+
+    #[test]
+    fn jpx_body_over_64_mib_is_413_without_decoding() {
+        let fixture = fixture();
+        let response = respond(
+            &fixture.db,
+            &fixture.covers_dir,
+            &post_jpx("", vec![0u8; jpx::MAX_BODY_BYTES + 1], None),
+        );
+
+        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    #[test]
+    fn jpx_preflight_allows_post_with_content_type() {
+        let fixture = fixture();
+        let request = Request::builder()
+            .method(Method::OPTIONS)
+            .uri("atril://localhost/jpx")
+            .header(header::ORIGIN, "tauri://localhost")
+            .header(header::ACCESS_CONTROL_REQUEST_METHOD, "POST")
+            .header(header::ACCESS_CONTROL_REQUEST_HEADERS, "content-type")
+            .body(Vec::new())
+            .expect("request");
+
+        let response = respond(&fixture.db, &fixture.covers_dir, &request);
+
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        assert_eq!(
+            header_value(&response, header::ACCESS_CONTROL_ALLOW_METHODS).as_deref(),
+            Some("POST, OPTIONS")
+        );
+        assert_eq!(
+            header_value(&response, header::ACCESS_CONTROL_ALLOW_HEADERS).as_deref(),
+            Some("Content-Type")
+        );
+        assert_eq!(
+            header_value(&response, header::ACCESS_CONTROL_ALLOW_ORIGIN).as_deref(),
+            Some("tauri://localhost")
+        );
+    }
+
+    #[test]
+    fn jpx_route_only_accepts_post() {
+        let fixture = fixture();
+        let get_request = Request::builder()
+            .method(Method::GET)
+            .uri("atril://localhost/jpx")
+            .body(Vec::new())
+            .expect("request");
+
+        let response = respond(&fixture.db, &fixture.covers_dir, &get_request);
+
+        assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
     }
 }

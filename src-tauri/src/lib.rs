@@ -4,6 +4,7 @@ pub mod db;
 pub mod error;
 pub mod folders;
 pub mod highlights;
+pub mod jpx;
 pub mod library;
 pub mod protocol;
 pub mod query;
