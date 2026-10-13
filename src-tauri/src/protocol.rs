@@ -144,7 +144,7 @@ fn allowed_origin(request: &Request<Vec<u8>>) -> Option<String> {
     ALLOWED_ORIGINS.contains(&origin).then(|| origin.to_owned())
 }
 
-fn reply(
+pub(crate) fn reply(
     status: StatusCode,
     origin: Option<&str>,
     headers: Vec<(&'static str, String)>,
@@ -167,7 +167,7 @@ fn reply(
     })
 }
 
-fn empty(status: StatusCode, origin: Option<&str>) -> Response<Vec<u8>> {
+pub(crate) fn empty(status: StatusCode, origin: Option<&str>) -> Response<Vec<u8>> {
     reply(status, origin, Vec::new(), Vec::new())
 }
 
@@ -198,6 +198,10 @@ pub fn respond(
             ],
             Vec::new(),
         );
+    }
+    // SPIKE R0.2 (desechable): páginas de prueba de spike_display.rs.
+    if path.starts_with(crate::spike_display::PREFIX) {
+        return crate::spike_display::respond(request, origin);
     }
     if path == JPX_PATH {
         return if request.method() == Method::POST {

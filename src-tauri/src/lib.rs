@@ -10,6 +10,7 @@ pub mod protocol;
 pub mod query;
 pub mod scan;
 pub mod settings;
+pub mod spike_display;
 pub mod system;
 #[cfg(test)]
 pub mod test_support;
@@ -95,6 +96,8 @@ pub fn run() {
                 scan,
                 pending_open,
             });
+            // SPIKE R0.2 (desechable): solo hace algo con ATRIL_SPIKE_PAGES.
+            spike_display::start(app.handle().clone());
             Ok(())
         })
         .register_asynchronous_uri_scheme_protocol(protocol::SCHEME, protocol::handle)
@@ -131,7 +134,9 @@ pub fn run() {
             commands::export_highlights,
             commands::take_pending_open_file,
             commands::set_default_pdf_reader,
-            commands::is_default_pdf_reader
+            commands::is_default_pdf_reader,
+            spike_display::spike_status,
+            spike_display::spike_save_results
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

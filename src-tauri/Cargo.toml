@@ -39,6 +39,8 @@ tauri-plugin-dialog = "2"
 tauri-plugin-single-instance = "2"
 # JPEG 2000 de los PDF (src/jpx.rs). Sin features por defecto ni `simd`: sin `unsafe` en ninguna dependencia.
 hayro-jpeg2000 = { version = "0.4.1", default-features = false, features = ["std"] }
+# SPIKE R0.2 (desechable, sin PR): codificadores BMP/JPEG/PNG para medir las páginas en WebKitGTK (spike_display.rs).
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp"] }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
