@@ -227,6 +227,7 @@ type PageGeometry = {
 - Cada petición descarta las pendientes (en cola, no las que ya se están renderizando) del mismo libro que quedan a más de 12 páginas (el visor ya está en otra zona) o que son de otra escala (el usuario cambió el zoom): esas reciben `410 Gone`. Un `410` significa «ya no hacía falta»; si el `<img>` sigue en pantalla, hay que volver a pedirla. Una página que ya se está renderizando termina siempre y queda en caché.
 - Tras cada petición se precargan ±2 páginas, primero las del sentido de avance, con la misma escala. La precarga no tiene destinatario: solo llena la caché.
 - Caché de JPEG ya codificados en memoria (256 MB por defecto), clave (libro, página, escala cuantizada).
+- Store de recursos de MuPDF (imágenes decodificadas, fuentes): todos los contextos comparten uno de 256 MB, que el motor recorta a 64 MB tras cada trabajo (`EngineConfig::store_bytes`). Un escaneo visto de nuevo sigue decodificado mientras quepa en ese límite; si no, se vuelve a decodificar.
 
 **Errores del protocolo en el visor:** `404` y `422` no se reintentan; `410` se reintenta si la página sigue visible; `500` se puede reintentar una vez.
 
@@ -265,7 +266,7 @@ type SearchStarted = { searchId: string };
 **Reglas**
 - **`get_page_text`:** las palabras van en el orden del contenido de la página, el que da MuPDF (el mismo que sigue la capa de texto de pdf.js). Para casi todos los libros es el orden de lectura; en páginas con columnas o texto superpuesto puede no serlo. Dos palabras de la misma línea van separadas por un espacio; `lineEnd` marca un salto de línea al copiar y `blockEnd` una línea en blanco. El guion blando y los caracteres de ancho cero no aparecen.
 - **`get_page_links`:** solo se devuelven enlaces utilizables: internos (`{ page, y }`, con `y` el borde superior del destino) y externos `http`, `https` y `mailto` (`{ uri }`). Otros esquemas (`file:`, `javascript:`, `launch`…), los destinos fuera del libro y los que MuPDF no puede resolver se omiten.
-- **`get_outline`:** árbol de marcadores en el orden del PDF. Un marcador sin destino válido tiene `page`, `y` y `uri` a `null`. Las entradas de `children` tienen la misma forma.
+- **`get_outline`:** árbol de marcadores en el orden del PDF. Un marcador sin destino válido tiene `page`, `y` y `uri` a `null`. Las entradas de `children` tienen la misma forma. Se leen como mucho 32 niveles y 20 000 marcadores: lo que hay más abajo o más allá se ignora, así que un índice muy anidado no puede tumbar el proceso. Un destino con nombre se resuelve con MuPDF; un destino explícito (`/XYZ`, `/FitH`, `/FitR`) se convierte con la geometría de la página y su `y` se acota a la altura de la página.
 - **`search_document`:** la búsqueda no distingue mayúsculas, acentos ni formas de compatibilidad (`ﬁ` casa con `fi`): «dios» encuentra «Dios», «DIOS» y «Diós». Una frase que cruza un salto de línea sí se encuentra y su coincidencia tiene un rectángulo por línea. Una búsqueda nueva del mismo libro cancela la anterior: su `search://done` llega con `cancelled: true`. Las búsquedas corren página a página en el hilo de lectura del motor, no en el pool de render, así que no retrasan los renders del visor más que lo que cuesta una página.
 - El front ignora los eventos de un `searchId` que no reconoce (búsquedas anteriores).
 
