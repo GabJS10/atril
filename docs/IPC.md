@@ -1,6 +1,6 @@
 # Contrato IPC (frontend ⇄ backend)
 
-**Versión:** v1.0 (cierre de la fase R: se quitan la ruta `POST /jpx` y los comandos del indexador de pdf.js `list_pending_scans`, `save_book_scan` y `mark_scan_failed`; texto con cajas, búsqueda por eventos, índice y enlaces son de la v0.8; el motor nativo, `open_document` y `GET /page/…`, es de la v0.7). **Dueño:** `plan`. `backend` propone los cambios y `frontend` los implementa en `src/api/tauri.ts`. Un cambio que rompa el contrato se coordina antes con `plan` (ver `AGENTS.md`).
+**Versión:** v1.1 (`Book.coverColor`, para el rediseño de la biblioteca). v1.0 (cierre de la fase R: se quitan la ruta `POST /jpx` y los comandos del indexador de pdf.js `list_pending_scans`, `save_book_scan` y `mark_scan_failed`; texto con cajas, búsqueda por eventos, índice y enlaces son de la v0.8; el motor nativo, `open_document` y `GET /page/…`, es de la v0.7). **Dueño:** `plan`. `backend` propone los cambios y `frontend` los implementa en `src/api/tauri.ts`. Un cambio que rompa el contrato se coordina antes con `plan` (ver `AGENTS.md`).
 
 Este documento es la única fuente de verdad sobre los comandos Tauri, los eventos, las URLs del protocolo `atril://` y los tipos compartidos. Si el código y este archivo no coinciden, se corrige uno de los dos en el mismo cambio.
 
@@ -50,6 +50,7 @@ type Book = {
   pageCount: number | null; // null hasta que se indexa o se abre
   fileUrl: string;          // atril://localhost/book/<id>
   coverUrl: string | null;
+  coverColor: string | null; // v1.1. "#rrggbb": color dominante de la portada, sin pasar por gris (ver nota). null sin portada o aún sin calcular
   favorite: boolean;
   missing: boolean;
   scanState: "pending" | "done" | "failed";
@@ -58,6 +59,12 @@ type Book = {
   addedAt: string;
   lastOpenedAt: string | null;
 };
+
+// Book.coverColor (v1.1): lo calcula el indexador al generar la portada y se guarda en `books`. Es el color más
+// representativo de la portada ignorando los casi blancos, los casi negros y los grises (si no hay ninguno con color,
+// el gris medio). El front lo usa para teñir superficies (mezclado con el fondo), nunca como color de texto. Los libros
+// que ya tienen portada lo reciben en segundo plano sin volver a indexarse; cada lote emite `library://changed`
+// con `reason: "index"`.
 
 type Zoom = "page_width" | "page_fit" | "auto" | number; // número = escala (1 = 100 %)
 type ViewMode = "normal" | "sepia" | "night";
