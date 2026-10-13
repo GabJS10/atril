@@ -39,7 +39,7 @@ Los spikes de medición van en un worktree **sin PR**: solo dejan un informe.
 ### Reglas de coordinación
 - **Cada agente edita solo sus archivos** (tabla de arriba), salvo que el encargo diga otra cosa. Excepción: una dependencia npm que necesite `backend` (p. ej. un plugin de Tauri) la añade `frontend`.
 - **Cada subagente trabaja solo en su worktree.** Nunca toca `/home/gabriel/datos/projects/atril`, que es `main` y donde trabajan `plan` y el usuario, ni otros worktrees.
-- **Commits y PRs sin la línea `Co-Authored-By: Claude …`** ni ninguna otra atribución a Claude (pedido del usuario). Mensajes en inglés, Conventional Commits con scope: `feat(frontend): …`, `feat(backend): …`, `docs: …`, `chore(ci): …`.
+- **Commits y PRs sin la línea `Co-Authored-By: Claude …`** ni ninguna otra atribución a Claude (pedido del usuario). Mensajes de commit en inglés; **PRs en español** (título con prefijo Conventional Commits, p. ej. `feat(engine): búsqueda por eventos`; descripción en español). Conventional Commits con scope: `feat(frontend): …`, `feat(backend): …`, `docs: …`, `chore(ci): …`.
 - **Límites del equipo** (7 GB de RAM y disco justo):
   - como mucho **2 subagentes a la vez**;
   - todos los comandos de cargo y tauri llevan delante **`CARGO_TARGET_DIR=/home/gabriel/datos/projects/atril/.claude/worktrees/.target`** (compilación de Rust compartida por todos los worktrees);
