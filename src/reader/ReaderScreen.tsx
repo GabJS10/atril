@@ -1,11 +1,14 @@
-import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSettings } from "../api/queries";
-import { exportHighlights, isAppError, openBook, pickExportPath } from "../api/tauri";
+import { exportHighlights, isAppError, pickExportPath } from "../api/tauri";
 import type { Book, ReadingStateInput, Zoom, ViewMode } from "../api/types";
 import { useLocaleStore, useT } from "../i18n";
-import { type FindResult, PdfViewer, type PdfViewerHandle, type ViewSnapshot } from "./PdfViewer";
+import { PdfViewer } from "./PdfViewer";
+import { NativeViewer } from "./native/NativeViewer";
+import type { FindResult, ViewerHandle, ViewSnapshot } from "./viewerTypes";
+import { readViewerKind } from "./viewerKind";
+import { useNativeDocument } from "./useNativeDocument";
 import { SearchBar } from "./SearchBar";
 import { ReaderBar } from "./ReaderBar";
 import { initialReadingStart, type ReaderPosition, type ReadingStart } from "./position";
@@ -13,6 +16,7 @@ import { type ReaderAction, useReaderShortcuts } from "./shortcuts";
 import { useChromeVisibility } from "./useChromeVisibility";
 import { usePdfDocument } from "./usePdfDocument";
 import { useReadingPosition } from "./useReadingPosition";
+import { useOpenedBook } from "./useOpenedBook";
 import { useHighlightSession } from "./useHighlightSession";
 import { HighlightEditor } from "./HighlightEditor";
 import { HighlightsPanel } from "./HighlightsPanel";
@@ -24,12 +28,7 @@ import { readerClosed, readerOpened } from "../library/readerActivity";
 
 export function ReaderScreen({ bookId }: { bookId: string }) {
   const t = useT();
-  const opened = useQuery({
-    queryKey: ["book", bookId],
-    queryFn: () => openBook(bookId),
-    staleTime: Infinity,
-    retry: false,
-  });
+  const opened = useOpenedBook(bookId);
   const settings = useSettings();
 
   if (opened.isPending || settings.isPending) return <ReaderMessage>{t("reader.loading")}</ReaderMessage>;
@@ -55,6 +54,14 @@ function ReaderMessage({ children }: { children: string }) {
   );
 }
 
+/** A state updater that keeps the object when the zoom did not change (a scroll must not re-render the screen). */
+function sameView(snapshot: ViewSnapshot) {
+  return (previous: { zoom: Zoom; scale: number }) =>
+    previous.zoom === snapshot.zoom && previous.scale === snapshot.scale
+      ? previous
+      : { zoom: snapshot.zoom, scale: snapshot.scale };
+}
+
 function toSaveState(
   position: ReaderPosition,
   zoom: Zoom,
@@ -66,8 +73,12 @@ function toSaveState(
 
 function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
   const t = useT();
-  const pdfState = usePdfDocument(book.fileUrl);
-  const viewer = useRef<PdfViewerHandle>(null);
+  // pdf.js is the default; `localStorage.atril.viewer = "native"` opens the native-engine viewer (see viewerKind.ts).
+  const viewerKind = useMemo(() => readViewerKind(), []);
+  const native = viewerKind === "native";
+  const pdfState = usePdfDocument(book.fileUrl, !native);
+  const nativeState = useNativeDocument(book.id, native);
+  const viewer = useRef<ViewerHandle>(null);
   const chrome = useChromeVisibility();
   const saver = useReadingPosition(book.id);
   const [page, setPage] = useState(start.position?.page ?? 1);
@@ -82,13 +93,21 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
     };
   }, [viewMode]);
   const [view, setView] = useState<{ zoom: Zoom; scale: number }>({ zoom: start.zoom, scale: 1 });
-  const pageCount = pdfState.status === "ready" ? pdfState.pdf.numPages : 0;
+  const documentState = native ? nativeState : pdfState;
+  const pageCount =
+    nativeState.status === "ready" && native
+      ? nativeState.document.pageCount
+      : pdfState.status === "ready"
+        ? pdfState.pdf.numPages
+        : 0;
   const highlightSession = useHighlightSession(book.id);
   const { toggleHighlightMode } = highlightSession;
   const locale = useLocaleStore((state) => state.locale);
   const [sidePanel, setSidePanel] = useState<"highlights" | "outline" | null>(null);
   const [exporting, setExporting] = useState(false);
-  const outline = useOutline(pdfState.status === "ready" ? pdfState.pdf : null);
+  const pdfOutline = useOutline(!native && pdfState.status === "ready" ? pdfState.pdf : null);
+  // The native viewer has no index until R2.2.
+  const outline = native ? [] : pdfOutline;
   // Focus mode hides the bar and the panels; only the page stays. F or Escape leaves it.
   const [focusMode, setFocusMode] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -138,7 +157,7 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
   const onChange = useCallback(
     (snapshot: ViewSnapshot) => {
       setPage(snapshot.position.page);
-      setView({ zoom: snapshot.zoom, scale: snapshot.scale });
+      setView(sameView(snapshot));
       lastView.current = snapshot;
       saver.update(toSaveState(snapshot.position, snapshot.zoom, viewModeRef.current, pageCount));
     },
@@ -159,7 +178,7 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
   const onRestored = useCallback(
     (snapshot: ViewSnapshot) => {
       setPage(snapshot.position.page);
-      setView({ zoom: snapshot.zoom, scale: snapshot.scale });
+      setView(sameView(snapshot));
       lastView.current = snapshot;
       saver.enable();
       // A book read for the first time has no page count stored yet: save its start position once.
@@ -223,26 +242,30 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
   );
   useReaderShortcuts(onAction);
 
-  if (pdfState.status === "loading") return <ReaderMessage>{t("reader.loading")}</ReaderMessage>;
-  if (pdfState.status === "error") return <ReaderMessage>{t("reader.error")}</ReaderMessage>;
+  if (documentState.status === "loading") return <ReaderMessage>{t("reader.loading")}</ReaderMessage>;
+  if (documentState.status === "error") return <ReaderMessage>{t("reader.error")}</ReaderMessage>;
+
+  const viewerProps = {
+    start: { zoom: start.zoom, position: start.position },
+    onChange,
+    onRestored,
+    highlights: highlightSession.highlights,
+    onSelectionEnd: highlightSession.handlers.onSelectionEnd,
+    onSelectionClear: highlightSession.handlers.onSelectionClear,
+    onHighlightPress: highlightSession.handlers.onHighlightPress,
+    onFindResult: setFindResult,
+  };
 
   return (
     <div
       className="relative h-screen w-full overflow-hidden bg-canvas"
       onMouseMove={focusMode ? undefined : chrome.wake}
     >
-      <PdfViewer
-        ref={viewer}
-        pdf={pdfState.pdf}
-        start={{ zoom: start.zoom, position: start.position }}
-        onChange={onChange}
-        onRestored={onRestored}
-        highlights={highlightSession.highlights}
-        onSelectionEnd={highlightSession.handlers.onSelectionEnd}
-        onSelectionClear={highlightSession.handlers.onSelectionClear}
-        onHighlightPress={highlightSession.handlers.onHighlightPress}
-        onFindResult={setFindResult}
-      />
+      {nativeState.status === "ready" && native ? (
+        <NativeViewer ref={viewer} document={nativeState.document} {...viewerProps} />
+      ) : pdfState.status === "ready" ? (
+        <PdfViewer ref={viewer} pdf={pdfState.pdf} {...viewerProps} />
+      ) : null}
       {highlightSession.selection && !highlightSession.editing ? (
         <SelectionToolbar
           anchor={highlightSession.selection.anchor}
@@ -279,6 +302,7 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
         page={page}
         pageCount={pageCount}
         scale={view.scale}
+        onGoToPage={(target) => viewer.current?.goToPage(target)}
         visible={chrome.visible && !focusMode}
         onZoomIn={() => viewer.current?.stepZoom(1)}
         onZoomOut={() => viewer.current?.stepZoom(-1)}

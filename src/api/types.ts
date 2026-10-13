@@ -136,3 +136,18 @@ export type HighlightPatch = { color?: HighlightColor; note?: string | null };
 
 /** Result of `export_highlights`: how many highlights were written to the Markdown file. */
 export type HighlightExport = { count: number };
+
+// Native PDF engine (docs/IPC.md, "Motor de PDF (v0.7)").
+
+/** Page size and PDF-to-viewer matrix at scale 1: the same as pdf.js's `getViewport({ scale: 1 })`. */
+export type PageGeometry = {
+  width: number;
+  height: number;
+  transform: [number, number, number, number, number, number];
+};
+
+export type OpenedDocument = {
+  pageCount: number;
+  pageBaseUrl: string;
+  pages: PageGeometry[];
+};

@@ -6,12 +6,13 @@ export type PdfState =
 
 /**
  * Loads a book by byte ranges. The pdf.js engine is imported here, so it is only downloaded
- * when a book is opened. The document is destroyed when the component unmounts or the URL changes.
+ * when a book is opened (not at all while `enabled` is false: the native viewer does not need it). The document is destroyed when the component unmounts or the URL changes.
  */
-export function usePdfDocument(fileUrl: string): PdfState {
+export function usePdfDocument(fileUrl: string, enabled = true): PdfState {
   const [state, setState] = useState<PdfState>({ status: "loading" });
 
   useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
     let task: { destroy: () => Promise<void> } | null = null;
 
@@ -34,7 +35,7 @@ export function usePdfDocument(fileUrl: string): PdfState {
       cancelled = true;
       void task?.destroy();
     };
-  }, [fileUrl]);
+  }, [fileUrl, enabled]);
 
   return state;
 }
