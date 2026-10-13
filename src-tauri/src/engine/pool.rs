@@ -134,6 +134,8 @@ pub struct Engine {
     reader_thread: Option<JoinHandle<()>>,
     /// Búsquedas en curso (el `Drop` las cancela).
     searches: Arc<Mutex<SearchRegistry>>,
+    /// Porcentaje del tope del store de MuPDF al que se recorta (ver `trim_store`).
+    store_percent: u32,
 }
 
 impl Engine {
@@ -172,7 +174,15 @@ impl Engine {
             reader,
             reader_thread,
             searches: Arc::new(Mutex::new(SearchRegistry::default())),
+            store_percent: store,
         }
+    }
+
+    /// Recorta el store de recursos de MuPDF al tope configurado (`EngineConfig::store_bytes`). Lo llaman quienes
+    /// abren documentos fuera del pool, como el indexador de portadas, porque el store es compartido por todos los
+    /// contextos del proceso.
+    pub fn trim_store(&self) {
+        raw::shrink_store(self.store_percent);
     }
 
     /// Pide una página (1-based) a `scale` para el visor. `waiter` se llama una vez, desde un hilo del pool

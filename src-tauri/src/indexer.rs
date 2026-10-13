@@ -264,6 +264,8 @@ fn run(
                 }
             },
             |indexed| {
+                // Cada libro abre un documento y renderiza su portada en el store compartido de MuPDF: se recorta.
+                engine.trim_store();
                 if indexed.outcome == Outcome::Done {
                     watch::emit_changed(app, "index");
                 }
