@@ -7,6 +7,7 @@ Guía para agentes de IA (y personas) que trabajen en este repositorio.
 
 - Plan completo y decisiones de arquitectura: [`docs/PLAN.md`](docs/PLAN.md)
 - Roadmap por fases (qué hace cada agente, con qué esfuerzo y criterios de cierre): [`docs/ROADMAP.md`](docs/ROADMAP.md)
+- Arquitectura (módulos, hilos, flujos; se actualiza con cada cambio estructural): [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - Contrato IPC frontend ⇄ backend: [`docs/IPC.md`](docs/IPC.md)
 - Brief de diseño ("museo de arte de noche"): [`docs/DESIGN-BRIEF.md`](docs/DESIGN-BRIEF.md). El sistema de diseño definitivo irá en `DESIGN.md` y el contexto de producto en `PRODUCT.md` (los escribe `frontend` cuando el usuario elija una propuesta)
 - QA manual por fase: [`docs/QA.md`](docs/QA.md)
