@@ -168,13 +168,18 @@ pub fn import_files(
     paths: Vec<String>,
 ) -> Result<ImportResult, AppError> {
     let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    library::import_files(&app.db, &paths)
+    let result = library::import_files(&app.db, &paths)?;
+    if !result.imported.is_empty() {
+        app.indexer.wake();
+    }
+    Ok(result)
 }
 
+/// Desde R1.3 el indexador nativo (`indexer.rs`) procesa los pendientes, así que el front no recibe ninguno y
+/// no hay dos indexadores trabajando sobre el mismo libro. Se borra junto con el indexador de pdf.js en R2.
 #[tauri::command]
-pub fn list_pending_scans(app: State<'_, AppState>) -> Result<Vec<Book>, AppError> {
-    let conn = app.db()?;
-    library::list_pending_scans(&conn)
+pub fn list_pending_scans(_app: State<'_, AppState>) -> Result<Vec<Book>, AppError> {
+    Ok(Vec::new())
 }
 
 /// Metadatos en cabeceras (`X-Book-Id`, `X-Page-Count`, opcionales `X-Title`, `X-Author`)

@@ -46,6 +46,10 @@ hayro-jpeg2000 = { version = "0.4.1", default-features = false, features = ["std
 mupdf = { version = "0.8.0", default-features = false, features = ["base14-fonts"] }
 # Codificación JPEG de las páginas renderizadas (Rust puro; `simd` = AVX2 con detección en tiempo de ejecución).
 jpeg-encoder = { version = "0.6", features = ["simd"] }
+# Indexador nativo (src/indexer.rs): limpieza de título y autor, igual que `cleanMetadataText` del front.
+regex = "1"
+# Indexador nativo: `setpriority` sobre el hilo de indexado (Linux) para que el render del visor gane la CPU.
+libc = "0.2"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

@@ -118,14 +118,28 @@ Valores por defecto: `language: "system"`, `theme: "dark"`, `defaultZoom: "page_
 | `get_scan_status` | — | `ScanStatus` (para pintar el estado "escaneando" al entrar en la biblioteca) | — |
 | `import_files` | `{ paths: string[] }` | `ImportResult`. Cada ruta se procesa por separado; los fallos van en `rejected` y no detienen el resto | `invalid_input` (lista vacía), `db` |
 
-**Indexador (2.B2, lo usa el front con pdf.js)**
+**Indexador (2.B2; desde R1.3 el front no recibe pendientes, ver abajo)**
 | Comando | Argumentos | Devuelve | Errores |
 |---|---|---|---|
-| `list_pending_scans` | — | `Book[]` con `scanState: "pending"` y sin `missing`, por fecha de alta | `db` |
+| `list_pending_scans` | — | `Book[]`. **Desde R1.3 siempre `[]`**: el indexador nativo (ver abajo) procesa los pendientes, así que el front no recibe ninguno y no hay dos indexadores sobre el mismo libro. Antes devolvía los `scanState: "pending"` sin `missing`. Se borra en R2 junto con el indexador de pdf.js | — |
 | `save_book_scan` | Cabeceras: `X-Book-Id`, `X-Page-Count`; opcionales `X-Title`, `X-Author` (UTF-8, URL-encoded). Cuerpo binario: la portada en **JPEG** (o WebP), detectada por su firma (`invoke("save_book_scan", coverBytes, { headers })`). El front genera JPEG porque WebKitGTK no codifica WebP en `canvas.toBlob` | `Book` (`scanState: "done"`, `coverUrl` listo). Guarda los bytes tal cual en `covers/<id>.jpg` (o `.webp`), con fichero temporal + renombrado, y borra la portada anterior con la otra extensión | `not_found`, `invalid_input` (portada que no es JPEG ni WebP, de más de 2 MiB o `pageCount < 1`), `io`, `db` |
 | `mark_scan_failed` | `{ bookId: string }` | `Book` (`scanState: "failed"`). Evita reintentar un PDF que pdf.js no puede leer | `not_found`, `db` |
 
 > Por qué las cabeceras: con un cuerpo binario, Tauri no serializa la portada como un array JSON (lento). Los metadatos viajan en cabeceras, así que el comando no recibe `{ … }` como en el borrador de `PLAN.md`.
+>
+> `save_book_scan` y `mark_scan_failed` siguen funcionando hasta R2, aunque el front ya no reciba pendientes.
+
+**Indexador nativo (R1.3, `src-tauri/src/indexer.rs`)**
+
+Sustituye al indexador de pdf.js para los libros con `scanState: "pending"` y sin `missing`. Procesa uno a uno, en un hilo propio (`atril-indexer`) con su propia copia del documento de MuPDF. Ese hilo baja su prioridad (nice 19 en Linux) y no empieza un libro mientras haya renders del visor en cola, para no retrasar las páginas del lector.
+
+- **Cuándo se ejecuta:** al arrancar la app; tras cada escaneo de carpetas (también el de vigilancia); tras `import_files` si entró algún libro; al abrir un PDF desde el sistema con la app ya abierta; y cada 30 s por si entra un libro por otra vía.
+- **Qué hace con cada libro:**
+  - si el archivo falta: `missing = 1`;
+  - si MuPDF no lo puede abrir o no tiene páginas: `scanState: "failed"` (no se reintenta);
+  - si no: número de páginas, título y autor (limpios como `cleanMetadataText` del front: espacios colapsados, sin basura como "Microsoft Word…", nombres de archivo, "Anónimo" o solo símbolos y dígitos, y como mucho 200 caracteres; si no vale, el título se queda con el nombre del archivo), y la portada: la página 1 a 400 px de ancho, JPEG (calidad 85). Se guarda como `save_book_scan` (`covers/<id>.jpg`, fichero temporal + renombrado) y el libro pasa a `scanState: "done"`.
+- **Un libro no se reintenta en el mismo proceso.** Si no se puede guardar (error de base de datos o de disco) queda pendiente hasta reiniciar la app.
+- **Evento:** por cada libro indexado con éxito se emite `library://changed` con `reason: "index"` (ver "Eventos"). El payload no lleva el libro: el front vuelve a pedir la biblioteca.
 
 **Salas (2.B2)**
 | Comando | Argumentos | Devuelve | Errores |
@@ -378,6 +392,6 @@ Los parámetros que faltan valen lo indicado por defecto; los desconocidos se ig
 ## Eventos (borrador)
 | Evento | Payload | Cuándo |
 |---|---|---|
-| `library://changed` | `{ reason: "scan" \| "watch" \| "import" }` | Cambió la biblioteca por algo que no pidió el front (escaneo de una carpeta, vigilancia, importación en segundo plano): el front invalida sus consultas. Los comandos que pide el propio front no emiten el evento; el front invalida lo suyo |
+| `library://changed` | `{ reason: "scan" \| "watch" \| "import" \| "index" }` | Cambió la biblioteca por algo que no pidió el front (escaneo de una carpeta, vigilancia, importación en segundo plano, o un libro indexado por el indexador nativo con `reason: "index"`): el front invalida sus consultas. Los comandos que pide el propio front no emiten el evento; el front invalida lo suyo |
 | `library://scan` | `ScanStatus` | Empieza, avanza (como mucho una vez por segundo) o termina un escaneo |
 | `app://open-file` | `{ bookId: string }` | El sistema pidió abrir un PDF (segundo doble clic con la app abierta) |
