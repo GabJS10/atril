@@ -7,7 +7,7 @@ El usuario lee sus libros en PDF con el visor de Firefox, que no termina de conv
 - **Subrayados que se guardan solos** al crearlos.
 - Modo noche/sepia, índice y búsqueda, notas exportables, y abrir los PDF desde el sistema.
 
-Estética: "museo de arte de noche", monocroma (ver [`DESIGN-BRIEF.md`](DESIGN-BRIEF.md)). Forma de trabajo: 3 agentes en Herdr (ver [`AGENTS.md`](../AGENTS.md)) y fases en [`ROADMAP.md`](ROADMAP.md).
+Estética: "museo de arte de noche", monocroma (ver [`DESIGN-BRIEF.md`](DESIGN-BRIEF.md)). Forma de trabajo: subagentes con worktrees y PRs (ver [`AGENTS.md`](../AGENTS.md)) y fases en [`ROADMAP.md`](ROADMAP.md).
 
 ## Decisiones tomadas
 | Tema | Decisión |
@@ -20,7 +20,7 @@ Estética: "museo de arte de noche", monocroma (ver [`DESIGN-BRIEF.md`](DESIGN-B
 | MVP extra | Modo noche/sepia, índice + búsqueda, notas + exportar a Markdown, abrir los PDF desde el sistema |
 | Plataformas | Linux primero (.deb + AppImage; WebKitGTK 2.52). Windows queda en el backlog |
 | Idioma de la UI | Español e inglés (`src/i18n/es.ts` y `en.ts`); por defecto sigue al sistema |
-| Agentes | `frontend` y `backend`: `plan` elige modelo (Haiku 5.5 por defecto, Sonnet 5.5 para depuración difícil) y esfuerzo por tarea |
+| Agentes | Subagentes `frontend` y `backend` (`.claude/agents/`), uno por tarea, cada uno en su worktree de git y con entrega por PR. `plan` elige el modelo (Haiku 5.5 por defecto, Sonnet 5.5 para lo difícil) y el esfuerzo |
 | Commits | Sin `Co-Authored-By: Claude …`. Mensajes en inglés, `feat(frontend): …` |
 
 ## Arquitectura

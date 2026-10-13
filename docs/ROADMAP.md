@@ -11,7 +11,7 @@ Fases del MVP, qué hace cada agente (con el **esfuerzo** que le asigna `plan`),
 | 4 | Lectura cómoda | terminada (tag `fase-4`) |
 | 5 | Sistema y release para Linux (v1.0.0) | pendiente |
 
-Modelo y esfuerzo: **desde el 2026-10-12 `plan` los elige por tarea** (ver `AGENTS.md`, «Modelo y esfuerzo»). Los niveles anotados abajo en tareas pasadas quedan como histórico.
+Modelo y esfuerzo: **desde el 2026-10-12 `plan` los elige por tarea** al lanzar cada subagente (ver `AGENTS.md`, «Modelo y esfuerzo»). Los niveles anotados abajo en tareas pasadas quedan como histórico.
 
 ## Fase 0. Andamiaje
 **plan**
@@ -69,6 +69,18 @@ Modelo y esfuerzo: **desde el 2026-10-12 `plan` los elige por tarea** (ver `AGEN
 - [x] **4.F3** (`medium`): modo noche/sepia, tema cubo blanco, pantalla completa / modo foco.
 - [x] **4.B1** (`low`): campos de ajustes de lectura por defecto (`defaultZoom` y `defaultViewMode`, ya en la fase 0).
 
+## Fase R. Motor de PDF nativo (replanteamiento, 2026-10-12)
+Comparado con Okular, el lector con pdf.js en WebKitGTK no es fluido: scroll, zoom, abrir libros y, sobre todo, escaneos. El usuario decidió sustituir pdf.js por un **motor nativo en Rust** y mantener la interfaz (biblioteca, diseño, Salas, subrayados, notas, ajustes). Licencia: la que permita el motor más rápido.
+- **R0 · Medir (spikes sin PR):**
+  - `backend`: MuPDF frente a PDFium con los libros del usuario. Apertura, render de texto y de escaneos, texto con cajas, búsqueda, memoria, render en paralelo y tamaño.
+  - `frontend`: cómo mostrar las páginas en WebKitGTK (BMP en `<img>`, RGBA en canvas o JPEG): tirones de scroll, latencia y memoria.
+  - `plan`: compara con Okular y **lo decide el usuario** (motor y licencia).
+- **R1 · Motor en Rust (`backend`):** `src-tauri/src/engine/` (documentos abiertos, pool de render con cancelación, caché LRU por bytes, precarga), comandos `open_document`, `get_page_text`, `search_document`, `get_outline` y `get_page_links`, protocolo `atril://page/<id>/<n>?scale=`, y metadatos y portadas en Rust. `IPC.md` pasa a v1.0.
+- **R2 · Visor nuevo (`frontend`):** visor propio virtualizado con imagen, capa de texto, subrayados y enlaces por página, y zoom en dos pasos (CSS al instante y render nítido después). Los subrayados guardados siguen valiendo (`PageMapping` desde la matriz de Rust). Búsqueda, índice y posición pasan a los comandos nuevos. Sale `pdfjs-dist`.
+- **R3 · Limpieza:** quitar `jpx.rs`, `POST /jpx`, `hayro-jpeg2000`, `jpxBridge.js` y el indexador del front. Actualizar los docs.
+- **Objetivos (release, equipo del usuario):** primera página en menos de 300 ms; página de texto en menos de 100 ms y escaneo en menos de 400 ms; scroll sin páginas en blanco ni tirones de más de 50 ms; zoom nítido en menos de 300 ms; memoria comparable a la de Okular.
+- **Cierre:** QA comparada con Okular, visto bueno del usuario y tag `fase-R`.
+
 ## Fase 5. Sistema y release para Linux
 > **Pausa antes de empezar:** al cerrar la fase 4, el usuario prueba la app a fondo. No se reparte ninguna tarea de la fase 5 (salvo 5.B1, ya hecha) hasta que el usuario dé el visto bueno o pase sus observaciones.
 
@@ -79,11 +91,11 @@ Modelo y esfuerzo: **desde el 2026-10-12 `plan` los elige por tarea** (ver `AGEN
 **Cierre:** hacer doble clic en un PDF desde Nemo abre Atril; el .deb se instala limpio.
 
 ## Flujo de cada fase
-1. `plan` y `backend` fijan el IPC de la fase en `IPC.md`.
-2. Los dos agentes trabajan en paralelo; el front usa `mockIPC` hasta que el backend esté listo.
-3. Cada agente hace commit de sus rutas y avisa a `plan`.
-4. `plan` integra, pasa todos los checks y verifica en la app real (`npm run tauri dev`).
-5. El usuario da el visto bueno → commit de cierre y tag `fase-N` (y push cuando exista el repo remoto).
+1. `plan` fija el IPC de la fase en `IPC.md` (o lo encarga en la primera tarea del backend).
+2. Cada tarea se hace en un worktree propio con un subagente (ver `AGENTS.md`, «Ciclo de una tarea»). Como mucho 2 a la vez; el front usa `mockIPC` hasta que el backend esté listo.
+3. Cada tarea termina en un PR. `plan` lo revisa, espera a la CI y lo fusiona en `main` con squash.
+4. `plan` pasa todos los checks en `main` y verifica en la app real.
+5. El usuario da el visto bueno → tag `fase-N` y push.
 
 ## Definición de terminado
 - `npm run lint`, `npm run typecheck` y `npm test` pasan.

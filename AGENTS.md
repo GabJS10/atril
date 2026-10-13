@@ -11,44 +11,42 @@ Guía para agentes de IA (y personas) que trabajen en este repositorio.
 - Brief de diseño ("museo de arte de noche"): [`docs/DESIGN-BRIEF.md`](docs/DESIGN-BRIEF.md). El sistema de diseño definitivo irá en `DESIGN.md` y el contexto de producto en `PRODUCT.md` (los escribe `frontend` cuando el usuario elija una propuesta)
 - QA manual por fase: [`docs/QA.md`](docs/QA.md)
 
-**Estado actual:** fases 0 a 4 cerradas (tags `fase-0` a `fase-4`). **Pausa de pruebas del usuario:** no se empieza la fase 5 hasta su visto bueno. El backend tiene hechas sus tareas hasta la fase 5.
+**Estado actual:** fases 0 a 4 cerradas (tags `fase-0` a `fase-4`). Tras la pausa de pruebas, el usuario pidió replantear el lector porque pdf.js en WebKitGTK no es lo bastante fluido: **fase R**, que sustituye pdf.js por un motor de PDF nativo en Rust y mantiene la misma interfaz (ver `docs/ROADMAP.md`). La fase 5 viene después.
 
-## Forma de trabajo (multi-agente)
-El proyecto se desarrolla con **3 agentes en paralelo**, cada uno en un panel de la misma tab (`plan`) del workspace `atril` de [Herdr](https://herdr.dev): `plan` a la izquierda, `frontend` arriba a la derecha y `backend` abajo a la derecha. **Este `AGENTS.md` es la fuente de verdad**; `CLAUDE.md` solo lo importa.
+## Forma de trabajo: subagentes + worktrees + pull requests
+`plan` (la sesión principal de Claude Code) orquesta. Cada tarea la hace un **subagente** que trabaja en su propio **worktree de git** (una carpeta aparte con su propia rama) y la entrega como **pull request**. **Este `AGENTS.md` es la fuente de verdad**; `CLAUDE.md` solo lo importa, y los roles de los subagentes están en `.claude/agents/`.
 
-| Agente (nombre en Herdr) | Panel | Responsabilidad | Es dueño de |
-|---|---|---|---|
-| `plan` | izquierda | Orquestación, planificación, decisiones de arquitectura, contrato IPC, tareas comunes (CI, E2E, empaquetado, releases) | `docs/`, `AGENTS.md`, `CLAUDE.md`, `README.md`, `CHANGELOG.md`, `.github/`, `e2e/`, configs de la raíz no específicas del front |
-| `frontend` | arriba a la derecha | UI en React, diseño (propuestas en Claude Design), visor pdf.js, estado del cliente y wrappers de `invoke()` | `src/`, `public/`, `DESIGN.md`, `PRODUCT.md`, `index.html`, `vite.config.*`, `tsconfig*.json`, configs de ESLint/Prettier/Vitest, `package.json` y `package-lock.json` |
-| `backend` | abajo a la derecha | Core en Rust: biblioteca (escaneo, vigilancia, huella), protocolo `atril://`, SQLite, subrayados, ajustes, comandos Tauri e integración con el sistema | `src-tauri/` (incluye `Cargo.toml`, `tauri.conf.json` y `capabilities/`) |
+| Rol | Responsabilidad | Es dueño de |
+|---|---|---|
+| `plan` | Orquestación, planificación, decisiones de arquitectura, contrato IPC, revisión y fusión de PRs, tareas comunes (CI, E2E, empaquetado, releases) | `docs/`, `AGENTS.md`, `CLAUDE.md`, `.claude/`, `README.md`, `CHANGELOG.md`, `.github/`, `e2e/`, configs de la raíz no específicas del front |
+| `frontend` (`.claude/agents/frontend.md`) | UI en React, diseño, visor, estado del cliente y wrappers de `invoke()` | `src/`, `public/`, `DESIGN.md`, `PRODUCT.md`, `index.html`, `vite.config.*`, `tsconfig*.json`, configs de ESLint/Prettier/Vitest, `package.json` y `package-lock.json` |
+| `backend` (`.claude/agents/backend.md`) | Core en Rust: biblioteca, protocolo `atril://`, motor de PDF, SQLite, subrayados, ajustes, comandos Tauri e integración con el sistema | `src-tauri/` (incluye `Cargo.toml`, `tauri.conf.json` y `capabilities/`) |
+
+### Ciclo de una tarea
+1. **Worktree:** `plan` lo crea a partir de `main` actualizado: `git worktree add ../atril-wt/<tema> -b <fase>/<tema>` (p. ej. rama `r1/motor`, carpeta `/home/gabriel/datos/projects/atril-wt/r1-motor`).
+2. **Encargo:** `plan` lanza el subagente con un encargo autocontenido: carpeta del worktree, contexto, archivos, criterios de aceptación, checks y si puede lanzar la app.
+3. **Trabajo:** el subagente trabaja solo en su worktree, pasa los checks, hace commit en su rama, `git push -u` y abre el PR con `gh pr create`. Su informe final es la respuesta que recibe `plan`.
+4. **Revisión:** `plan` revisa el diff del PR, espera a la CI y pasa los checks en local. Las correcciones se piden al **mismo** subagente, que conserva su contexto, en vez de lanzar otro. El usuario puede revisar el PR en GitHub.
+5. **Fusión:** `plan` fusiona con `gh pr merge --squash --delete-branch` (título del PR en Conventional Commits), actualiza `main` en local y borra el worktree (`git worktree remove`).
+
+Los spikes de medición van en un worktree **sin PR**: solo dejan un informe.
 
 ### Modelo y esfuerzo
-- `plan` elige **modelo y esfuerzo por tarea** para ahorrar tokens sin perder rendimiento, y los cambia con `/model` y `/effort` antes de mandarla:
-  - **Haiku 5.5** (`claude-haiku-5-5`), el modelo por defecto, para tareas bien acotadas: implementar con un contrato claro, tests, docs y cambios mecánicos. Esfuerzo `medium` en lo trivial, `high` en lo normal y `max` en lo complejo.
-  - **Sonnet 5.5** (`claude-sonnet-5-5`) para depuración difícil o entre capas (p. ej. dentro de pdf.js), investigación de rendimiento o cuando un agente en Haiku se atasca. Esfuerzo `high` o `max`.
-  - Al acabar una tarea en Sonnet, el agente vuelve a Haiku.
-- Si una tarea resulta más difícil de lo previsto, no la fuerces: avisa a `plan` (puede subir el modelo o el esfuerzo, o partirla).
+- `plan` elige **modelo y esfuerzo por tarea** al lanzar cada subagente, para ahorrar tokens sin perder rendimiento:
+  - **Haiku 5.5**, el modelo por defecto, para tareas bien acotadas: implementar con un contrato claro, tests, docs y cambios mecánicos. Esfuerzo `medium` en lo trivial, `high` en lo normal y `max` en lo complejo.
+  - **Sonnet 5.5** para depuración difícil o entre capas, investigación de rendimiento, diseño de piezas centrales o cuando un agente en Haiku se atasca. Esfuerzo `high` o `max`.
 
 ### Reglas de coordinación
-- **Cada agente edita solo sus archivos.** Si necesitas un cambio en otra área, pídeselo a su dueño (o a `plan`) en lugar de hacerlo tú. Excepción: una dependencia npm que pida `backend` (p. ej. un plugin de Tauri) la añade `frontend`.
-- **Commits sin la línea `Co-Authored-By: Claude …`** ni ninguna otra atribución a Claude (pedido del usuario). Mensajes en inglés, Conventional Commits con el scope del agente: `feat(frontend): …`, `feat(backend): …`, `docs: …`, `chore(ci): …`.
-- **Nada de `git stash`, `git checkout -- .`, `git reset --hard`, `git clean` ni comandos que toquen todo el árbol:** el árbol de trabajo es compartido y los otros agentes tienen cambios sin commitear. Para hacer commit, usa `git add <tus rutas>` (nunca `git add -A` ni `git add .`) y **`git commit -m "…" -- <tus rutas>`**: el índice es compartido y un `git commit` sin rutas se lleva lo que otro agente haya dejado preparado.
-- **Contrato IPC en `docs/IPC.md`:** comandos Tauri (nombre, parámetros, retorno y errores), eventos y URLs del protocolo `atril://`. `backend` lo propone o actualiza al crear o cambiar un comando (pidiéndoselo a `plan`, que es el dueño del archivo), y `frontend` lo implementa en `src/api/tauri.ts`. Un cambio que rompa el contrato se coordina antes con `plan`.
+- **Cada agente edita solo sus archivos** (tabla de arriba), salvo que el encargo diga otra cosa. Excepción: una dependencia npm que necesite `backend` (p. ej. un plugin de Tauri) la añade `frontend`.
+- **Cada subagente trabaja solo en su worktree.** Nunca toca `/home/gabriel/datos/projects/atril`, que es `main` y donde trabajan `plan` y el usuario, ni otros worktrees.
+- **Commits y PRs sin la línea `Co-Authored-By: Claude …`** ni ninguna otra atribución a Claude (pedido del usuario). Mensajes en inglés, Conventional Commits con scope: `feat(frontend): …`, `feat(backend): …`, `docs: …`, `chore(ci): …`.
+- **Límites del equipo** (7 GB de RAM y disco justo):
+  - como mucho **2 subagentes a la vez**;
+  - todos los comandos de cargo y tauri llevan delante **`CARGO_TARGET_DIR=$HOME/.cache/atril-target`** (compilación de Rust compartida por todos los worktrees);
+  - **un solo agente ejecuta la app a la vez** (puerto 1420), y lo indica el encargo.
+- **Contrato IPC en `docs/IPC.md`:** comandos Tauri (nombre, parámetros, retorno y errores), eventos y URLs del protocolo `atril://`. Si un encargo lo cambia, el agente actualiza `IPC.md` en su rama y `plan` lo revisa en el PR. El frontend lo implementa en `src/api/tauri.ts`.
 - **Mientras el backend no esté listo, el frontend trabaja contra `mockIPC`** (`@tauri-apps/api/mocks`) siguiendo `IPC.md` al pie de la letra.
-- **`plan` reparte el trabajo** siguiendo `docs/ROADMAP.md`.
-- **Al terminar una tarea o quedar bloqueado, avisa a `plan` por Herdr** (no basta con escribir el reporte en tu pantalla: `plan` no la está mirando). Último paso obligatorio, después del commit:
-  ```bash
-  herdr agent prompt plan "<agente>: <tarea> lista, commit <hash>. <notas breves o 'bloqueado: motivo'>"
-  ```
-  Sin `--wait`. Después comprueba con `herdr agent get plan` que el mensaje llegó (si `plan` estaba ocupado, queda en cola y lo procesa al terminar).
-- Comunicación entre agentes con la CLI de Herdr, usando el nombre del agente (no el ID del pane):
-  ```bash
-  herdr agent list
-  herdr agent prompt backend "..." --wait --timeout 600000
-  herdr agent read frontend --source recent-unwrapped --lines 120
-  ```
-- No mandes un prompt a un agente que está `working` o `blocked` sin revisar antes su estado (`herdr agent get <nombre>`). Excepción: el aviso de "terminé / bloqueado" a `plan` se manda siempre.
-- No cierres ni muevas paneles de otros agentes. Los push, tags y releases los hace `plan`.
+- Los push a `main`, las fusiones, los tags y las releases los hace `plan`. Sus propios cambios de docs y de proceso (`docs/`, `AGENTS.md`, `.claude/`) van directos a `main`, sin PR.
 - Decisiones de arquitectura nuevas: las registra `plan` en `docs/PLAN.md`.
 
 ## Stack
