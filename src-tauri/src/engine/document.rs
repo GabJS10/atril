@@ -6,7 +6,7 @@ use std::path::Path;
 
 use mupdf::pdf::{PdfDocument, PdfObject};
 use mupdf::text_page::{TextPage, TextPageFlags};
-use mupdf::{Colorspace, Document, Matrix, Outline, Page};
+use mupdf::{Colorspace, Document, Matrix, Page};
 use serde::Serialize;
 
 use super::encode::encode_jpeg;
@@ -97,11 +97,6 @@ impl OpenDocument {
         self.page(page)?
             .to_text_page(TextPageFlags::empty())
             .map_err(render_error)
-    }
-
-    /// Marcadores del libro, tal cual los da MuPDF (ver `outline`).
-    pub fn outlines(&self) -> Result<Vec<Outline>, EngineError> {
-        self.pdf.outlines().map_err(invalid_pdf)
     }
 
     /// Tamaño de la página `page` (1-based) según MuPDF, ya rotada y recortada. Carga la página: es para

@@ -518,6 +518,7 @@ fn the_outline_points_to_the_viewer_frame_of_each_destination() {
         &PdfOptions {
             inherited: Inherited::default(),
             outline,
+            ..PdfOptions::default()
         },
     ));
     let engine = engine();

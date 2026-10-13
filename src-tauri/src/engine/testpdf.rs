@@ -55,6 +55,23 @@ pub enum LinkTarget {
     Page { page: usize, left: f64, top: f64 },
     /// Acción `/URI`.
     Uri(String),
+    /// Destino con nombre (`/Dest /nombre`), definido en `PdfOptions::named_dests`.
+    Named(String),
+    /// Destino explícito de otro tipo (`/FitH top`, `/FitR l b r t`…) en la página `page` (1-based).
+    PageWith {
+        page: usize,
+        kind: &'static str,
+        numbers: Vec<f64>,
+    },
+}
+
+/// Destino con nombre del catálogo (`/Dests`, PDF 1.1): `/XYZ left top 0` de la página `page` (1-based).
+#[derive(Debug, Clone)]
+pub struct NamedDest {
+    pub name: String,
+    pub page: usize,
+    pub left: f64,
+    pub top: f64,
 }
 
 /// Un elemento del esquema (marcadores). Sin destino, es un título sin acción.
@@ -79,11 +96,12 @@ pub struct Info {
     pub author: Option<String>,
 }
 
-/// Todo lo que no es una página: herencia, esquema y diccionario `/Info`.
+/// Todo lo que no es una página: herencia, esquema, destinos con nombre y diccionario `/Info`.
 #[derive(Debug, Clone, Default)]
 pub struct PdfOptions {
     pub inherited: Inherited,
     pub outline: Vec<OutlineSpec>,
+    pub named_dests: Vec<NamedDest>,
     pub info: Option<Info>,
 }
 
@@ -194,6 +212,19 @@ fn action(target: &LinkTarget, page_refs: &[usize]) -> String {
             format!("/Dest [{} 0 R /XYZ {left} {top} 0]", page_refs[page - 1])
         }
         LinkTarget::Uri(uri) => format!("/A << /S /URI /URI {} >>", pdf_text_string(uri)),
+        LinkTarget::Named(name) => format!("/Dest /{name}"),
+        LinkTarget::PageWith {
+            page,
+            kind,
+            numbers,
+        } => {
+            let numbers: Vec<String> = numbers.iter().map(f64::to_string).collect();
+            format!(
+                "/Dest [{} 0 R /{kind} {}]",
+                page_refs[page - 1],
+                numbers.join(" ")
+            )
+        }
     }
 }
 
@@ -286,6 +317,21 @@ pub fn build_pdf_with(pages: &[PageSpec], options: &PdfOptions) -> Vec<u8> {
     let mut catalog = "<< /Type /Catalog /Pages 2 0 R".to_owned();
     if let Some(root) = outline_root {
         write!(catalog, " /Outlines {root} 0 R").expect("write to string");
+    }
+    if !options.named_dests.is_empty() {
+        catalog.push_str(" /Dests <<");
+        for dest in &options.named_dests {
+            write!(
+                catalog,
+                " /{} [{} 0 R /XYZ {} {} 0]",
+                dest.name,
+                page_refs[dest.page - 1],
+                dest.left,
+                dest.top
+            )
+            .expect("write to string");
+        }
+        catalog.push_str(" >>");
     }
     catalog.push_str(" >>");
     objects.push((1, Body::Plain(catalog)));
