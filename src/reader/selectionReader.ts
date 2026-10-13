@@ -9,8 +9,11 @@ import {
   type PageMapping,
 } from "./geometry";
 
-/** What a selection covers on one page: PDF rectangles (one per line) and the text. */
-export type SelectionPart = { page: number; rects: PdfRect[]; text: string };
+/**
+ * What a selection covers on one page: PDF rectangles (one per line) and the text. `text` has its breaks folded into
+ * spaces (it is what a highlight stores); `copyText`, when the viewer has it, keeps the line and block breaks.
+ */
+export type SelectionPart = { page: number; rects: PdfRect[]; text: string; copyText?: string };
 
 /**
  * Reads a text selection of the pdf.js viewer as highlights, one part per page it touches (roadmap 3.F1).

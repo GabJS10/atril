@@ -8,12 +8,20 @@ import {
   useRef,
   useState,
 } from "react";
+import {
+  cancelSearch,
+  onSearchDone,
+  onSearchProgress,
+  openExternalUrl,
+  searchDocument,
+} from "../../api/tauri";
 import type { OpenedDocument, Zoom } from "../../api/types";
+import { attachDragSelection } from "../dragSelection";
 import { highlightAt, type PageAtScale1, paintHighlightLayer } from "../highlightLayer";
 import { scrollTopToReveal } from "../highlightList";
 import { pdfRectToPercent } from "../geometry";
 import { positionAtScroll } from "../position";
-import type { ViewerHandle, ViewerProps, ViewSnapshot } from "../viewerTypes";
+import type { FindOptions, PageDestination, ViewerHandle, ViewerProps, ViewSnapshot } from "../viewerTypes";
 import { nextScale } from "../zoom";
 import "../highlightLayer.css";
 import "./NativeViewer.css";
@@ -26,7 +34,10 @@ import {
   sameRange,
   widenRange,
 } from "./layout";
+import { followLink, linkAt, targetOfElement } from "./links";
 import { CSS_UNITS, pageMapping } from "./mapping";
+import { destinationScrollTop, scrollToReveal } from "./navigation";
+import { createPageDataSource } from "./pageData";
 import { PageSlot } from "./PageSlot";
 import {
   clampScale,
@@ -37,6 +48,9 @@ import {
   wheelZoomFactor,
   zoomFor,
 } from "./scale";
+import { SearchController } from "./searchController";
+import { paintSearchLayer } from "./searchPaint";
+import { readNativeSelection, selectionCopyText, TEXT_LAYER_CLASS } from "./textSelection";
 import { useSettledValue } from "./useSettledValue";
 
 /** Pages kept in the DOM (as placeholders) on each side of the ones in view. */
@@ -50,11 +64,19 @@ const JUMP_SLACK = 3;
 const JUMP_SETTLE_MS = 80;
 /** The sharp image of a new zoom is requested once the zoom has stayed put this long. */
 const ZOOM_SETTLE_MS = 150;
+/** The text and links of a page are asked for when it is in view or this many pages from it. */
+const TEXT_OVERSCAN = 1;
+/** A press and release this close (CSS pixels) are a click; farther apart, a drag. */
+const CLICK_SLOP = 4;
 /** Pixels moved by j/k. */
 const LINE_SCROLL_PX = 80;
 const FALLBACK_PAGE = { width: 612, height: 792 };
 
-export type NativeViewerProps = ViewerProps & { document: OpenedDocument };
+export type NativeViewerProps = ViewerProps & {
+  /** The book's id: the text, links and search of the engine are asked for by it. */
+  bookId: string;
+  document: OpenedDocument;
+};
 
 type Size = { width: number; height: number };
 
@@ -68,10 +90,22 @@ function contentWidthOf(layout: PageLayout, viewportWidth: number): number {
  * pages in view (plus one on each side) are in the DOM, and the zoom has two steps: the pages change size at once,
  * and the sharp image of the new scale replaces the old one when it has loaded.
  *
- * Text selection, search, index and links come with R2.2; until then `find` and `goToDestination` do nothing.
+ * R2.2 adds the text layer (to select and copy), the creation of highlights from a selection, search with all the
+ * matches marked, the index (`goToDestination`) and the links of the pages.
  */
 export const NativeViewer = forwardRef<ViewerHandle, NativeViewerProps>(function NativeViewer(
-  { document: doc, start, onChange, onRestored, highlights, onSelectionClear, onHighlightPress },
+  {
+    bookId,
+    document: doc,
+    start,
+    onChange,
+    onRestored,
+    highlights,
+    onSelectionEnd,
+    onSelectionClear,
+    onHighlightPress,
+    onFindResult,
+  },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -94,10 +128,40 @@ export const NativeViewer = forwardRef<ViewerHandle, NativeViewerProps>(function
   const [revealed, setRevealed] = useState(false);
 
   // Latest props, read by listeners and timers that outlive the render.
-  const latest = useRef({ start, onChange, onRestored, highlights, onSelectionClear, onHighlightPress, doc });
+  const latest = useRef({
+    start,
+    onChange,
+    onRestored,
+    highlights,
+    onSelectionEnd,
+    onSelectionClear,
+    onHighlightPress,
+    onFindResult,
+    doc,
+  });
   useEffect(() => {
-    latest.current = { start, onChange, onRestored, highlights, onSelectionClear, onHighlightPress, doc };
-  }, [start, onChange, onRestored, highlights, onSelectionClear, onHighlightPress, doc]);
+    latest.current = {
+      start,
+      onChange,
+      onRestored,
+      highlights,
+      onSelectionEnd,
+      onSelectionClear,
+      onHighlightPress,
+      onFindResult,
+      doc,
+    };
+  }, [
+    start,
+    onChange,
+    onRestored,
+    highlights,
+    onSelectionEnd,
+    onSelectionClear,
+    onHighlightPress,
+    onFindResult,
+    doc,
+  ]);
 
   const snapshot = useCallback((): ViewSnapshot | null => {
     const container = containerRef.current;
@@ -178,6 +242,19 @@ export const NativeViewer = forwardRef<ViewerHandle, NativeViewerProps>(function
       applyScale(target, anchor);
     },
     [applyScale],
+  );
+
+  /** Scrolls so that a place of the book (a page and a height on it) is near the top of the view. */
+  const scrollToDestination = useCallback(
+    (destination: PageDestination) => {
+      const container = containerRef.current;
+      const current = layoutRef.current;
+      if (!container || !current) return;
+      container.scrollTop = destinationScrollTop(current, destination);
+      updateView(true);
+      emit();
+    },
+    [updateView, emit],
   );
 
   // Measure the container, and follow its size.
@@ -277,23 +354,12 @@ export const NativeViewer = forwardRef<ViewerHandle, NativeViewerProps>(function
         y: event.clientY - box.top,
       });
     };
-    // A click on a highlight opens its editor; a click elsewhere clears the selection toolbar.
-    const onMouseUp = (event: MouseEvent) => {
-      const element = highlightAt(container, event.clientX, event.clientY);
-      if (element?.dataset.highlightId) {
-        latest.current.onHighlightPress(element.dataset.highlightId, element.getBoundingClientRect());
-      } else {
-        latest.current.onSelectionClear();
-      }
-    };
     container.addEventListener("scroll", onScroll);
     container.addEventListener("wheel", onWheel, { passive: false });
-    container.addEventListener("mouseup", onMouseUp);
     return () => {
       if (frame) cancelAnimationFrame(frame);
       container.removeEventListener("scroll", onScroll);
       container.removeEventListener("wheel", onWheel);
-      container.removeEventListener("mouseup", onMouseUp);
     };
   }, [updateView, emit, zoomTo]);
 
@@ -325,6 +391,155 @@ export const NativeViewer = forwardRef<ViewerHandle, NativeViewerProps>(function
     if (container) paintHighlightLayer(container, pageAtScale1, highlights);
   }, [slots.first, slots.last, highlights, pageAtScale1]);
 
+  // Search: the matches are drawn as percentages of the page box, so a zoom needs no redraw.
+  const search = useRef<SearchController | null>(null);
+  const paintSearch = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const controller = search.current;
+    const active = controller && controller.active !== null ? controller.results.at(controller.active) : null;
+    paintSearchLayer(
+      container,
+      pageAtScale1,
+      controller?.results ?? null,
+      active ? { page: active.page, ordinal: active.ordinal } : null,
+    );
+  }, [pageAtScale1]);
+  useLayoutEffect(() => {
+    paintSearch();
+  }, [slots.first, slots.last, paintSearch]);
+  const paintSearchRef = useRef(paintSearch);
+  useEffect(() => {
+    paintSearchRef.current = paintSearch;
+  }, [paintSearch]);
+  useEffect(
+    () => () => {
+      search.current?.dispose();
+      search.current = null;
+    },
+    [],
+  );
+
+  const find = useCallback(
+    (query: string, options?: FindOptions) => {
+      let controller = search.current;
+      if (!controller) {
+        // Nothing to clear when no search ever ran.
+        if (query.trim() === "") return;
+        controller = new SearchController(
+          {
+            search: searchDocument,
+            cancel: cancelSearch,
+            onProgress: onSearchProgress,
+            onDone: onSearchDone,
+          },
+          bookId,
+          {
+            readingPage: () => {
+              const container = containerRef.current;
+              const current = layoutRef.current;
+              return container && current ? positionAtScroll(current, container.scrollTop).page : 1;
+            },
+            onResult: (result) => latest.current.onFindResult(result),
+            onChange: () => paintSearchRef.current(),
+            reveal: (match) => {
+              const container = containerRef.current;
+              const current = layoutRef.current;
+              const first = match.rects[0];
+              if (!container || !current || !first) return;
+              const top = current.topOf(match.page - 1) + first[1] * current.scale;
+              const target = scrollToReveal(top, container.scrollTop, container.clientHeight);
+              if (target === null) return;
+              container.scrollTop = target;
+              updateView(true);
+              emit();
+            },
+          },
+        );
+        search.current = controller;
+      }
+      controller.find(query, options);
+    },
+    [bookId, updateView, emit],
+  );
+
+  // Text selection, links and copying. Everything is looked up by position or from the selection, because the layers
+  // above the page take no pointer events but the text.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const detachDragSelection = attachDragSelection(container, { layerSelector: `.${TEXT_LAYER_CLASS}` });
+    let pressedAt: { x: number; y: number } | null = null;
+    const onMouseDown = (event: MouseEvent) => {
+      pressedAt = { x: event.clientX, y: event.clientY };
+    };
+    // A mouse release ends a selection. The selection is read a tick later, once the browser has settled it.
+    const onMouseUp = (event: MouseEvent) => {
+      const pressed = pressedAt;
+      pressedAt = null;
+      window.setTimeout(() => {
+        const selection = window.getSelection();
+        const parts = selection ? readNativeSelection(selection, container, pageAtScale1) : [];
+        if (selection && parts.length > 0) {
+          latest.current.onSelectionEnd(parts, selection.getRangeAt(0).getBoundingClientRect());
+          return;
+        }
+        const moved =
+          pressed !== null && Math.hypot(event.clientX - pressed.x, event.clientY - pressed.y) > CLICK_SLOP;
+        const link = moved ? null : linkAt(container, event.clientX, event.clientY);
+        const target = link ? targetOfElement(link) : null;
+        if (target) {
+          latest.current.onSelectionClear();
+          followLink(target, {
+            goTo: scrollToDestination,
+            openExternal: (uri) => void openExternalUrl(uri).catch(() => undefined),
+          });
+          return;
+        }
+        const element = highlightAt(container, event.clientX, event.clientY);
+        if (element?.dataset.highlightId) {
+          latest.current.onHighlightPress(element.dataset.highlightId, element.getBoundingClientRect());
+        } else {
+          latest.current.onSelectionClear();
+        }
+      }, 0);
+    };
+    // The pointer shows a hand over a link.
+    let hover = 0;
+    let pointer = { x: 0, y: 0 };
+    const onMouseMove = (event: MouseEvent) => {
+      pointer = { x: event.clientX, y: event.clientY };
+      if (hover) return;
+      hover = requestAnimationFrame(() => {
+        hover = 0;
+        container.classList.toggle("atril-over-link", linkAt(container, pointer.x, pointer.y) !== null);
+      });
+    };
+    // Copy puts the words with the line and block breaks of the page on the clipboard, not what the DOM would give.
+    const onCopy = (event: ClipboardEvent) => {
+      const selection = window.getSelection();
+      const parts = selection ? readNativeSelection(selection, container, pageAtScale1) : [];
+      if (parts.length === 0) return;
+      event.clipboardData?.setData("text/plain", selectionCopyText(parts));
+      event.preventDefault();
+    };
+    container.addEventListener("mousedown", onMouseDown);
+    container.addEventListener("mouseup", onMouseUp);
+    container.addEventListener("mousemove", onMouseMove);
+    container.addEventListener("copy", onCopy);
+    return () => {
+      detachDragSelection();
+      if (hover) cancelAnimationFrame(hover);
+      container.removeEventListener("mousedown", onMouseDown);
+      container.removeEventListener("mouseup", onMouseUp);
+      container.removeEventListener("mousemove", onMouseMove);
+      container.removeEventListener("copy", onCopy);
+    };
+  }, [pageAtScale1, scrollToDestination]);
+
+  // The text and links of the pages in view (and one on each side), from the engine.
+  const pageData = useMemo(() => createPageDataSource(bookId), [bookId]);
+
   useImperativeHandle(
     ref,
     () => ({
@@ -338,11 +553,9 @@ export const NativeViewer = forwardRef<ViewerHandle, NativeViewerProps>(function
         updateView(true);
         emit();
       },
-      find() {
-        // Search comes with R2.2.
-      },
-      goToDestination() {
-        // The index comes with R2.2.
+      find,
+      goToDestination(destination) {
+        if (typeof destination === "object" && !Array.isArray(destination)) scrollToDestination(destination);
       },
       revealHighlight(highlight) {
         const container = containerRef.current;
@@ -382,7 +595,7 @@ export const NativeViewer = forwardRef<ViewerHandle, NativeViewerProps>(function
         if (scaleRef.current !== null) zoomTo(nextScale(scaleRef.current, direction));
       },
     }),
-    [doc, updateView, emit, zoomTo],
+    [doc, updateView, emit, zoomTo, find, scrollToDestination],
   );
 
   // The sharp image of a zoom is asked for once the zoom has stopped changing. Until then the old image is stretched.
@@ -398,10 +611,12 @@ export const NativeViewer = forwardRef<ViewerHandle, NativeViewerProps>(function
       layout.widthOf(view.first) * layout.heightOf(view.first) * (imageScale / layout.scale) ** 2 >
         HEAVY_PAGE_PIXELS;
     const imageRange = widenRange(imageView, heavy ? 0 : IMAGE_OVERSCAN, base.count);
+    const textRange = widenRange(imageView, TEXT_OVERSCAN, base.count);
     for (let index = slots.first; index <= slots.last; index += 1) {
       const width = Math.round(layout.widthOf(index));
       const wantsImage = index >= imageRange.first && index <= imageRange.last;
       const inView = index >= imageView.first && index <= imageView.last;
+      const geometry = doc.pages[index];
       pages.push(
         <PageSlot
           key={index}
@@ -412,6 +627,10 @@ export const NativeViewer = forwardRef<ViewerHandle, NativeViewerProps>(function
           height={Math.round(layout.heightOf(index))}
           imageUrl={wantsImage ? pageImageUrl(doc.pageBaseUrl, index + 1, imageScale) : null}
           priority={inView ? "high" : "low"}
+          data={index >= textRange.first && index <= textRange.last ? pageData : null}
+          pointsWidth={geometry?.width ?? 0}
+          pointsHeight={geometry?.height ?? 0}
+          scale={layout.scale}
         />,
       );
     }

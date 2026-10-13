@@ -8,8 +8,8 @@ function parse(value: string | null | undefined): ViewerKind | null {
 }
 
 /**
- * Which viewer to open. pdf.js stays the default until the native one has text selection, search, index and links
- * (R2.2). Two ways to try the native one, in priority order:
+ * Which viewer to open. pdf.js stays the default until the native one replaces it (R2.3); the native one now has text
+ * selection, highlights, search, index and links (R2.2). Two ways to try the native one, in priority order:
  * 1. `localStorage.setItem("atril.viewer", "native")` in the webview console, then reopen the book
  *    (`"pdfjs"` forces pdf.js; `removeItem` clears it).
  * 2. Start the app with `VITE_ATRIL_VIEWER=native npm run tauri dev -- --release`.
