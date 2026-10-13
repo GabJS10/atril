@@ -5,13 +5,14 @@
 //! - [`document`]: un PDF abierto en MuPDF (geometría de todas las páginas y render a JPEG).
 //! - [`scheduler`]: cola priorizada con cancelación y precarga (estructura pura, sin hilos).
 //! - [`cache`]: caché LRU de JPEG limitada por bytes.
-//! - [`pool`]: el [`Engine`], que une todo con un pool de hilos.
-//! - [`api`]: el comando `open_document` y la resolución de libros.
+//! - [`pool`]: el [`Engine`], que une todo con un pool de hilos de render y un hilo de lectura.
+//! - [`text`], [`search`], [`outline`] y [`links`]: texto con cajas, búsqueda por eventos, índice y enlaces (R1.2).
+//! - [`api`]: los comandos del motor y la resolución de libros.
 //!
 //! Modelo de hilos de MuPDF: cada hilo tiene su propio contexto (`fz_context`) y un `Document` no se puede
-//! pasar de un hilo a otro. Por eso cada hilo del pool abre **su propia copia** de los documentos que usa
-//! (un LRU pequeño por hilo) y los trabajos se mandan al pool como cierres que reciben el `Worker` del hilo:
-//! texto, búsqueda, índice o enlaces (R1.2) se añaden con [`Engine::with_document`] sin tocar el pool.
+//! pasar de un hilo a otro. Por eso cada hilo abre **su propia copia** de los documentos que usa (un LRU pequeño
+//! por hilo). El pool de render atiende las páginas del visor; el hilo de lectura atiende el texto, los enlaces,
+//! el índice y la búsqueda, que avanza por páginas para que nunca bloquee a una petición larga.
 
 pub mod api;
 pub mod cache;
@@ -20,10 +21,17 @@ pub mod encode;
 #[cfg(test)]
 mod engine_tests;
 pub mod geometry;
+pub mod links;
+pub mod outline;
 pub mod pool;
+pub mod raw;
+#[cfg(test)]
+mod reading_tests;
 pub mod scheduler;
+pub mod search;
 #[cfg(test)]
 pub mod testpdf;
+pub mod text;
 
 use thiserror::Error;
 
@@ -32,12 +40,21 @@ use crate::error::{AppError, ErrorCode};
 pub use document::{DocumentInfo, OpenDocument};
 pub use pool::{Engine, EngineConfig, Worker};
 
+/// Rectángulo `[x0, y0, x1, y1]` en coordenadas del visor a escala 1 (origen arriba a la izquierda, `y` hacia
+/// abajo), el mismo espacio que `width`, `height` y `transform` de `open_document`.
+pub type ViewRect = [f64; 4];
+
 /// Hilos de render. Con 4 la memoria de los escaneos llegaba a 1,1 GB y no se ganaba velocidad (spike R0.1).
 pub const WORKER_THREADS: usize = 2;
 /// Documentos que cada hilo mantiene abiertos.
 pub const OPEN_DOCUMENTS_PER_WORKER: usize = 3;
+/// Documentos que mantiene el hilo de lectura (búsqueda y texto de varios libros a la vez).
+pub const OPEN_DOCUMENTS_READER: usize = 3;
 /// Límite por defecto de la caché de JPEG. Fácil de cambiar: `EngineConfig::cache_bytes`.
 pub const DEFAULT_CACHE_BYTES: usize = 256 * 1024 * 1024;
+/// Tope del store de recursos de MuPDF que se mantiene tras cada trabajo (`EngineConfig::store_bytes`). Con 64 MB,
+/// un escaneo ya visto suele seguir decodificado y el proceso no crece más por los escaneos.
+pub const DEFAULT_STORE_BYTES: usize = 64 * 1024 * 1024;
 /// Calidad JPEG de las páginas (63 ms a 1240 px con `image`; ver la medición en el PR).
 pub const JPEG_QUALITY: u8 = 85;
 
@@ -63,6 +80,9 @@ pub enum EngineError {
     /// La petición ya no hacía falta (el visor pidió otra zona antes de que se atendiera).
     #[error("request superseded")]
     Superseded,
+    /// Argumentos que no se pueden usar (consulta vacía o demasiado larga).
+    #[error("{0}")]
+    InvalidInput(String),
     #[error("the PDF engine is shutting down")]
     Shutdown,
 }
@@ -72,7 +92,9 @@ impl From<EngineError> for AppError {
         let code = match &error {
             EngineError::Io(_) => ErrorCode::Io,
             EngineError::InvalidPdf(_) => ErrorCode::InvalidPdf,
-            EngineError::PageOutOfRange { .. } => ErrorCode::InvalidInput,
+            EngineError::PageOutOfRange { .. } | EngineError::InvalidInput(_) => {
+                ErrorCode::InvalidInput
+            }
             EngineError::Render(_) | EngineError::Superseded | EngineError::Shutdown => {
                 ErrorCode::Internal
             }

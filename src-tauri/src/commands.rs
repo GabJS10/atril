@@ -3,12 +3,16 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use percent_encoding::percent_decode_str;
-use tauri::State;
 use tauri::http::HeaderMap;
 use tauri::ipc::{InvokeBody, Request};
+use tauri::{AppHandle, Emitter, State};
 
 use crate::AppState;
 use crate::collections::{self, Collection};
+use crate::engine::links::PageLink;
+use crate::engine::outline::OutlineItem;
+use crate::engine::search::{SearchEvent, SearchStarted};
+use crate::engine::text::TextWord;
 use crate::engine::{self, api::OpenedDocument};
 use crate::error::AppError;
 use crate::folders::{self, LibraryFolder};
@@ -63,6 +67,99 @@ pub async fn open_document(
     tauri::async_runtime::spawn_blocking(move || engine::api::open_document(&db, &engine, &book_id))
         .await
         .map_err(|error| AppError::internal(format!("open_document task failed: {error}")))?
+}
+
+/// Palabras de una página con su caja en coordenadas del visor a escala 1, en orden de lectura
+/// (docs/IPC.md, "Texto, búsqueda, índice y enlaces").
+#[tauri::command]
+pub async fn get_page_text(
+    app: State<'_, AppState>,
+    book_id: String,
+    page: i64,
+) -> Result<Vec<TextWord>, AppError> {
+    let page = page_number(page)?;
+    let db = Arc::clone(&app.db);
+    let engine = Arc::clone(&app.engine);
+    tauri::async_runtime::spawn_blocking(move || {
+        engine::api::page_text(&db, &engine, &book_id, page)
+    })
+    .await
+    .map_err(|error| AppError::internal(format!("get_page_text task failed: {error}")))?
+}
+
+/// Enlaces de una página con su caja y su destino (docs/IPC.md).
+#[tauri::command]
+pub async fn get_page_links(
+    app: State<'_, AppState>,
+    book_id: String,
+    page: i64,
+) -> Result<Vec<PageLink>, AppError> {
+    let page = page_number(page)?;
+    let db = Arc::clone(&app.db);
+    let engine = Arc::clone(&app.engine);
+    tauri::async_runtime::spawn_blocking(move || {
+        engine::api::page_links(&db, &engine, &book_id, page)
+    })
+    .await
+    .map_err(|error| AppError::internal(format!("get_page_links task failed: {error}")))?
+}
+
+/// Índice del libro (docs/IPC.md, "Texto, búsqueda, índice y enlaces").
+#[tauri::command]
+pub async fn get_outline(
+    app: State<'_, AppState>,
+    book_id: String,
+) -> Result<Vec<OutlineItem>, AppError> {
+    let db = Arc::clone(&app.db);
+    let engine = Arc::clone(&app.engine);
+    tauri::async_runtime::spawn_blocking(move || engine::api::outline(&db, &engine, &book_id))
+        .await
+        .map_err(|error| AppError::internal(format!("get_outline task failed: {error}")))?
+}
+
+/// Empieza una búsqueda y devuelve su `searchId` enseguida. Los resultados llegan por los eventos
+/// `search://progress` y `search://done` (docs/IPC.md).
+#[tauri::command]
+pub async fn search_document(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    book_id: String,
+    query: String,
+) -> Result<SearchStarted, AppError> {
+    let db = Arc::clone(&state.db);
+    let engine = Arc::clone(&state.engine);
+    tauri::async_runtime::spawn_blocking(move || {
+        let emitter = app.clone();
+        engine::api::start_search(&db, &engine, &book_id, &query, move |event| {
+            emit_search_event(&emitter, event);
+        })
+    })
+    .await
+    .map_err(|error| AppError::internal(format!("search_document task failed: {error}")))?
+    .map(|search_id| SearchStarted { search_id })
+}
+
+/// Cancela una búsqueda. Si ya terminó o no existe, no hace nada.
+#[tauri::command]
+pub fn cancel_search(state: State<'_, AppState>, search_id: String) {
+    state.engine.cancel_search(&search_id);
+}
+
+fn page_number(page: i64) -> Result<u32, AppError> {
+    u32::try_from(page)
+        .ok()
+        .filter(|page| *page >= 1)
+        .ok_or_else(|| AppError::invalid_input("page must be a page number from 1"))
+}
+
+fn emit_search_event(app: &AppHandle, event: SearchEvent) {
+    let result = match event {
+        SearchEvent::Progress(payload) => app.emit("search://progress", payload),
+        SearchEvent::Done(payload) => app.emit("search://done", payload),
+    };
+    if let Err(error) = result {
+        tracing::warn!(%error, "could not emit a search event");
+    }
 }
 
 #[tauri::command]

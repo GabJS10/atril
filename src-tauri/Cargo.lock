@@ -218,6 +218,7 @@ dependencies = [
  "jpeg-encoder",
  "libc",
  "mupdf",
+ "mupdf-sys",
  "notify",
  "percent-encoding",
  "regex",

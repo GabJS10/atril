@@ -1,6 +1,6 @@
 # Contrato IPC (frontend ⇄ backend)
 
-**Versión:** v0.7 (el motor nativo, `open_document` y `GET /page/…`, es de la v0.7; la ruta `POST /jpx` es de la v0.6). **Dueño:** `plan`. `backend` propone los cambios y `frontend` los implementa en `src/api/tauri.ts`. Un cambio que rompa el contrato se coordina antes con `plan` (ver `AGENTS.md`).
+**Versión:** v0.8 (texto con cajas, búsqueda por eventos, índice y enlaces son de la v0.8; el motor nativo, `open_document` y `GET /page/…`, es de la v0.7; la ruta `POST /jpx` es de la v0.6). **Dueño:** `plan`. `backend` propone los cambios y `frontend` los implementa en `src/api/tauri.ts`. Un cambio que rompa el contrato se coordina antes con `plan` (ver `AGENTS.md`).
 
 Este documento es la única fuente de verdad sobre los comandos Tauri, los eventos, las URLs del protocolo `atril://` y los tipos compartidos. Si el código y este archivo no coinciden, se corrige uno de los dos en el mismo cambio.
 
@@ -227,8 +227,54 @@ type PageGeometry = {
 - Cada petición descarta las pendientes (en cola, no las que ya se están renderizando) del mismo libro que quedan a más de 12 páginas (el visor ya está en otra zona) o que son de otra escala (el usuario cambió el zoom): esas reciben `410 Gone`. Un `410` significa «ya no hacía falta»; si el `<img>` sigue en pantalla, hay que volver a pedirla. Una página que ya se está renderizando termina siempre y queda en caché.
 - Tras cada petición se precargan ±2 páginas, primero las del sentido de avance, con la misma escala. La precarga no tiene destinatario: solo llena la caché.
 - Caché de JPEG ya codificados en memoria (256 MB por defecto), clave (libro, página, escala cuantizada).
+- Memoria de MuPDF: todos los contextos comparten un store de recursos de 256 MB (imágenes decodificadas, fuentes). El motor lo recorta a 64 MB tras cada trabajo (`EngineConfig::store_bytes`) y después pide a glibc que devuelva la memoria libre de sus heaps (`malloc_trim`). Con ambos, el proceso queda en torno a 230 MB tras 48 escaneos de render, y un escaneo ya visto se vuelve a dibujar en unos 13 ms (sin devolver el heap: unos 365 MB y unos 480 ms).
 
 **Errores del protocolo en el visor:** `404` y `422` no se reintentan; `410` se reintenta si la página sigue visible; `500` se puede reintentar una vez.
+
+### Texto, búsqueda, índice y enlaces (v0.8)
+
+Todas las coordenadas de esta sección (`ViewRect`) están en el espacio del visor a escala 1: origen arriba a la izquierda, `y` hacia abajo, en puntos, el mismo que `width`, `height` y `transform` de `open_document`. El front multiplica por el zoom. Las páginas son 1-based.
+
+| Comando | Argumentos | Devuelve | Errores |
+|---|---|---|---|
+| `get_page_text` | `{ bookId: string; page: number }` | `TextWord[]` | `invalid_input` (página fuera del libro o ID sin forma de huella), `not_found`, `file_missing`, `invalid_pdf`, `internal` |
+| `get_page_links` | `{ bookId: string; page: number }` | `PageLink[]` | `invalid_input` (página fuera del libro o ID sin forma de huella), `not_found`, `file_missing`, `invalid_pdf`, `internal` |
+| `get_outline` | `{ bookId: string }` | `OutlineItem[]` (vacío si el PDF no tiene índice) | `invalid_input` (ID sin forma de huella), `not_found`, `file_missing`, `invalid_pdf`, `internal` |
+| `search_document` | `{ bookId: string; query: string }` | `SearchStarted`. Devuelve enseguida; los resultados llegan por eventos | `invalid_input` (consulta vacía, solo espacios o de más de 200 caracteres; o ID sin forma de huella), `not_found`, `file_missing`, `invalid_pdf` |
+| `cancel_search` | `{ searchId: string }` | `null`. Si la búsqueda ya terminó o no existe, no hace nada | — |
+
+```ts
+type ViewRect = [number, number, number, number]; // x0, y0, x1, y1 en el visor a escala 1
+type TextWord = {
+  text: string;       // palabra (sin espacios)
+  rect: ViewRect;     // caja de todos sus caracteres
+  lineEnd: boolean;   // última palabra de su línea
+  blockEnd: boolean;  // última palabra de su bloque (párrafo)
+};
+type LinkTarget = { page: number; y: number | null } | { uri: string }; // interno | externo
+type PageLink = { rect: ViewRect; target: LinkTarget };
+type OutlineItem = {
+  title: string;
+  page: number | null; // destino, 1-based
+  y: number | null;    // altura del destino, en el visor a escala 1 (null si el destino no la fija)
+  uri: string | null;  // enlace externo permitido (http, https o mailto)
+  children: OutlineItem[];
+};
+type SearchStarted = { searchId: string };
+```
+
+**Reglas**
+- **`get_page_text`:** las palabras van en el orden del contenido de la página, el que da MuPDF (el mismo que sigue la capa de texto de pdf.js). Para casi todos los libros es el orden de lectura; en páginas con columnas o texto superpuesto puede no serlo. Dos palabras de la misma línea van separadas por un espacio; `lineEnd` marca un salto de línea al copiar y `blockEnd` una línea en blanco. El guion blando y los caracteres de ancho cero no aparecen.
+- **`get_page_links`:** solo se devuelven enlaces utilizables: internos (`{ page, y }`, con `y` el borde superior del destino) y externos `http`, `https` y `mailto` (`{ uri }`). Otros esquemas (`file:`, `javascript:`, `launch`…), los destinos fuera del libro y los que MuPDF no puede resolver se omiten.
+- **`get_outline`:** árbol de marcadores en el orden del PDF. Un marcador sin destino válido tiene `page`, `y` y `uri` a `null`. Las entradas de `children` tienen la misma forma. Se leen como mucho 32 niveles y 20 000 marcadores: lo que hay más abajo o más allá se ignora, así que un índice muy anidado no puede tumbar el proceso. Un destino con nombre se resuelve con MuPDF; un destino explícito (`/XYZ`, `/FitH`, `/FitR`) se convierte con la geometría de la página y su `y` se acota a la altura de la página.
+- **`search_document`:** la búsqueda no distingue mayúsculas, acentos ni formas de compatibilidad (`ﬁ` casa con `fi`): «dios» encuentra «Dios», «DIOS» y «Diós». Una frase que cruza un salto de línea sí se encuentra y su coincidencia tiene un rectángulo por línea. Una búsqueda nueva del mismo libro cancela la anterior: su `search://done` llega con `cancelled: true`. Las búsquedas corren página a página en el hilo de lectura del motor, no en el pool de render, así que no retrasan los renders del visor más que lo que cuesta una página.
+- El front ignora los eventos de un `searchId` que no reconoce (búsquedas anteriores).
+
+**Eventos de búsqueda**
+| Evento | Payload | Cuándo |
+|---|---|---|
+| `search://progress` | `{ searchId: string; page: number; matches: { rects: ViewRect[] }[] }` | Por cada página con coincidencias, en orden de página. `page` es 1-based |
+| `search://done` | `{ searchId: string; total: number; pagesSearched: number; cancelled: boolean; error: AppError \| null }` | Una vez por búsqueda: al terminar, al cancelarla (`cancelled: true`) o si el libro no se puede leer (`error`). `total` cuenta las coincidencias encontradas |
 
 ### Fase 3 (v0.4, aprobada)
 
@@ -395,3 +441,5 @@ Los parámetros que faltan valen lo indicado por defecto; los desconocidos se ig
 | `library://changed` | `{ reason: "scan" \| "watch" \| "import" \| "index" }` | Cambió la biblioteca por algo que no pidió el front (escaneo de una carpeta, vigilancia, importación en segundo plano, o un libro indexado por el indexador nativo con `reason: "index"`): el front invalida sus consultas. Los comandos que pide el propio front no emiten el evento; el front invalida lo suyo |
 | `library://scan` | `ScanStatus` | Empieza, avanza (como mucho una vez por segundo) o termina un escaneo |
 | `app://open-file` | `{ bookId: string }` | El sistema pidió abrir un PDF (segundo doble clic con la app abierta) |
+| `search://progress` | `{ searchId, page, matches }` | Coincidencias de una página durante una búsqueda (ver "Texto, búsqueda, índice y enlaces (v0.8)") |
+| `search://done` | `{ searchId, total, pagesSearched, cancelled, error }` | Fin de una búsqueda: terminada, cancelada o con error |
