@@ -14,11 +14,28 @@ export function wordStyle(rect: ViewRect): WordStyle {
 }
 
 /**
- * The horizontal stretch that makes a word, drawn in the layer's font, as wide as its box. `natural` is the width
+ * What a word's span holds and how wide it must come out. Inside a line the span also holds the space after the word
+ * and reaches the next word, so a selection over several words has no holes between them; the last word of a line
+ * ends at its own box. The space is not part of the word: slices of the selection are cut to `word.text.length`.
+ */
+export function spanContent(words: readonly TextWord[], index: number): { text: string; width: number } {
+  const word = words[index]!;
+  const own = Math.max(word.rect[2] - word.rect[0], 0);
+  const next = words[index + 1];
+  if (word.lineEnd || !next) return { text: word.text, width: own };
+  const gap = next.rect[0] - word.rect[2];
+  // A gap that is negative (overlapping words) or as wide as a column (the next word is not on this line) is no space.
+  const height = word.rect[3] - word.rect[1];
+  const sameLine = Math.abs(next.rect[1] - word.rect[1]) < height / 2;
+  if (!sameLine || gap <= 0 || gap > height * 2) return { text: word.text, width: own };
+  return { text: `${word.text} `, width: own + gap };
+}
+
+/**
+ * The horizontal stretch that makes a span, drawn in the layer's font, as wide as its box. `natural` is the width
  * the browser gave the text; 0 (not laid out yet, or no text) leaves it alone.
  */
-export function stretchFor(rect: ViewRect, natural: number): number {
-  const width = rect[2] - rect[0];
+export function stretchFor(width: number, natural: number): number {
   if (!(natural > 0) || !(width > 0)) return 1;
   return width / natural;
 }

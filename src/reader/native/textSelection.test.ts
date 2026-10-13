@@ -135,6 +135,19 @@ describe("readNativeSelection", () => {
 });
 
 describe("coveredChars", () => {
+  it("does not count the space a span holds after its word", () => {
+    const page = setup();
+    const span = page.querySelectorAll<HTMLElement>(".atril-text-word")[0]!;
+    span.textContent = "En "; // the layer adds the space after a word inside a line
+    const all = document.createRange();
+    all.selectNodeContents(span);
+    expect(coveredChars(all, span, 2)).toEqual({ from: 0, to: 2 });
+    const onlySpace = document.createRange();
+    onlySpace.setStart(span.firstChild!, 2);
+    onlySpace.setEnd(span.firstChild!, 3);
+    expect(coveredChars(onlySpace, span, 2)).toBeNull();
+  });
+
   it("understands a boundary on the span itself: offset 0 is before its text, 1 after it", () => {
     const page = setup();
     const span = page.querySelectorAll<HTMLElement>(".atril-text-word")[1]!;

@@ -32,6 +32,9 @@ export function coveredChars(
   else if (range.startContainer === span) from = range.startOffset > 0 ? length : 0;
   if (range.endContainer === textNode) to = range.endOffset;
   else if (range.endContainer === span) to = range.endOffset > 0 ? length : 0;
+  // The span can hold the space after the word; it is not part of the word.
+  from = Math.min(from, length);
+  to = Math.min(to, length);
   return to > from ? { from, to } : null;
 }
 

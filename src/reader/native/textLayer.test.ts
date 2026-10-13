@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { TextWord } from "../../api/types";
-import { copyTextOf, foldedTextOf, separatorAfter, sliceBox, stretchFor, wordStyle } from "./textLayer";
+import {
+  copyTextOf,
+  foldedTextOf,
+  separatorAfter,
+  sliceBox,
+  spanContent,
+  stretchFor,
+  wordStyle,
+} from "./textLayer";
 
 const word = (text: string, x0: number, lineEnd = false, blockEnd = false): TextWord => ({
   text,
@@ -27,14 +35,41 @@ describe("wordStyle", () => {
 
 describe("stretchFor", () => {
   it("stretches the text drawn by the browser to the width of the engine's box", () => {
-    expect(stretchFor([0, 0, 50, 10], 40)).toBeCloseTo(1.25, 10);
-    expect(stretchFor([0, 0, 30, 10], 40)).toBeCloseTo(0.75, 10);
+    expect(stretchFor(50, 40)).toBeCloseTo(1.25, 10);
+    expect(stretchFor(30, 40)).toBeCloseTo(0.75, 10);
   });
 
   it("leaves the text alone when nothing was laid out or the box is empty", () => {
-    expect(stretchFor([0, 0, 50, 10], 0)).toBe(1);
-    expect(stretchFor([5, 0, 5, 10], 40)).toBe(1);
-    expect(stretchFor([0, 0, 50, 10], Number.NaN)).toBe(1);
+    expect(stretchFor(50, 0)).toBe(1);
+    expect(stretchFor(0, 40)).toBe(1);
+    expect(stretchFor(50, Number.NaN)).toBe(1);
+  });
+});
+
+describe("spanContent", () => {
+  const at = (text: string, x0: number, x1: number, y0 = 100, lineEnd = false): TextWord => ({
+    text,
+    rect: [x0, y0, x1, y0 + 12],
+    lineEnd,
+    blockEnd: false,
+  });
+
+  it("reaches the next word of the line with the space between them", () => {
+    const words = [at("En", 50, 70), at("un", 76, 90)];
+    expect(spanContent(words, 0)).toEqual({ text: "En ", width: 26 });
+  });
+
+  it("ends a line, and the last word of the page, at its own box", () => {
+    const words = [at("lugar", 50, 100, 100, true), at("de", 50, 70, 115)];
+    expect(spanContent(words, 0)).toEqual({ text: "lugar", width: 50 });
+    expect(spanContent(words, 1)).toEqual({ text: "de", width: 20 });
+  });
+
+  it("does not reach a word that is not next to it on the same line", () => {
+    // Another column far to the right, another line, or overlapping.
+    expect(spanContent([at("a", 0, 10), at("b", 200, 210)], 0).text).toBe("a");
+    expect(spanContent([at("a", 0, 10), at("b", 20, 30, 140)], 0).text).toBe("a");
+    expect(spanContent([at("a", 0, 10), at("b", 8, 30)], 0)).toEqual({ text: "a", width: 10 });
   });
 });
 

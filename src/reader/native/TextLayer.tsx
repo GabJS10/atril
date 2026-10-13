@@ -1,6 +1,6 @@
 import { memo, useLayoutEffect, useRef } from "react";
 import type { TextWord } from "../../api/types";
-import { stretchFor, wordStyle } from "./textLayer";
+import { spanContent, stretchFor, wordStyle } from "./textLayer";
 import { layerWords, TEXT_LAYER_CLASS, TEXT_WORD_CLASS } from "./textSelection";
 
 /**
@@ -21,8 +21,8 @@ export const TextLayer = memo(function TextLayer({ words }: { words: TextWord[] 
     const spans = Array.from(layer.children) as HTMLElement[];
     const natural = spans.map((span) => span.offsetWidth);
     spans.forEach((span, index) => {
-      const word = words[index];
-      const stretch = word ? stretchFor(word.rect, natural[index] ?? 0) : 1;
+      const stretch =
+        index < words.length ? stretchFor(spanContent(words, index).width, natural[index] ?? 0) : 1;
       span.style.transform = stretch === 1 ? "" : `scaleX(${stretch})`;
     });
   }, [words]);
@@ -31,6 +31,7 @@ export const TextLayer = memo(function TextLayer({ words }: { words: TextWord[] 
     <div ref={ref} className={TEXT_LAYER_CLASS}>
       {words.map((word, index) => {
         const style = wordStyle(word.rect);
+        const content = spanContent(words, index);
         return (
           <span
             key={index}
@@ -43,7 +44,7 @@ export const TextLayer = memo(function TextLayer({ words }: { words: TextWord[] 
               lineHeight: `${style.height}px`,
             }}
           >
-            {word.text}
+            {content.text}
           </span>
         );
       })}
