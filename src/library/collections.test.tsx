@@ -18,6 +18,7 @@ function book(id: string, title: string): Book {
     pageCount: 10,
     fileUrl: `atril://localhost/book/${id}`,
     coverUrl: null,
+    coverColor: null,
     favorite: false,
     missing: false,
     scanState: "done",
@@ -56,6 +57,8 @@ function recordCommands() {
         return [meditaciones];
       case "list_library_folders":
         return [];
+      case "list_highlights":
+        return [];
       default:
         calls.push({ cmd, args });
         return null;
@@ -74,8 +77,8 @@ describe("Salas and removals", () => {
     const calls = recordCommands();
     renderAt("/");
 
-    await userEvent.type(await screen.findByPlaceholderText("Nombre de la Sala"), "  Ensayo  ");
-    await userEvent.click(screen.getByRole("button", { name: "Crear" }));
+    await userEvent.click((await screen.findAllByRole("button", { name: "Nueva Sala" }))[0]!);
+    await userEvent.type(screen.getByPlaceholderText("Nombre de la Sala"), "  Ensayo  {Enter}");
 
     await waitFor(() => expect(calls).toContainEqual({ cmd: "create_collection", args: { name: "Ensayo" } }));
   });
@@ -83,7 +86,8 @@ describe("Salas and removals", () => {
   it("adds a book to a Sala when it is dropped on the Sala", async () => {
     const calls = recordCommands();
     renderAt("/");
-    const row = (await screen.findByText("Filosofía")).closest("a") as HTMLElement;
+    // The sidebar lists the Sala too; the card in the Salas section is the last link.
+    const row = (await screen.findAllByRole("link", { name: /Filosofía/ })).at(-1)!;
 
     const dataTransfer = {
       types: [BOOK_DRAG_TYPE],

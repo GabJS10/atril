@@ -9,93 +9,119 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as SettingsRouteImport } from './routes/settings'
-import { Route as CollectionCollectionIdRouteImport } from './routes/collection.$collectionId'
+import { Route as ShellRouteImport } from './routes/_shell'
+import { Route as ShellIndexRouteImport } from './routes/_shell.index'
+import { Route as ShellSettingsRouteImport } from './routes/_shell.settings'
 import { Route as ReadBookIdRouteImport } from './routes/read.$bookId'
+import { Route as ShellBooksScopeRouteImport } from './routes/_shell.books.$scope'
+import { Route as ShellCollectionCollectionIdRouteImport } from './routes/_shell.collection.$collectionId'
 
-const IndexRoute = IndexRouteImport.update({
+const ShellRoute = ShellRouteImport.update({
+  id: '/_shell',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ShellIndexRoute = ShellIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => ShellRoute,
 } as any)
-const SettingsRoute = SettingsRouteImport.update({
+const ShellSettingsRoute = ShellSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CollectionCollectionIdRoute = CollectionCollectionIdRouteImport.update({
-  id: '/collection/$collectionId',
-  path: '/collection/$collectionId',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => ShellRoute,
 } as any)
 const ReadBookIdRoute = ReadBookIdRouteImport.update({
   id: '/read/$bookId',
   path: '/read/$bookId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ShellBooksScopeRoute = ShellBooksScopeRouteImport.update({
+  id: '/books/$scope',
+  path: '/books/$scope',
+  getParentRoute: () => ShellRoute,
+} as any)
+const ShellCollectionCollectionIdRoute =
+  ShellCollectionCollectionIdRouteImport.update({
+    id: '/collection/$collectionId',
+    path: '/collection/$collectionId',
+    getParentRoute: () => ShellRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
-  '/settings': typeof SettingsRoute
-  '/collection/$collectionId': typeof CollectionCollectionIdRoute
+  '/': typeof ShellIndexRoute
+  '/settings': typeof ShellSettingsRoute
   '/read/$bookId': typeof ReadBookIdRoute
+  '/books/$scope': typeof ShellBooksScopeRoute
+  '/collection/$collectionId': typeof ShellCollectionCollectionIdRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
-  '/settings': typeof SettingsRoute
-  '/collection/$collectionId': typeof CollectionCollectionIdRoute
+  '/settings': typeof ShellSettingsRoute
   '/read/$bookId': typeof ReadBookIdRoute
+  '/': typeof ShellIndexRoute
+  '/books/$scope': typeof ShellBooksScopeRoute
+  '/collection/$collectionId': typeof ShellCollectionCollectionIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
-  '/settings': typeof SettingsRoute
-  '/collection/$collectionId': typeof CollectionCollectionIdRoute
+  '/_shell': typeof ShellRouteWithChildren
+  '/_shell/settings': typeof ShellSettingsRoute
   '/read/$bookId': typeof ReadBookIdRoute
+  '/_shell/': typeof ShellIndexRoute
+  '/_shell/books/$scope': typeof ShellBooksScopeRoute
+  '/_shell/collection/$collectionId': typeof ShellCollectionCollectionIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/settings' | '/collection/$collectionId' | '/read/$bookId'
-  fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/settings' | '/collection/$collectionId' | '/read/$bookId'
-  id:
-    | '__root__'
+  fullPaths:
     | '/'
     | '/settings'
-    | '/collection/$collectionId'
     | '/read/$bookId'
+    | '/books/$scope'
+    | '/collection/$collectionId'
+  fileRoutesByTo: FileRoutesByTo
+  to:
+    | '/settings'
+    | '/read/$bookId'
+    | '/'
+    | '/books/$scope'
+    | '/collection/$collectionId'
+  id:
+    | '__root__'
+    | '/_shell'
+    | '/_shell/settings'
+    | '/read/$bookId'
+    | '/_shell/'
+    | '/_shell/books/$scope'
+    | '/_shell/collection/$collectionId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
-  SettingsRoute: typeof SettingsRoute
-  CollectionCollectionIdRoute: typeof CollectionCollectionIdRoute
+  ShellRoute: typeof ShellRouteWithChildren
   ReadBookIdRoute: typeof ReadBookIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
+    '/_shell': {
+      id: '/_shell'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof ShellRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_shell/': {
+      id: '/_shell/'
       path: '/'
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof ShellIndexRouteImport
+      parentRoute: typeof ShellRoute
     }
-    '/settings': {
-      id: '/settings'
+    '/_shell/settings': {
+      id: '/_shell/settings'
       path: '/settings'
       fullPath: '/settings'
-      preLoaderRoute: typeof SettingsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/collection/$collectionId': {
-      id: '/collection/$collectionId'
-      path: '/collection/$collectionId'
-      fullPath: '/collection/$collectionId'
-      preLoaderRoute: typeof CollectionCollectionIdRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof ShellSettingsRouteImport
+      parentRoute: typeof ShellRoute
     }
     '/read/$bookId': {
       id: '/read/$bookId'
@@ -104,13 +130,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReadBookIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_shell/books/$scope': {
+      id: '/_shell/books/$scope'
+      path: '/books/$scope'
+      fullPath: '/books/$scope'
+      preLoaderRoute: typeof ShellBooksScopeRouteImport
+      parentRoute: typeof ShellRoute
+    }
+    '/_shell/collection/$collectionId': {
+      id: '/_shell/collection/$collectionId'
+      path: '/collection/$collectionId'
+      fullPath: '/collection/$collectionId'
+      preLoaderRoute: typeof ShellCollectionCollectionIdRouteImport
+      parentRoute: typeof ShellRoute
+    }
   }
 }
 
+interface ShellRouteChildren {
+  ShellSettingsRoute: typeof ShellSettingsRoute
+  ShellIndexRoute: typeof ShellIndexRoute
+  ShellBooksScopeRoute: typeof ShellBooksScopeRoute
+  ShellCollectionCollectionIdRoute: typeof ShellCollectionCollectionIdRoute
+}
+
+const ShellRouteChildren: ShellRouteChildren = {
+  ShellSettingsRoute: ShellSettingsRoute,
+  ShellIndexRoute: ShellIndexRoute,
+  ShellBooksScopeRoute: ShellBooksScopeRoute,
+  ShellCollectionCollectionIdRoute: ShellCollectionCollectionIdRoute,
+}
+
+const ShellRouteWithChildren = ShellRoute._addFileChildren(ShellRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
-  SettingsRoute: SettingsRoute,
-  CollectionCollectionIdRoute: CollectionCollectionIdRoute,
+  ShellRoute: ShellRouteWithChildren,
   ReadBookIdRoute: ReadBookIdRoute,
 }
 export const routeTree = rootRouteImport

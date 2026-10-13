@@ -35,7 +35,7 @@ export function HighlightEditor({
       onKeyDown={(event) => {
         if (event.key === "Escape") onClose();
       }}
-      className="fixed z-20 flex flex-col gap-4 border border-line bg-surface-2 p-4 text-ui text-ink"
+      className="fixed z-20 flex flex-col gap-4 rounded-tile bg-surface-2 p-4 text-ui text-ink shadow-float"
     >
       <div className="flex items-center justify-between">
         {PIGMENTS.map((color) => (
@@ -45,16 +45,18 @@ export function HighlightEditor({
             aria-pressed={highlight.color === color}
             aria-label={t(PIGMENT_KEY[color])}
             onClick={() => onColor(color)}
-            className="flex h-6 w-6 items-center justify-center rounded-full"
+            className="flex size-6 items-center justify-center rounded-dot"
           >
             <span
               aria-hidden="true"
-              className={`block h-[22px] w-[22px] rounded-full ${highlight.color === color ? "ring-1 ring-ink" : ""}`}
+              className={`block size-6 rounded-dot ${
+                highlight.color === color ? "ring-2 ring-ink ring-offset-2 ring-offset-surface-2" : ""
+              }`}
               style={{ background: PIGMENT_COLOR[color] }}
             />
           </button>
         ))}
-        <button type="button" onClick={onClose} className="text-ink-2">
+        <button type="button" onClick={onClose} className="rounded-tab px-2 py-1 text-ink-2 hover:text-ink">
           {t("highlight.close")}
         </button>
       </div>
@@ -66,18 +68,18 @@ export function HighlightEditor({
           maxLength={10_000}
           onChange={(event) => setText(event.target.value)}
           rows={4}
-          className="resize-none border border-line bg-canvas p-2 text-base text-ink"
+          className="resize-none rounded-control bg-field p-3 text-base text-ink"
         />
       </label>
       <div className="flex items-center justify-between">
         <button
           type="button"
           onClick={() => onNote(text)}
-          className="border border-line-strong px-3 py-1.5 font-medium text-ink"
+          className="rounded-control bg-accent px-3.5 py-2 font-semibold text-accent-ink"
         >
           {t("highlight.saveNote")}
         </button>
-        <button type="button" onClick={onDelete} className="text-ink-2 underline underline-offset-4">
+        <button type="button" onClick={onDelete} className="rounded-tab px-2 py-1 text-ink-2 hover:text-ink">
           {t("highlight.delete")}
         </button>
       </div>

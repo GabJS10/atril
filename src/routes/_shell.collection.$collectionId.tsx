@@ -6,6 +6,6 @@ function CollectionPage() {
   return <CollectionScreen collectionId={collectionId} />;
 }
 
-export const Route = createFileRoute("/collection/$collectionId")({
+export const Route = createFileRoute("/_shell/collection/$collectionId")({
   component: CollectionPage,
 });

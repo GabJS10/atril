@@ -36,6 +36,7 @@ const book = {
   pageCount: null,
   fileUrl: "atril://localhost/book/abc123",
   coverUrl: null,
+  coverColor: null,
   favorite: false,
   missing: false,
   scanState: "pending",

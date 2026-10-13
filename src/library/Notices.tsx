@@ -4,6 +4,7 @@ import type { ImportResult } from "../api/types";
 import { importResultKey } from "./useFileDrop";
 import type { Book } from "../api/types";
 import { useRelinkBook, useRemoveBook } from "./actions";
+import { ghostButton, primaryButton, smallButton } from "../ui/buttons";
 
 /** Scan in progress: one hairline line, no modal (DESIGN.md, estado escaneando). */
 export function ScanBar({ found }: { found: number }) {
@@ -11,7 +12,7 @@ export function ScanBar({ found }: { found: number }) {
   return (
     <div
       role="status"
-      className="flex items-center justify-between gap-6 border-b border-line py-3 text-ui text-ink-2"
+      className="flex items-center justify-between gap-6 rounded-tile bg-card px-6 py-4 text-ui text-ink-2"
     >
       <span>{t("library.scanning")}</span>
       <span>{t("library.scanningFound", { found: String(found) })}</span>
@@ -36,12 +37,9 @@ function MissingItem({ book, t }: { book: Book; t: ReturnType<typeof useT> }) {
   const relink = useRelinkBook();
   const remove = useRemoveBook();
   return (
-    <div
-      role="alert"
-      className="grid grid-cols-12 items-center gap-6 border border-line bg-surface px-7 py-6"
-    >
+    <div role="alert" className="grid grid-cols-12 items-center gap-6 rounded-card bg-card px-8 py-6">
       <div className="col-span-12 md:col-span-7">
-        <div className="font-serif text-cartela leading-tight">
+        <div className="font-serif text-cartela leading-tight font-semibold">
           {t("library.missing.title", { title: book.title })}
         </div>
         <div className="mt-2 text-base text-ink-2">{t("library.missing.body")}</div>
@@ -51,7 +49,7 @@ function MissingItem({ book, t }: { book: Book; t: ReturnType<typeof useT> }) {
           type="button"
           onClick={() => relink.mutate()}
           disabled={relink.isPending}
-          className="bg-ink px-4 py-2.5 text-base font-semibold text-ink-inverse disabled:opacity-50"
+          className={primaryButton}
         >
           {t("library.missing.find")}
         </button>
@@ -59,7 +57,7 @@ function MissingItem({ book, t }: { book: Book; t: ReturnType<typeof useT> }) {
           type="button"
           onClick={() => remove.mutate(book.id)}
           disabled={remove.isPending}
-          className="text-base text-ink-2 underline underline-offset-4"
+          className={ghostButton}
         >
           {t("library.missing.remove")}
         </button>
@@ -81,32 +79,22 @@ export function EmptyLibrary({
   const t = useT();
   return (
     <section className="flex flex-col items-center gap-10 py-16 text-center">
-      <div className="text-label font-medium tracking-label text-ink-3 uppercase">
+      <div className="text-label font-semibold tracking-kicker text-accent-text uppercase">
         {t("library.empty.kicker")}
       </div>
-      <h2 className="font-serif text-display leading-none">{t("library.empty.title")}</h2>
+      <h2 className="font-serif text-feature leading-none font-semibold">{t("library.empty.title")}</h2>
       <p className="max-w-[560px] text-reading leading-[1.75] text-ink-2">{t("library.empty.body")}</p>
       <div className="flex items-center gap-8">
-        <button
-          type="button"
-          onClick={onAddFolder}
-          disabled={busy}
-          className="bg-ink px-5 py-3 text-base font-semibold text-ink-inverse disabled:opacity-50"
-        >
+        <button type="button" onClick={onAddFolder} disabled={busy} className={primaryButton}>
           {t("library.empty.folder")}
         </button>
-        <button
-          type="button"
-          onClick={onOpenFile}
-          disabled={busy}
-          className="text-base text-ink-2 underline underline-offset-4"
-        >
+        <button type="button" onClick={onOpenFile} disabled={busy} className={ghostButton}>
           {t("library.empty.file")}
         </button>
       </div>
       <div className="mt-10 flex gap-8">
         {Array.from({ length: 5 }, (_, index) => (
-          <div key={index} className="h-[204px] w-[136px] border border-line" />
+          <div key={index} className="h-51 w-34 rounded-cover bg-card" />
         ))}
       </div>
     </section>
@@ -125,10 +113,7 @@ export function ImportNotice() {
   if (!data) return null;
   const dismiss = () => queryClient.setQueryData(importResultKey, null);
   return (
-    <div
-      role="status"
-      className="flex flex-col gap-3 border border-line bg-surface px-7 py-5 text-ui text-ink-2"
-    >
+    <div role="status" className="flex flex-col gap-3 rounded-card bg-card px-8 py-5 text-ui text-ink-2">
       {data.imported.length > 0 ? (
         <span>{t("import.imported", { count: String(data.imported.length) })}</span>
       ) : null}
@@ -142,7 +127,7 @@ export function ImportNotice() {
           ))}
         </div>
       ) : null}
-      <button type="button" onClick={dismiss} className="self-end text-ink underline underline-offset-4">
+      <button type="button" onClick={dismiss} className={`${smallButton} self-end`}>
         {t("import.dismiss")}
       </button>
     </div>
