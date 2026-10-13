@@ -13,6 +13,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0002_library.sql"),
     include_str!("migrations/0003_title_source.sql"),
     include_str!("migrations/0004_regenerate_covers.sql"),
+    include_str!("migrations/0005_reindex_filename_titles.sql"),
 ];
 
 /// Versión que obliga a borrar las portadas de `covers/` al aplicarse (ver `0004_regenerate_covers.sql`).
@@ -182,7 +183,7 @@ mod tests {
 
         let applied = migrate(&mut conn).expect("migrate");
 
-        assert_eq!(applied, vec![COVERS_RESET_VERSION]);
+        assert!(applied.contains(&COVERS_RESET_VERSION));
         let states: Vec<(String, String, i64)> = conn
             .prepare("SELECT id, scan_state, has_cover FROM books ORDER BY id")
             .expect("prepare")
@@ -198,6 +199,63 @@ mod tests {
                 ("c".to_string(), "pending".to_string(), 0),
             ]
         );
+    }
+
+    #[test]
+    fn version_5_reindexes_filename_like_metadata_titles_only() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut conn = Connection::open(dir.path().join("atril.db")).expect("open");
+        for sql in &MIGRATIONS[..4] {
+            conn.execute_batch(sql).expect("old migration");
+        }
+        conn.pragma_update(None, "user_version", 4)
+            .expect("version");
+        let books = [
+            // (id, título, origen, estado)
+            ("pmd", "01-Prefacio_3a.pmd", "metadata", "done"),
+            ("pdf", "scan_0012.pdf", "metadata", "done"),
+            ("normal", "Fe Explicada", "metadata", "done"),
+            ("doctor", "Dr. Smith", "metadata", "done"),
+            ("by-name", "informe.final", "filename", "done"),
+            ("user", "mi.titulo", "user", "done"),
+            ("failed", "roto.pmd", "metadata", "failed"),
+        ];
+        for (id, title, source, state) in books {
+            conn.execute(
+                "INSERT INTO books (id, path, file_size, title, added_at, scan_state, title_source, has_cover)
+                 VALUES (?1, ?1, 1, ?2, 'now', ?4, ?3, 1)",
+                rusqlite::params![id, title, source, state],
+            )
+            .expect("insert");
+        }
+
+        assert_eq!(migrate(&mut conn).expect("migrate"), vec![5]);
+
+        let states = |conn: &Connection| -> Vec<(String, String, i64)> {
+            conn.prepare("SELECT id, scan_state, has_cover FROM books ORDER BY id")
+                .expect("prepare")
+                .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+                .expect("query")
+                .map(|row| row.expect("row"))
+                .collect()
+        };
+        let expected = |id: &str| -> &str {
+            match id {
+                "pmd" | "pdf" => "pending",
+                "failed" => "failed",
+                _ => "done",
+            }
+        };
+        let after = states(&conn);
+        for (id, state, has_cover) in &after {
+            assert_eq!(state, expected(id), "book {id}");
+            assert_eq!(*has_cover, 1, "the cover is kept until it is regenerated");
+        }
+
+        // Idempotente: no hay nada más que aplicar y repetir la sentencia no cambia nada.
+        assert!(migrate(&mut conn).expect("second migrate").is_empty());
+        conn.execute_batch(MIGRATIONS[4]).expect("rerun");
+        assert_eq!(states(&conn), after);
     }
 
     #[test]

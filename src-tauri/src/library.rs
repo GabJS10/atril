@@ -499,16 +499,32 @@ pub fn save_book_scan(
 
     write_cover(covers_dir, id, format, cover)?;
 
+    // Sin título válido en los metadatos, un título que antes salió de ellos (reindexación con reglas nuevas)
+    // vuelve al nombre del archivo, y otra vez sigue al nombre si se renombra.
+    let stored_path: String =
+        conn.query_row("SELECT path FROM books WHERE id = ?1", params![id], |row| {
+            row.get(0)
+        })?;
+    let file_title = Path::new(&stored_path)
+        .file_stem()
+        .map_or(stored_path.clone(), |stem| {
+            stem.to_string_lossy().into_owned()
+        });
+
     conn.execute(
         "UPDATE books SET
              page_count = COALESCE(page_count, ?1),
-             title = COALESCE(?2, title),
+             title = CASE WHEN ?2 IS NOT NULL THEN ?2
+                          WHEN title_source = 'metadata' THEN ?5
+                          ELSE title END,
              author = COALESCE(?3, author),
              scan_state = 'done',
-             title_source = CASE WHEN ?2 IS NULL THEN title_source ELSE 'metadata' END,
+             title_source = CASE WHEN ?2 IS NOT NULL THEN 'metadata'
+                                 WHEN title_source = 'metadata' THEN 'filename'
+                                 ELSE title_source END,
              has_cover = 1
          WHERE id = ?4",
-        params![scan.page_count, scan.title, scan.author, id],
+        params![scan.page_count, scan.title, scan.author, id, file_title],
     )?;
     get_book(conn, id)
 }
