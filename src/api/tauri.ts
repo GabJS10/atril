@@ -22,7 +22,6 @@ import type {
   OpenedDocument,
   PageLink,
   ReadingStateInput,
-  ScanMetadata,
   ScanStatus,
   SearchDone,
   SearchProgress,
@@ -172,25 +171,6 @@ export function addLibraryFolder(path: string): Promise<LibraryFolder> {
 
 export function getScanStatus(): Promise<ScanStatus> {
   return invoke<ScanStatus>("get_scan_status");
-}
-
-export function listPendingScans(): Promise<Book[]> {
-  return invoke<Book[]>("list_pending_scans");
-}
-
-/** Sends the cover (WebP bytes) as the binary body; the metadata travels in headers (docs/IPC.md). */
-export function saveBookScan(bookId: string, metadata: ScanMetadata, cover: Uint8Array): Promise<Book> {
-  const headers: Record<string, string> = {
-    "X-Book-Id": bookId,
-    "X-Page-Count": String(metadata.pageCount),
-  };
-  if (metadata.title) headers["X-Title"] = encodeURIComponent(metadata.title);
-  if (metadata.author) headers["X-Author"] = encodeURIComponent(metadata.author);
-  return invoke<Book>("save_book_scan", cover, { headers });
-}
-
-export function markScanFailed(bookId: string): Promise<Book> {
-  return invoke<Book>("mark_scan_failed", { bookId });
 }
 
 export function listCollections(): Promise<Collection[]> {

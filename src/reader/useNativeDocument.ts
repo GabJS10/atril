@@ -5,12 +5,11 @@ import type { OpenedDocument } from "../api/types";
 export type NativeDocumentState =
   { status: "loading" } | { status: "ready"; document: OpenedDocument } | { status: "error"; error: unknown };
 
-/** Opens the book in the native engine (`open_document`). Does nothing while `enabled` is false. */
-export function useNativeDocument(bookId: string, enabled: boolean): NativeDocumentState {
+/** Opens the book in the native engine (`open_document`). */
+export function useNativeDocument(bookId: string): NativeDocumentState {
   const [state, setState] = useState<NativeDocumentState>({ status: "loading" });
 
   useEffect(() => {
-    if (!enabled) return;
     let cancelled = false;
     openDocument(bookId).then(
       (document) => {
@@ -23,7 +22,7 @@ export function useNativeDocument(bookId: string, enabled: boolean): NativeDocum
     return () => {
       cancelled = true;
     };
-  }, [bookId, enabled]);
+  }, [bookId]);
 
   return state;
 }

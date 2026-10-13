@@ -94,12 +94,6 @@ export type ScanStatus = { running: boolean; found: number };
 
 export type LibraryFolder = { id: string; path: string; addedAt: string };
 
-export type ScanMetadata = {
-  pageCount: number;
-  title?: string;
-  author?: string;
-};
-
 export type ImportRejection = { path: string; error: AppError };
 
 export type ImportResult = { imported: Book[]; rejected: ImportRejection[] };

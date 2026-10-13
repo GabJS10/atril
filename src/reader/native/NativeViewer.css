@@ -35,7 +35,7 @@
 }
 
 /*
- * Reader paper (DESIGN.md, 2.2), as in the pdf.js viewer: the filters go on the page image only, and the highlights
+ * Reader paper (DESIGN.md, 2.2): the filters go on the page image only, and the highlights
  * above it keep their own colours. Sepia multiplies the scan onto the sepia paper; night inverts it (hue kept).
  */
 :root[data-reader-mode="sepia"] .atril-native-page .atril-page-image {

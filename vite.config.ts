@@ -66,20 +66,9 @@ export default defineConfig({
     }),
     react(),
     tailwindcss(),
-    // pdf.js reads WebAssembly decoders (JBIG2, and the JPEG 2000 bridge below), CMaps, standard fonts and ICC
-    // profiles from these folders. They are served under /pdfjs/ in dev and copied to dist/pdfjs/ in the build.
+    // The JPEG 2000 bridge and pdf.js's JavaScript decoder, under /pdfjs/wasm/ in dev and in dist/ (R3 removes them).
     viteStaticCopy({
       targets: [
-        {
-          // Everything pdf.js ships, except openjpeg.wasm and its fallback, which the bridge replaces.
-          src: [
-            "node_modules/pdfjs-dist/wasm/*",
-            "!node_modules/pdfjs-dist/wasm/openjpeg.wasm",
-            "!node_modules/pdfjs-dist/wasm/openjpeg_nowasm_fallback.js",
-          ],
-          dest: "pdfjs/wasm",
-          rename: { stripBase: true },
-        },
         // The bridge takes pdf.js's fallback name: the worker imports it once openjpeg.wasm fails to load.
         // stripBase drops the folders of its source path; a plain string rename would keep them.
         {
@@ -89,13 +78,6 @@ export default defineConfig({
         },
         // pdf.js's JavaScript decoder under another name (second level, imported by the bridge).
         { src: jsFallbackSource, dest: "pdfjs/wasm", rename: { stripBase: true, name: jsFallbackName } },
-        { src: "node_modules/pdfjs-dist/cmaps/*", dest: "pdfjs/cmaps", rename: { stripBase: true } },
-        {
-          src: "node_modules/pdfjs-dist/standard_fonts/*",
-          dest: "pdfjs/standard_fonts",
-          rename: { stripBase: true },
-        },
-        { src: "node_modules/pdfjs-dist/iccs/*", dest: "pdfjs/iccs", rename: { stripBase: true } },
       ],
     }),
     jpxBridgeCheck(),

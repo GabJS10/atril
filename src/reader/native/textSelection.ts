@@ -1,4 +1,4 @@
-import type { TextWord } from "../../api/types";
+import type { PdfRect, TextWord } from "../../api/types";
 import {
   boxToPdfRect,
   MAX_RECTS_PER_HIGHLIGHT,
@@ -6,8 +6,13 @@ import {
   type Box,
   type PageMapping,
 } from "../geometry";
-import type { SelectionPart } from "../selectionReader";
 import { copyTextOf, foldedTextOf, sliceBox, type WordSlice } from "./textLayer";
+
+/**
+ * What a selection covers on one page: PDF rectangles (one per line) and the text. `text` has its breaks folded into
+ * spaces (it is what a highlight stores); `copyText` keeps the line and block breaks.
+ */
+export type SelectionPart = { page: number; rects: PdfRect[]; text: string; copyText?: string };
 
 export const TEXT_LAYER_CLASS = "atril-text-layer";
 export const TEXT_WORD_CLASS = "atril-text-word";

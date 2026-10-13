@@ -7,7 +7,6 @@ import { App } from "../App";
 import { createQueryClient } from "../api/queries";
 import type { Book, BookQuery, HomeData } from "../api/types";
 import { createAppRouter } from "../router";
-import { resetReaderActivity } from "./readerActivity";
 
 function book(overrides: Partial<Book> & { id: string; title: string }): Book {
   return {
@@ -67,7 +66,6 @@ function mockLibrary(options: {
         options.queries?.push(query);
         return options.books ?? [meditaciones, aleph];
       }
-      case "list_pending_scans":
       case "list_library_folders":
         return [];
       default:
@@ -82,7 +80,6 @@ function renderLibrary() {
 }
 
 beforeEach(() => {
-  resetReaderActivity();
   vi.useRealTimers();
 });
 

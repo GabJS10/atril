@@ -1,14 +1,7 @@
 import { getDocument, type PDFDocumentProxy, type PDFPageProxy } from "pdfjs-dist";
 import { beforeAll, describe, expect, it } from "vitest";
 import { textoPdfBytes } from "../test/fixtures/texto";
-import {
-  type Box,
-  boxesByPage,
-  boxToPdfRect,
-  mergeLineBoxes,
-  pdfRectToBox,
-  pdfRectToPercent,
-} from "./geometry";
+import { type Box, boxToPdfRect, mergeLineBoxes, pdfRectToBox, pdfRectToPercent } from "./geometry";
 
 // pdf.js 6 hashes the document with Uint8Array#toHex, which the jsdom realm does not provide.
 if (!("toHex" in Uint8Array.prototype)) {
@@ -136,24 +129,5 @@ describe("mergeLineBoxes", () => {
     expect(mergeLineBoxes([{ x1: 60, y1: 114, x2: 10, y2: 100 }])).toEqual([
       { x1: 10, y1: 100, x2: 60, y2: 114 },
     ]);
-  });
-});
-
-describe("boxesByPage", () => {
-  const frames = [
-    { page: 1, left: 0, top: 0, width: 600, height: 800 },
-    { page: 2, left: 0, top: 820, width: 600, height: 800 },
-  ];
-
-  it("gives each page its own boxes in page-local pixels", () => {
-    const byPage = boxesByPage([{ x1: 10, y1: 900, x2: 100, y2: 920 }], frames);
-    expect(byPage.get(1)).toBeUndefined();
-    expect(byPage.get(2)).toEqual([{ x1: 10, y1: 80, x2: 100, y2: 100 }]);
-  });
-
-  it("clips a box that crosses the gap between two pages", () => {
-    const byPage = boxesByPage([{ x1: 10, y1: 780, x2: 100, y2: 840 }], frames);
-    expect(byPage.get(1)).toEqual([{ x1: 10, y1: 780, x2: 100, y2: 800 }]);
-    expect(byPage.get(2)).toEqual([{ x1: 10, y1: 0, x2: 100, y2: 20 }]);
   });
 });

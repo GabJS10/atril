@@ -1,23 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatPercent, nextScale, zoomFromViewer, zoomToScaleValue, ZOOM_STEPS } from "./zoom";
-
-describe("zoomToScaleValue", () => {
-  it("maps presets to pdf.js scale values and numbers to their string", () => {
-    expect(zoomToScaleValue("page_width")).toBe("page-width");
-    expect(zoomToScaleValue("page_fit")).toBe("page-fit");
-    expect(zoomToScaleValue("auto")).toBe("auto");
-    expect(zoomToScaleValue(1.25)).toBe("1.25");
-  });
-});
-
-describe("zoomFromViewer", () => {
-  it("keeps presets by name and turns any other value into a scale", () => {
-    expect(zoomFromViewer("page-width", 1.4)).toBe("page_width");
-    expect(zoomFromViewer("page-fit", 0.9)).toBe("page_fit");
-    expect(zoomFromViewer("auto", 1)).toBe("auto");
-    expect(zoomFromViewer("1.25", 1.2500001)).toBe(1.25);
-  });
-});
+import { formatPercent, nextScale, ZOOM_STEPS } from "./zoom";
 
 describe("nextScale", () => {
   it("steps up and down through ZOOM_STEPS", () => {

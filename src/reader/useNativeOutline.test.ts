@@ -11,7 +11,7 @@ describe("useNativeOutline", () => {
       return [{ title: "Capítulo 1", page: 3, y: 20, uri: null, children: [] }];
     });
 
-    const { result } = renderHook(() => useNativeOutline("book", true));
+    const { result } = renderHook(() => useNativeOutline("book"));
     expect(result.current).toBeNull();
 
     await waitFor(() => expect(result.current).not.toBeNull());
@@ -25,19 +25,7 @@ describe("useNativeOutline", () => {
     mockIPC(() => {
       throw { code: "invalid_pdf", message: "x" };
     });
-    const { result } = renderHook(() => useNativeOutline("book", true));
+    const { result } = renderHook(() => useNativeOutline("book"));
     await waitFor(() => expect(result.current).toEqual([]));
-  });
-
-  it("does nothing while disabled", async () => {
-    const calls: unknown[] = [];
-    mockIPC((cmd) => {
-      calls.push(cmd);
-      return [];
-    });
-    const { result } = renderHook(() => useNativeOutline("book", false));
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(result.current).toBeNull();
-    expect(calls).toEqual([]);
   });
 });
