@@ -1,28 +1,27 @@
-import { getDocument, type PDFDocumentProxy, type PDFPageProxy } from "pdfjs-dist";
-import { beforeAll, describe, expect, it } from "vitest";
-import { textoPdfBytes } from "../test/fixtures/texto";
+import { describe, expect, it } from "vitest";
+import type { PageGeometry } from "../api/types";
 import { type Box, boxToPdfRect, mergeLineBoxes, pdfRectToBox, pdfRectToPercent } from "./geometry";
+import { type NativePageMapping, pageMapping } from "./native/mapping";
 
-// pdf.js 6 hashes the document with Uint8Array#toHex, which the jsdom realm does not provide.
-if (!("toHex" in Uint8Array.prototype)) {
-  Object.defineProperty(Uint8Array.prototype, "toHex", {
-    value(this: Uint8Array) {
-      return Array.from(this, (byte) => byte.toString(16).padStart(2, "0")).join("");
-    },
-  });
-}
+/**
+ * The page the viewport tests use is the first page of the two-page "Texto de prueba" PDF (MediaBox [0 0 612 792]).
+ * `UPRIGHT_PAGE` holds its viewport at scale 1 for each rotation, computed once with pdf.js 6.4.299
+ * (`page.getViewport({ scale: 1, rotation })`: width, height and transform), the same data `open_document` sends. A
+ * viewport at another scale is `pageMapping(geometry, scale)`, which multiplies the matrix by the scale.
+ */
+// prettier-ignore
+const UPRIGHT_PAGE: (PageGeometry & { rotation: number })[] = [{rotation:0,width:612,height:792,transform:[1,0,0,-1,0,792]},{rotation:90,width:792,height:612,transform:[0,1,1,0,0,0]},{rotation:180,width:612,height:792,transform:[-1,0,0,1,612,0]},{rotation:270,width:792,height:612,transform:[0,-1,-1,0,792,612]}];
 
 const SCALES = [0.5, 1, 1.37, 2, 3];
 const ROTATIONS = [0, 90, 180, 270];
 
-let pdf: PDFDocumentProxy;
-
-beforeAll(async () => {
-  pdf = await getDocument({ data: textoPdfBytes(), disableWorker: true } as never).promise;
-});
-
-async function page(number: number): Promise<PDFPageProxy> {
-  return pdf.getPage(number);
+/** The mapping of the test page at `scale` and `rotation`. */
+function viewport(
+  scale: number,
+  rotation = 0,
+): NativePageMapping & { viewBox: [number, number, number, number] } {
+  const geometry = UPRIGHT_PAGE.find((entry) => entry.rotation === rotation)!;
+  return { ...pageMapping(geometry, scale), viewBox: [0, 0, 612, 792] };
 }
 
 const close = (actual: number[], expected: number[]) => {
@@ -33,40 +32,38 @@ const close = (actual: number[], expected: number[]) => {
 describe("viewport conversions", () => {
   it.each(SCALES.flatMap((scale) => ROTATIONS.map((rotation) => [scale, rotation] as const)))(
     "round-trips a box at scale %s and rotation %s",
-    async (scale, rotation) => {
-      const viewport = (await page(1)).getViewport({ scale, rotation });
+    (scale, rotation) => {
+      const mapping = viewport(scale, rotation);
       const box: Box = { x1: 40, y1: 60, x2: 210, y2: 95 };
 
-      const rect = boxToPdfRect(box, viewport);
-      const back = pdfRectToBox(rect, viewport);
+      const rect = boxToPdfRect(box, mapping);
+      const back = pdfRectToBox(rect, mapping);
 
       close([back.x1, back.y1, back.x2, back.y2], [box.x1, box.y1, box.x2, box.y2]);
     },
   );
 
-  it("maps the top-left corner of an unrotated page to the top-left of its PDF box", async () => {
-    const viewport = (await page(1)).getViewport({ scale: 1, rotation: 0 });
-    const [x0, y0, , y1] = viewport.viewBox as [number, number, number, number];
+  it("maps the top-left corner of an unrotated page to the top-left of its PDF box", () => {
+    const mapping = viewport(1);
+    const [x0, y0, , y1] = mapping.viewBox;
 
-    const rect = boxToPdfRect({ x1: 0, y1: 0, x2: 0, y2: 0 }, viewport);
+    const rect = boxToPdfRect({ x1: 0, y1: 0, x2: 0, y2: 0 }, mapping);
 
     close(rect, [x0, y1, x0, y1]);
     expect(y0).toBeLessThan(y1);
   });
 
-  it("keeps the same place in the page when the zoom changes", async () => {
-    const at1 = (await page(1)).getViewport({ scale: 1 });
-    const at3 = (await page(1)).getViewport({ scale: 3 });
-    const rect = boxToPdfRect({ x1: 50, y1: 80, x2: 150, y2: 100 }, at1);
+  it("keeps the same place in the page when the zoom changes", () => {
+    const rect = boxToPdfRect({ x1: 50, y1: 80, x2: 150, y2: 100 }, viewport(1));
 
-    const scaled = pdfRectToBox(rect, at3);
+    const scaled = pdfRectToBox(rect, viewport(3));
 
     close([scaled.x1, scaled.y1, scaled.x2, scaled.y2], [150, 240, 450, 300]);
   });
 
-  it("swaps the page size for 90 and 270 degree rotations", async () => {
-    const upright = (await page(1)).getViewport({ scale: 1, rotation: 0 });
-    const turned = (await page(1)).getViewport({ scale: 1, rotation: 90 });
+  it("swaps the page size for 90 and 270 degree rotations", () => {
+    const upright = viewport(1, 0);
+    const turned = viewport(1, 90);
 
     expect(turned.width).toBeCloseTo(upright.height, 6);
     expect(turned.height).toBeCloseTo(upright.width, 6);
@@ -74,11 +71,11 @@ describe("viewport conversions", () => {
 });
 
 describe("percentages of the page box", () => {
-  it.each(ROTATIONS)("stays inside the page for rotation %s", async (rotation) => {
-    const viewport = (await page(1)).getViewport({ scale: 1, rotation });
-    const rect = boxToPdfRect({ x1: 100, y1: 200, x2: 300, y2: 230 }, viewport);
+  it.each(ROTATIONS)("stays inside the page for rotation %s", (rotation) => {
+    const mapping = viewport(1, rotation);
+    const rect = boxToPdfRect({ x1: 100, y1: 200, x2: 300, y2: 230 }, mapping);
 
-    const percent = pdfRectToPercent(rect, viewport);
+    const percent = pdfRectToPercent(rect, mapping);
 
     expect(percent.left).toBeGreaterThanOrEqual(0);
     expect(percent.top).toBeGreaterThanOrEqual(0);
