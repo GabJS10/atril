@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 use std::sync::mpsc;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread::JoinHandle;
@@ -10,9 +11,10 @@ use std::thread::JoinHandle;
 use super::cache::{ByteLru, PageKey};
 use super::document::{DocumentInfo, OpenDocument};
 use super::scheduler::{Job, PageBytes, PageResult, Queue, Waiter};
+use super::search::{self, SearchEvent, SearchRegistry, SearchState};
 use super::{
-    DEFAULT_CACHE_BYTES, EngineError, OPEN_DOCUMENTS_PER_WORKER, WORKER_THREADS, dequantize_scale,
-    quantize_scale,
+    DEFAULT_CACHE_BYTES, EngineError, OPEN_DOCUMENTS_PER_WORKER, OPEN_DOCUMENTS_READER,
+    WORKER_THREADS, dequantize_scale, quantize_scale,
 };
 
 #[derive(Debug, Clone)]
@@ -43,7 +45,7 @@ pub struct Worker {
 }
 
 impl Worker {
-    fn new(index: usize, capacity: usize) -> Self {
+    pub(crate) fn new(index: usize, capacity: usize) -> Self {
         Self {
             index,
             capacity: capacity.max(1),
@@ -83,6 +85,12 @@ impl Worker {
 
 type Call = Box<dyn FnOnce(&mut Worker) + Send>;
 
+/// Trabajo del hilo de lectura (texto, enlaces, índice y pasos de búsqueda).
+pub(crate) type ReaderJob = Box<dyn FnOnce(&mut Worker) + Send>;
+
+/// Índice del hilo de lectura en `Worker` (no está en el pool de render, así que no toma trabajos `Call`).
+const READER_INDEX: usize = WORKER_THREADS;
+
 struct Shared {
     queue: Mutex<Queue<Call>>,
     wake: Condvar,
@@ -96,7 +104,7 @@ struct Shared {
 /// Cuántos libros se recuerdan en `infos`.
 const MAX_CACHED_INFOS: usize = 8;
 
-fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+pub(super) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     // Un pánico en un hilo no debe dejar el motor inutilizable: los datos son recuperables.
     mutex
         .lock()
@@ -107,6 +115,11 @@ pub struct Engine {
     shared: Arc<Shared>,
     threads: Vec<JoinHandle<()>>,
     thread_count: usize,
+    /// Cola del hilo de lectura. `None` si no se pudo lanzar: las llamadas fallan con `Shutdown`.
+    reader: Option<mpsc::Sender<ReaderJob>>,
+    reader_thread: Option<JoinHandle<()>>,
+    /// Búsquedas en curso (el `Drop` las cancela).
+    searches: Arc<Mutex<SearchRegistry>>,
 }
 
 impl Engine {
@@ -130,10 +143,20 @@ impl Engine {
                     .ok()
             })
             .collect();
+        let (reader_tx, reader_rx) = mpsc::channel::<ReaderJob>();
+        let reader_thread = std::thread::Builder::new()
+            .name("atril-read".into())
+            .spawn(move || reader_loop(reader_rx))
+            .map_err(|error| tracing::error!(%error, "could not start the reading thread"))
+            .ok();
+        let reader = reader_thread.is_some().then_some(reader_tx);
         Self {
             shared,
             threads,
             thread_count,
+            reader,
+            reader_thread,
+            searches: Arc::new(Mutex::new(SearchRegistry::default())),
         }
     }
 
@@ -220,6 +243,87 @@ impl Engine {
         self.shared.wake.notify_all();
         rx.recv()
             .unwrap_or_else(|_| Err(EngineError::Render("the render thread panicked".into())))
+    }
+
+    /// Ejecuta `f` en el hilo de lectura con el documento del libro abierto y espera el resultado. Es para texto,
+    /// enlaces e índice: trabajos cortos que se atienden en orden con los pasos de búsqueda, sin tocar el pool de
+    /// render.
+    pub fn read_document<T, F>(&self, book_id: &str, path: &Path, f: F) -> Result<T, EngineError>
+    where
+        T: Send + 'static,
+        F: FnOnce(&OpenDocument) -> Result<T, EngineError> + Send + 'static,
+    {
+        let book_id = book_id.to_owned();
+        let path = path.to_path_buf();
+        self.read(move |worker| {
+            let document = worker.document(&book_id, &path)?;
+            f(document)
+        })
+    }
+
+    fn read<T, F>(&self, f: F) -> Result<T, EngineError>
+    where
+        T: Send + 'static,
+        F: FnOnce(&mut Worker) -> Result<T, EngineError> + Send + 'static,
+    {
+        let reader = self.reader.as_ref().ok_or(EngineError::Shutdown)?;
+        let (tx, rx) = mpsc::channel();
+        reader
+            .send(Box::new(move |worker: &mut Worker| {
+                // Si el receptor ya no espera, no pasa nada.
+                let _ = tx.send(f(worker));
+            }))
+            .map_err(|_| EngineError::Shutdown)?;
+        rx.recv()
+            .unwrap_or_else(|_| Err(EngineError::Render("the reading thread panicked".into())))
+    }
+
+    /// Empieza una búsqueda de `query` en el libro y devuelve su id enseguida. Los resultados llegan a `sink` por
+    /// páginas (ver `search`). Una búsqueda nueva del mismo libro cancela la anterior.
+    pub fn start_search<F>(
+        &self,
+        book_id: &str,
+        path: &Path,
+        query: &str,
+        sink: F,
+    ) -> Result<String, EngineError>
+    where
+        F: FnMut(SearchEvent) + Send + 'static,
+    {
+        let needle = search::fold_query(query)?;
+        let reader = self.reader.clone().ok_or(EngineError::Shutdown)?;
+        let search_id = uuid::Uuid::new_v4().to_string();
+        let cancel = Arc::new(AtomicBool::new(false));
+        lock(&self.searches).register(book_id, &search_id, Arc::clone(&cancel));
+        let state = SearchState {
+            search_id: search_id.clone(),
+            book_id: book_id.to_owned(),
+            path: path.to_path_buf(),
+            needle,
+            cancel,
+            registry: Arc::clone(&self.searches),
+            reader: reader.clone(),
+            sink: Box::new(sink),
+            page_count: None,
+            next_page: 1,
+            total: 0,
+            pages_searched: 0,
+        };
+        if reader
+            .send(Box::new(move |worker: &mut Worker| {
+                search::step(state, worker)
+            }))
+            .is_err()
+        {
+            lock(&self.searches).finish(&search_id);
+            return Err(EngineError::Shutdown);
+        }
+        Ok(search_id)
+    }
+
+    /// Cancela una búsqueda. Si ya terminó o no existe, no hace nada.
+    pub fn cancel_search(&self, search_id: &str) {
+        lock(&self.searches).cancel(search_id);
     }
 
     /// Número de páginas y geometría de un libro. La primera vez lee los diccionarios de página; después
@@ -328,6 +432,20 @@ impl Drop for Engine {
         for thread in self.threads.drain(..) {
             let _ = thread.join();
         }
+        // Las búsquedas se cancelan: cada paso pendiente termina sin reenviarse y el hilo acaba.
+        lock(&self.searches).cancel_all();
+        self.reader.take();
+        if let Some(thread) = self.reader_thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+fn reader_loop(jobs: mpsc::Receiver<ReaderJob>) {
+    let mut worker = Worker::new(READER_INDEX, OPEN_DOCUMENTS_READER);
+    for job in jobs {
+        // Un pánico en un trabajo no tumba el hilo: quien espera recibe un error.
+        let _ = catch_unwind(AssertUnwindSafe(|| job(&mut worker)));
     }
 }
 

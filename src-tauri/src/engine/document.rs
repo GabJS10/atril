@@ -5,7 +5,8 @@
 use std::path::Path;
 
 use mupdf::pdf::{PdfDocument, PdfObject};
-use mupdf::{Colorspace, Document, Matrix};
+use mupdf::text_page::{TextPage, TextPageFlags};
+use mupdf::{Colorspace, Document, Matrix, Outline, Page};
 use serde::Serialize;
 
 use super::encode::encode_jpeg;
@@ -77,6 +78,30 @@ impl OpenDocument {
             rotate: read_number(page.get_dict_inheritable("Rotate").ok().flatten()).unwrap_or(0.0),
             user_unit: read_number(page.get_dict("UserUnit").ok().flatten()).unwrap_or(1.0),
         }
+    }
+
+    /// La página `page` (1-based) de MuPDF. Fuera del libro, `PageOutOfRange`.
+    pub fn page(&self, page: u32) -> Result<Page, EngineError> {
+        if page == 0 || page > self.page_count {
+            return Err(EngineError::PageOutOfRange {
+                page,
+                count: self.page_count,
+            });
+        }
+        self.pdf.load_page(page as i32 - 1).map_err(render_error)
+    }
+
+    /// Texto estructurado de la página `page` (1-based): bloques, líneas y caracteres con sus cajas en espacio
+    /// de página de MuPDF (el del visor a escala 1).
+    pub fn text_page(&self, page: u32) -> Result<TextPage, EngineError> {
+        self.page(page)?
+            .to_text_page(TextPageFlags::empty())
+            .map_err(render_error)
+    }
+
+    /// Marcadores del libro, tal cual los da MuPDF (ver `outline`).
+    pub fn outlines(&self) -> Result<Vec<Outline>, EngineError> {
+        self.pdf.outlines().map_err(invalid_pdf)
     }
 
     /// Tamaño de la página `page` (1-based) según MuPDF, ya rotada y recortada. Carga la página: es para

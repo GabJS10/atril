@@ -9,6 +9,10 @@ use serde::Serialize;
 
 use super::Engine;
 use super::geometry::PageGeometry;
+use super::links::{self, PageLink};
+use super::outline::{self, OutlineItem};
+use super::search::SearchEvent;
+use super::text::{self, TextWord};
 use crate::error::{AppError, ErrorCode};
 use crate::protocol;
 
@@ -60,6 +64,59 @@ pub fn open_document(
         page_base_url: protocol::book_page_base_url(book_id),
         pages: info.pages.clone(),
     })
+}
+
+/// Palabras de la página `page` (1-based) con su caja en coordenadas del visor a escala 1 (`get_page_text`).
+pub fn page_text(
+    db: &Mutex<Connection>,
+    engine: &Engine,
+    book_id: &str,
+    page: u32,
+) -> Result<Vec<TextWord>, AppError> {
+    let path = resolve_book_path(db, book_id)?;
+    Ok(engine.read_document(book_id, &path, move |document| {
+        text::page_words(document, page)
+    })?)
+}
+
+/// Enlaces de la página `page` (1-based) con su caja y su destino (`get_page_links`).
+pub fn page_links(
+    db: &Mutex<Connection>,
+    engine: &Engine,
+    book_id: &str,
+    page: u32,
+) -> Result<Vec<PageLink>, AppError> {
+    let path = resolve_book_path(db, book_id)?;
+    Ok(engine.read_document(book_id, &path, move |document| {
+        links::page_links(document, page)
+    })?)
+}
+
+/// Índice del libro (`get_outline`).
+pub fn outline(
+    db: &Mutex<Connection>,
+    engine: &Engine,
+    book_id: &str,
+) -> Result<Vec<OutlineItem>, AppError> {
+    let path = resolve_book_path(db, book_id)?;
+    Ok(engine.read_document(book_id, &path, outline::outline)?)
+}
+
+/// Empieza una búsqueda en el libro y devuelve su `searchId` (`search_document`). Antes comprueba que el PDF se
+/// puede abrir, para que un libro roto falle aquí y no con un evento.
+pub fn start_search<F>(
+    db: &Mutex<Connection>,
+    engine: &Engine,
+    book_id: &str,
+    query: &str,
+    sink: F,
+) -> Result<String, AppError>
+where
+    F: FnMut(SearchEvent) + Send + 'static,
+{
+    let path = resolve_book_path(db, book_id)?;
+    engine.document_info(book_id, &path)?;
+    Ok(engine.start_search(book_id, &path, query, sink)?)
 }
 
 #[cfg(test)]

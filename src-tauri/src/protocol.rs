@@ -324,6 +324,7 @@ fn page_response(result: PageResult, origin: Option<&str>) -> Response<Vec<u8>> 
             text(StatusCode::UNPROCESSABLE_ENTITY, origin, &message)
         }
         Err(EngineError::Shutdown) => empty(StatusCode::SERVICE_UNAVAILABLE, origin),
+        Err(EngineError::InvalidInput(message)) => text(StatusCode::BAD_REQUEST, origin, &message),
         Err(error @ EngineError::Render(_)) => {
             tracing::warn!(%error, "could not render page");
             text(
