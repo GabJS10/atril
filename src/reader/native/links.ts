@@ -30,16 +30,8 @@ export function targetOfElement(element: HTMLElement): LinkTarget | null {
   return { page, y: y !== null && Number.isFinite(y) ? y : null };
 }
 
-/** Schemes the reader opens outside the app. The engine already filters them; this is the second lock. */
-const EXTERNAL_SCHEMES = new Set(["http:", "https:", "mailto:"]);
-
-export function isOpenableUri(uri: string): boolean {
-  try {
-    return EXTERNAL_SCHEMES.has(new URL(uri).protocol);
-  } catch {
-    return false;
-  }
-}
+export { isOpenableUri } from "../../api/uri";
+import { isOpenableUri } from "../../api/uri";
 
 /** The link under a viewport point, if any. Only the pages the point is over are looked into. */
 export function linkAt(container: HTMLElement, x: number, y: number): HTMLElement | null {

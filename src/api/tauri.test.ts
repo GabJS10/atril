@@ -10,6 +10,7 @@ import {
   isAppError,
   onSearchDone,
   onSearchProgress,
+  openExternalUrl,
   searchDocument,
   updateSettings,
 } from "./tauri";
@@ -98,5 +99,41 @@ describe("engine wrappers (docs/IPC.md, v0.8)", () => {
     expect(finished).toEqual([{ searchId: "s1", total: 0, pagesSearched: 5, cancelled: false, error: null }]);
     await stopProgress();
     await stopDone();
+  });
+});
+
+describe("openExternalUrl", () => {
+  it("hands http, https and mailto addresses to the opener", async () => {
+    const urls: unknown[] = [];
+    mockIPC((cmd, payload) => {
+      if (cmd === "plugin:opener|open_url") urls.push((payload as { url: string }).url);
+      return null;
+    });
+
+    await openExternalUrl("https://example.org/a");
+    await openExternalUrl("http://example.org");
+    await openExternalUrl("mailto:a@b.org");
+
+    expect(urls).toEqual(["https://example.org/a", "http://example.org", "mailto:a@b.org"]);
+  });
+
+  it("rejects any other scheme without calling the opener", async () => {
+    const calls: string[] = [];
+    mockIPC((cmd) => {
+      calls.push(cmd);
+      return null;
+    });
+
+    for (const uri of [
+      "file:///etc/passwd",
+      "javascript:alert(1)",
+      "ftp://example.org",
+      "tel:123",
+      "not a url",
+      "",
+    ]) {
+      await expect(openExternalUrl(uri)).rejects.toMatchObject({ code: "invalid_input" });
+    }
+    expect(calls).toEqual([]);
   });
 });

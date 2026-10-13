@@ -4,6 +4,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow, type CloseRequestedEvent } from "@tauri-apps/api/window";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { isOpenableUri } from "./uri";
 import type {
   AppError,
   Book,
@@ -90,8 +91,18 @@ export function onSearchDone(handler: (event: SearchDone) => void): Promise<Unli
   return listen<SearchDone>("search://done", (event) => handler(event.payload));
 }
 
-/** Opens an http, https or mailto link outside the app (the system browser or mail client). */
+/**
+ * Opens an http, https or mailto link outside the app (the system browser or mail client). Any other scheme, or text
+ * that is not an address, is rejected with `invalid_input` without reaching the opener.
+ */
 export function openExternalUrl(uri: string): Promise<void> {
+  if (!isOpenableUri(uri)) {
+    const error: AppError = {
+      code: "invalid_input",
+      message: "Only http, https and mailto links can be opened.",
+    };
+    return Promise.reject(error);
+  }
   return openUrl(uri);
 }
 
