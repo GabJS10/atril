@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use chrono::Utc;
 use percent_encoding::percent_decode_str;
@@ -8,6 +9,7 @@ use tauri::ipc::{InvokeBody, Request};
 
 use crate::AppState;
 use crate::collections::{self, Collection};
+use crate::engine::{self, api::OpenedDocument};
 use crate::error::AppError;
 use crate::folders::{self, LibraryFolder};
 use crate::highlights::{self, ExportResult, Highlight, HighlightInput, Language};
@@ -47,6 +49,20 @@ pub fn open_path(app: State<'_, AppState>, path: String) -> Result<Book, AppErro
 pub fn open_book(app: State<'_, AppState>, book_id: String) -> Result<OpenedBook, AppError> {
     let conn = app.db()?;
     library::open_book(&conn, &book_id)
+}
+
+/// Abre el libro en el motor nativo: páginas, geometría y URL base de las imágenes (docs/IPC.md).
+/// Es `async` y trabaja en un hilo de bloqueo: la primera vez abre el PDF y lee sus páginas.
+#[tauri::command]
+pub async fn open_document(
+    app: State<'_, AppState>,
+    book_id: String,
+) -> Result<OpenedDocument, AppError> {
+    let db = Arc::clone(&app.db);
+    let engine = Arc::clone(&app.engine);
+    tauri::async_runtime::spawn_blocking(move || engine::api::open_document(&db, &engine, &book_id))
+        .await
+        .map_err(|error| AppError::internal(format!("open_document task failed: {error}")))?
 }
 
 #[tauri::command]

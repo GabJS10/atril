@@ -1,6 +1,6 @@
 # Contrato IPC (frontend ⇄ backend)
 
-**Versión:** v0.6 (la ruta `POST /jpx` es de la v0.6). **Dueño:** `plan`. `backend` propone los cambios y `frontend` los implementa en `src/api/tauri.ts`. Un cambio que rompa el contrato se coordina antes con `plan` (ver `AGENTS.md`).
+**Versión:** v0.7 (el motor nativo, `open_document` y `GET /page/…`, es de la v0.7; la ruta `POST /jpx` es de la v0.6). **Dueño:** `plan`. `backend` propone los cambios y `frontend` los implementa en `src/api/tauri.ts`. Un cambio que rompa el contrato se coordina antes con `plan` (ver `AGENTS.md`).
 
 Este documento es la única fuente de verdad sobre los comandos Tauri, los eventos, las URLs del protocolo `atril://` y los tipos compartidos. Si el código y este archivo no coinciden, se corrige uno de los dos en el mismo cambio.
 
@@ -36,6 +36,7 @@ type ErrorCode =
 |---|---|
 | `atril://localhost/book/<id>` | El PDF. `200` sin `Range` (carga el archivo entero: evitarlo), `206` con `Range` (sirve **exactamente** el rango pedido, con `Content-Range` y `Content-Length`; solo el primer rango si piden varios), `416` si el rango es inválido. `Accept-Ranges: bytes`, `Content-Type: application/pdf`, CORS para el origen de la app con `Content-Range`, `Accept-Ranges` y `Content-Length` expuestas. `404` si el ID no existe o falta el archivo (y lo marca `missing`) |
 | `atril://localhost/cover/<id>` | La portada, con su `Content-Type` real (`image/jpeg` o `image/webp`, según la firma del archivo guardado). `404` si no hay portada |
+| `GET atril://localhost/page/<id>/<n>?scale=<f>` | La página `n` (1-based) del libro renderizada por el motor nativo (MuPDF), como `image/jpeg` (calidad 85). `scale` = píxeles por punto PDF (1 = 72 ppp), por defecto `1`, de `0.1` a `8`; se cuantiza a centésimas. El front **no construye la URL**: `open_document` devuelve la base `pageBaseUrl` y el front añade `/<n>?scale=<f>`. `Cache-Control: private, max-age=3600`. `400` si `scale` no es válido; `404` si el ID o la forma de la ruta no son válidos, el libro no existe, falta el archivo (lo marca `missing`) o `n` está fuera del libro; `410` si la petición quedó superada por otra zona o por un cambio de escala (ver "Motor de PDF (v0.7)"); `422` si el PDF no se puede leer; `500` si falla el render. Detalle en "Motor de PDF (v0.7)" |
 | `POST atril://localhost/jpx?components=N&indexed=0\|1&smask=0\|1&reduce=R` | Decodifica un JPX (JP2 o codestream) que va en el cuerpo y devuelve los píxeles. `200` con `application/octet-stream` y las cabeceras `X-Jpx-Width`, `X-Jpx-Height`, `X-Jpx-Channels`; `422` con el motivo en texto; `400` si la query no es válida; `413` si el cuerpo pasa de 64 MiB. Detalle en "JPX (v0.6)" |
 
 En Windows la forma es `http://atril.localhost/…`: por eso las URLs vienen siempre del backend (`Book.fileUrl`, `Book.coverUrl`).
@@ -183,6 +184,37 @@ type ImportResult = {
 - *Todos* = `list_books` con `sort`, `descending`, `status` y `text` del campo de búsqueda.
 - Sin paginación: una biblioteca de cientos de libros cabe en una respuesta. Si crece, se añade `limit`/`offset` en v0.4.
 - La búsqueda usa `LIKE` con normalización en Rust (sin acentos), no FTS, en esta fase.
+
+### Motor de PDF (v0.7): render nativo con MuPDF
+| Comando | Argumentos | Devuelve | Errores |
+|---|---|---|---|
+| `open_document` | `{ bookId: string }` | `OpenedDocument` | `invalid_input` (ID sin forma de huella), `not_found`, `file_missing` (y marca el libro como `missing`), `invalid_pdf` (no es un PDF, está cifrado o está roto), `io`, `internal` |
+
+```ts
+type OpenedDocument = {
+  pageCount: number;
+  pageBaseUrl: string;     // atril://localhost/page/<bookId>  (en Windows, http://atril.localhost/page/<bookId>)
+  pages: PageGeometry[];   // pageCount entradas, en orden (índice 0 = página 1)
+};
+type PageGeometry = {
+  width: number;           // ancho en puntos a escala 1, YA ROTADO por /Rotate (= viewport.width de pdf.js a scale 1)
+  height: number;          // alto en puntos a escala 1, ya rotado
+  transform: [number, number, number, number, number, number]; // espacio de usuario PDF -> píxeles del visor a escala 1
+};
+```
+
+**`transform` es idéntico a `page.getViewport({ scale: 1 }).transform` de pdf.js** (mismo algoritmo: `/CropBox` recortada a la `/MediaBox`, `/Rotate` heredado y normalizado, `/UserUnit`; Letter si falta la `/MediaBox`). Los subrayados siguen guardados en espacio de usuario PDF (origen abajo-izquierda) y el front los convierte con esta matriz como hasta ahora (`PageMapping` de `src/reader/geometry.ts`): para escala `s`, `convertToViewportPoint(x, y) = (s·(a·x + c·y + e), s·(b·x + d·y + f))` con `[a, b, c, d, e, f] = transform`, y la inversa para `convertToPdfPoint`. La imagen de una página a escala `s` mide `ceil(width·s) × ceil(height·s)` píxeles (si `s` produciría más de 32 Mpx o más de 16 384 px por lado, el motor reduce la escala y la imagen sale más pequeña: el front la estira al recuadro `width·s × height·s`).
+
+**Páginas.** El front construye cada URL como `` `${pageBaseUrl}/${n}?scale=${scale}` `` (n 1-based) y la pone en un `<img>`; `scale` ya incluye el zoom y el `devicePixelRatio`. `open_document` es rápido (lee solo los diccionarios de página, sin interpretar su contenido: 3997 páginas en ~110 ms) y la segunda llamada al mismo libro sale de memoria. Además pide a los hilos de render que abran el libro por adelantado.
+
+**Cola, cancelación y precarga (backend).**
+- Pool de 2 hilos de render; cada hilo tiene su copia del documento (MuPDF no comparte documentos entre hilos).
+- Las páginas pedidas por el visor van antes que la precarga. Entre las pedidas va primero la más cercana a la última página pedida del mismo libro.
+- Cada petición descarta las pendientes (en cola, no las que ya se están renderizando) del mismo libro que quedan a más de 12 páginas (el visor ya está en otra zona) o que son de otra escala (el usuario cambió el zoom): esas reciben `410 Gone`. Un `410` significa «ya no hacía falta»; si el `<img>` sigue en pantalla, hay que volver a pedirla. Una página que ya se está renderizando termina siempre y queda en caché.
+- Tras cada petición se precargan ±2 páginas, primero las del sentido de avance, con la misma escala. La precarga no tiene destinatario: solo llena la caché.
+- Caché de JPEG ya codificados en memoria (256 MB por defecto), clave (libro, página, escala cuantizada).
+
+**Errores del protocolo en el visor:** `404` y `422` no se reintentan; `410` se reintenta si la página sigue visible; `500` se puede reintentar una vez.
 
 ### Fase 3 (v0.4, aprobada)
 
