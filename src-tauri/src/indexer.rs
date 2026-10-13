@@ -1,13 +1,14 @@
 //! Indexador nativo de la biblioteca (fase R1.3). Para cada libro pendiente saca el número de páginas, el título
-//! y el autor del PDF, y la portada (la página 1 a 400 px de ancho, JPEG), y lo guarda igual que `save_book_scan`.
-//! Sustituye al indexador del front (pdf.js), que se borra en R2.
+//! y el autor del PDF, y la portada (la página 1 a 400 px de ancho, JPEG), y lo guarda con `library::save_book_scan`.
 //!
 //! Hilo y prioridad: un hilo propio (`atril-indexer`) con su propia copia del documento de MuPDF. Cada hilo de
 //! MuPDF tiene su contexto, así que no comparte nada con el pool del visor. El hilo baja su prioridad del sistema
 //! (nice 19 en Linux, por hilo) y no empieza un libro mientras haya renders del visor en cola.
 //!
-//! Carrera con el front: desde R1.3 `list_pending_scans` devuelve `[]` (ver `commands.rs`), así que el front nunca
-//! recibe un libro pendiente y solo hay un indexador activo. `save_book_scan` y `mark_scan_failed` siguen funcionando.
+//! Es el único indexador: el front no indexa ni guarda portadas, solo recibe `library://changed` (docs/IPC.md).
+//!
+//! Título: el de los metadatos solo vale si dice algo (ver [`clean_metadata_text`] y [`clean_title`]). Si no vale,
+//! el libro se queda con el nombre del archivo sin extensión.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -26,9 +27,9 @@ use crate::library::{self, ScanInput};
 use crate::protocol;
 use crate::watch;
 
-/// Ancho de la portada en píxeles (igual que `COVER_WIDTH_PX` del front).
+/// Ancho de la portada en píxeles.
 pub const COVER_WIDTH_PX: f64 = 400.0;
-/// Longitud máxima de un título o autor, en caracteres (igual que `MAX_METADATA_LENGTH` del front).
+/// Longitud máxima de un título o autor, en caracteres.
 pub const MAX_METADATA_LENGTH: usize = 200;
 /// Cada cuánto se busca trabajo aunque nadie avise (libros que entran por una vía sin aviso).
 const POLL: Duration = Duration::from_secs(30);
@@ -41,21 +42,24 @@ pub enum TextKind {
     Author,
 }
 
-/// `^[\d\W_]+$` en JavaScript (sin la bandera `u`) equivale a "ningún carácter es una letra ASCII".
+/// Ningún carácter es una letra ASCII (solo dígitos, símbolos o letras no latinas).
 const NO_LETTERS: &str = r"^[^A-Za-z]+$";
 
-/// Títulos que no dicen nada (mismas reglas que `JUNK_TITLE` en `src/library/metadata.ts`).
+/// Títulos que no dicen nada.
 static JUNK_TITLE: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     compile(&[
         r"(?i)^microsoft (word|excel|powerpoint|office)\b",
         r"(?i)\.(docx?|pdf|indd|tex|pages|rtf|odt|pptx?|xlsx?|dvi|ps|txt)\s*$",
         r"(?i)^(untitled|sin t[ií]tulo)(\s*\d*)?$",
         r"(?i)^(null|undefined|none|n/a)$",
+        // Un nombre de archivo: sin espacios y acabado en `.` + 2-5 letras o dígitos (`01-Prefacio_3a.pmd`).
+        // Con espacios solo valen las extensiones conocidas de arriba, para no perder `Dr. Smith`.
+        r"^\S+\.[A-Za-z0-9]{2,5}$",
         NO_LETTERS,
     ])
 });
 
-/// Autores que no dicen nada (mismas reglas que `JUNK_AUTHOR` en `src/library/metadata.ts`).
+/// Autores que no dicen nada.
 static JUNK_AUTHOR: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     compile(&[
         r"(?i)^(anonymous|anonimo|an[oó]nimo|unknown|desconocido|author|autor|null|undefined|none|n/a)$",
@@ -87,6 +91,21 @@ pub fn clean_metadata_text(value: Option<&str>, kind: TextKind) -> Option<String
         return None;
     }
     Some(text.chars().take(MAX_METADATA_LENGTH).collect())
+}
+
+/// Título de los metadatos listo para guardar: limpio ([`clean_metadata_text`]) y distinto del nombre del archivo,
+/// con o sin extensión y sin distinguir mayúsculas. `None` si no vale (el libro se queda con el nombre del archivo).
+pub fn clean_title(value: Option<&str>, file_name: Option<&str>) -> Option<String> {
+    let title = clean_metadata_text(value, TextKind::Title)?;
+    let same_as_file = file_name.is_some_and(|name| {
+        let name = name.split_whitespace().collect::<Vec<_>>().join(" ");
+        let stem = Path::new(&name)
+            .file_stem()
+            .map(|stem| stem.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        title.to_lowercase() == name.to_lowercase() || title.to_lowercase() == stem.to_lowercase()
+    });
+    (!same_as_file).then_some(title)
 }
 
 /// Resultado de indexar un libro.
@@ -125,13 +144,14 @@ fn read_scan(path: &Path) -> Result<Scan, EngineError> {
     }
     let first = geometry::page_geometry(&document.page_boxes(0));
     let title = document.pdf().metadata(MetadataName::Title).ok();
+    let file_name = path.file_name().map(|name| name.to_string_lossy());
     let author = document.pdf().metadata(MetadataName::Author).ok();
     let cover = document.render_jpeg(1, COVER_WIDTH_PX / first.width.max(1.0))?;
 
     Ok(Scan {
         input: ScanInput {
             page_count: i64::from(page_count),
-            title: clean_metadata_text(title.as_deref(), TextKind::Title),
+            title: clean_title(title.as_deref(), file_name.as_deref()),
             author: clean_metadata_text(author.as_deref(), TextKind::Author),
         },
         cover,
@@ -309,7 +329,7 @@ mod tests {
 
     #[test]
     fn junk_patterns_compile() {
-        assert_eq!(JUNK_TITLE.len(), 5);
+        assert_eq!(JUNK_TITLE.len(), 6);
         assert_eq!(JUNK_AUTHOR.len(), 2);
     }
 
@@ -364,10 +384,140 @@ mod tests {
     }
 
     #[test]
-    fn titles_without_ascii_letters_are_dropped_like_the_front_does() {
-        // Igual que `cleanMetadataText` (`[\d\W_]` sin bandera `u` en JavaScript): sin letras ASCII es basura.
+    fn titles_without_ascii_letters_are_dropped() {
+        // Sin letras ASCII es basura.
         assert_eq!(title("日本語"), None);
         assert_eq!(title("Ópera").as_deref(), Some("Ópera"));
+    }
+
+    #[test]
+    fn titles_that_look_like_file_names_are_dropped() {
+        for junk in [
+            "01-Prefacio_3a.pmd",
+            "scan_0012.pdf",
+            "capitulo-1.QXD",
+            "documento.doc",
+            "IMG_0001.jpeg",
+            "libro.x1",
+        ] {
+            assert_eq!(title(junk), None, "title {junk:?}");
+        }
+        for kept in [
+            "Fe Explicada",
+            "Dr. Smith",
+            "El Estado",
+            "Sagrada Biblia",
+            "Historia de España. Siglo XX",
+            "Fe",
+        ] {
+            assert_eq!(title(kept).as_deref(), Some(kept), "title {kept:?}");
+        }
+        // La regla es solo de títulos: un autor con punto se queda.
+        assert_eq!(author("Smith.Jr").as_deref(), Some("Smith.Jr"));
+    }
+
+    #[test]
+    fn a_title_equal_to_the_file_name_is_dropped_with_or_without_extension() {
+        let file = Some("Socialismo, cálculo económico -- Huerta de Soto.pdf");
+        assert_eq!(
+            clean_title(
+                Some("Socialismo, cálculo económico -- Huerta de Soto"),
+                file
+            ),
+            None
+        );
+        assert_eq!(
+            clean_title(
+                Some("socialismo, cálculo económico -- huerta de soto.PDF"),
+                file
+            ),
+            None
+        );
+        assert_eq!(
+            clean_title(Some("Socialismo, cálculo económico"), file).as_deref(),
+            Some("Socialismo, cálculo económico")
+        );
+        assert_eq!(
+            clean_title(Some("Fe Explicada"), None).as_deref(),
+            Some("Fe Explicada")
+        );
+    }
+
+    #[test]
+    fn reindexing_with_the_new_rule_leaves_the_file_stem_as_the_title() {
+        let books = tempfile::tempdir().expect("books");
+        let covers = tempfile::tempdir().expect("covers");
+        let (_db_dir, mut conn) = open_temp_db();
+        let path = pdf_with_info(
+            books.path(),
+            "Libro de prueba.pdf",
+            1,
+            Some(Info {
+                title: Some("01-Prefacio_3a.pmd".into()),
+                author: Some("Ana Pérez".into()),
+            }),
+        );
+        let book = import(&mut conn, &path);
+        // Estado de un libro indexado con la regla vieja: el título de los metadatos ganó al nombre del archivo.
+        library::save_book_scan(
+            &conn,
+            covers.path(),
+            &book.id,
+            &ScanInput {
+                page_count: 1,
+                title: Some("01-Prefacio_3a.pmd".into()),
+                author: None,
+            },
+            &jpeg_bytes(1000),
+        )
+        .expect("old scan");
+        assert_eq!(
+            get_book(&conn, &book.id).expect("book").title,
+            "01-Prefacio_3a.pmd"
+        );
+        // La migración 0005 lo deja pendiente.
+        conn.execute(
+            "UPDATE books SET scan_state = 'pending' WHERE id = ?1",
+            [&book.id],
+        )
+        .expect("pending");
+
+        let db = Mutex::new(conn);
+        let report = index_pending(&db, covers.path(), &mut HashSet::new(), || {}, |_| {});
+
+        assert_eq!(report.len(), 1);
+        assert_eq!(report[0].outcome, Outcome::Done);
+        let conn = db.lock().expect("lock");
+        let book = get_book(&conn, &book.id).expect("book");
+        assert_eq!(book.title, "Libro de prueba");
+        assert_eq!(book.author.as_deref(), Some("Ana Pérez"));
+        let source: String = conn
+            .query_row(
+                "SELECT title_source FROM books WHERE id = ?1",
+                [&book.id],
+                |row| row.get(0),
+            )
+            .expect("source");
+        assert_eq!(source, "filename", "the title follows the file name again");
+    }
+
+    #[test]
+    fn a_user_title_survives_a_reindex_without_metadata_title() {
+        let books = tempfile::tempdir().expect("books");
+        let covers = tempfile::tempdir().expect("covers");
+        let (_db_dir, mut conn) = open_temp_db();
+        let book = import(&mut conn, &pdf_with_info(books.path(), "a.pdf", 1, None));
+        conn.execute(
+            "UPDATE books SET title = 'Mi título', title_source = 'user', scan_state = 'pending' WHERE id = ?1",
+            [&book.id],
+        )
+        .expect("user title");
+
+        let db = Mutex::new(conn);
+        index_pending(&db, covers.path(), &mut HashSet::new(), || {}, |_| {});
+
+        let conn = db.lock().expect("lock");
+        assert_eq!(get_book(&conn, &book.id).expect("book").title, "Mi título");
     }
 
     /// Un PDF de `pages` páginas en `dir/name`, con el diccionario /Info indicado.
