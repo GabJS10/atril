@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 
-// The pdf.js engine is only loaded when a book is opened.
+// The reader is only loaded when a book is opened.
 const ReaderScreen = lazy(() =>
   import("../reader/ReaderScreen").then((module) => ({ default: module.ReaderScreen })),
 );

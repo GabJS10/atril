@@ -1,58 +1,17 @@
 import type { EngineOutlineItem } from "../api/types";
 import { isOpenableUri } from "./native/links";
-import type { ViewerDestination } from "./viewerTypes";
+import type { PageDestination } from "./viewerTypes";
 
 /** One entry of the book's index (outline), with its page resolved (1-based) when it has one. */
 export type OutlineItem = {
   title: string;
-  /** Where the viewer goes: for pdf.js a named or explicit destination, for the native one a page and a height. Null: nowhere. */
-  dest: ViewerDestination | null;
+  /** Where the viewer goes: a page and a height on it. Null: nowhere. */
+  dest: PageDestination | null;
   page: number | null;
   /** An external link (http, https or mailto) the entry opens instead of a place in the book. */
   uri?: string | null;
   items: OutlineItem[];
 };
-
-/** The part of pdf.js's document API the outline needs. */
-export type OutlineSource = {
-  getOutline(): Promise<RawOutlineItem[] | null>;
-  getDestination(name: string): Promise<unknown[] | null>;
-  getPageIndex(ref: object): Promise<number>;
-};
-
-type RawOutlineItem = { title: string; dest: string | unknown[] | null; items: RawOutlineItem[] };
-
-async function pageOf(source: OutlineSource, dest: string | unknown[] | null): Promise<number | null> {
-  try {
-    const explicit = typeof dest === "string" ? await source.getDestination(dest) : dest;
-    const ref = explicit?.[0];
-    if (typeof ref === "number") return ref + 1;
-    if (ref && typeof ref === "object") return (await source.getPageIndex(ref)) + 1;
-    return null;
-  } catch {
-    // A broken destination leaves the entry without a page; the rest of the index still works.
-    return null;
-  }
-}
-
-async function convert(source: OutlineSource, raw: RawOutlineItem): Promise<OutlineItem | null> {
-  if (!raw.dest) return null;
-  const items = await convertAll(source, raw.items);
-  return { title: raw.title.trim() || "—", dest: raw.dest, page: await pageOf(source, raw.dest), items };
-}
-
-async function convertAll(
-  source: OutlineSource,
-  raws: RawOutlineItem[] | null | undefined,
-): Promise<OutlineItem[]> {
-  const converted = await Promise.all((raws ?? []).map((raw) => convert(source, raw)));
-  return converted.filter((item): item is OutlineItem => item !== null);
-}
-
-/** The book's index with pages resolved. Entries without a destination are left out; no index gives []. */
-export async function loadOutline(source: OutlineSource): Promise<OutlineItem[]> {
-  return convertAll(source, await source.getOutline());
-}
 
 /**
  * The entry of the section the reader is in: the last entry, in reading order, that starts on or before `page`.
@@ -96,7 +55,7 @@ export function fromEngineOutline(entries: readonly EngineOutlineItem[]): Outlin
 /** What an entry of the index does when it is chosen: go to its place in the book, or open its link outside. */
 export function followOutlineItem(
   item: OutlineItem,
-  actions: { goTo: (dest: ViewerDestination) => void; openExternal: (uri: string) => void },
+  actions: { goTo: (dest: PageDestination) => void; openExternal: (uri: string) => void },
 ): void {
   if (item.uri) {
     if (isOpenableUri(item.uri)) actions.openExternal(item.uri);

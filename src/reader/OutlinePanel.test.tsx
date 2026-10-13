@@ -5,14 +5,14 @@ import { OutlinePanel } from "./OutlinePanel";
 import type { OutlineItem } from "./outline";
 
 const TREE: OutlineItem[] = [
-  { title: "Prólogo", dest: [], page: 1, items: [] },
+  { title: "Prólogo", dest: { page: 1, y: null }, page: 1, items: [] },
   {
     title: "Parte 1",
-    dest: [],
+    dest: { page: 3, y: null },
     page: 3,
     items: [
-      { title: "Capítulo 1", dest: [], page: 3, items: [] },
-      { title: "Capítulo 2", dest: [], page: 9, items: [] },
+      { title: "Capítulo 1", dest: { page: 3, y: null }, page: 3, items: [] },
+      { title: "Capítulo 2", dest: { page: 9, y: null }, page: 9, items: [] },
     ],
   },
 ];

@@ -554,9 +554,7 @@ export const NativeViewer = forwardRef<ViewerHandle, NativeViewerProps>(function
         emit();
       },
       find,
-      goToDestination(destination) {
-        if (typeof destination === "object" && !Array.isArray(destination)) scrollToDestination(destination);
-      },
+      goToDestination: scrollToDestination,
       revealHighlight(highlight) {
         const container = containerRef.current;
         const current = layoutRef.current;

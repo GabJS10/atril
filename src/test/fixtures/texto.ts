@@ -1,4 +1,4 @@
-// A two-page PDF with text (generated with Ghostscript, no copyright), as base64, for pdf.js tests.
+// A two-page PDF with text (generated with Ghostscript, no copyright), as base64, for tests.
 export const TEXTO_PDF_BASE64 =
   "JVBERi0xLjcKJcfsj6IKJSVJbnZvY2F0aW9uOiBncyAtcSAtZE5PUEFVU0UgLWRCQVRDSCAtZE5PU0FGRVIgLXNERVZJQ0U9" +
   "cGRmd3JpdGUgLXNPdXRwdXRGaWxlPT8gPwo1IDAgb2JqCjw8L0xlbmd0aCA2IDAgUi9GaWx0ZXIgL0ZsYXRlRGVjb2RlPj4K" +

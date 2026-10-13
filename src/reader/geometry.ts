@@ -78,7 +78,7 @@ function union(a: Box, b: Box): Box {
 }
 
 /**
- * Joins the boxes of one line (the text spans of pdf.js come one by one) and drops zero-area ones.
+ * Joins the boxes of one line (the text spans come one by one) and drops zero-area ones.
  * The result has one box per line, in the order the boxes were found.
  */
 export function mergeLineBoxes(boxes: Box[], minSize: number = MIN_BOX_SIZE): Box[] {
@@ -91,43 +91,6 @@ export function mergeLineBoxes(boxes: Box[], minSize: number = MIN_BOX_SIZE): Bo
     else lines[index] = union(lines[index]!, box);
   }
   return lines;
-}
-
-/** A page's box in client (viewport) coordinates, as read from the DOM. */
-export type PageFrame = { page: number; left: number; top: number; width: number; height: number };
-
-/**
- * Splits client-coordinate boxes between the pages they touch, in page-local CSS pixels. A box that crosses
- * a page edge is clipped to each page it overlaps.
- */
-export function boxesByPage(clientBoxes: Box[], frames: PageFrame[]): Map<number, Box[]> {
-  const byPage = new Map<number, Box[]>();
-  for (const frame of frames) {
-    const pageBox: Box = {
-      x1: frame.left,
-      y1: frame.top,
-      x2: frame.left + frame.width,
-      y2: frame.top + frame.height,
-    };
-    for (const raw of clientBoxes) {
-      const box = normalizeBox(raw);
-      const clipped: Box = {
-        x1: Math.max(box.x1, pageBox.x1),
-        y1: Math.max(box.y1, pageBox.y1),
-        x2: Math.min(box.x2, pageBox.x2),
-        y2: Math.min(box.y2, pageBox.y2),
-      };
-      if (clipped.x2 <= clipped.x1 || clipped.y2 <= clipped.y1) continue;
-      const local: Box = {
-        x1: clipped.x1 - frame.left,
-        y1: clipped.y1 - frame.top,
-        x2: clipped.x2 - frame.left,
-        y2: clipped.y2 - frame.top,
-      };
-      byPage.set(frame.page, [...(byPage.get(frame.page) ?? []), local]);
-    }
-  }
-  return byPage;
 }
 
 /** Position of a PDF rectangle inside its page, as percentages of the page box (for the layer in the DOM). */

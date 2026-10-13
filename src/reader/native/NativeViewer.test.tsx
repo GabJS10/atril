@@ -631,10 +631,6 @@ describe("NativeViewer text, links and search", () => {
     await settle();
     act(() => handle.current!.goToDestination({ page: 3, y: 300 }));
     expect(container.scrollTop).toBe(2 * 810 + 400 - 24);
-    // Destinations of pdf.js mean nothing here.
-    act(() => handle.current!.goToDestination("cap2"));
-    act(() => handle.current!.goToDestination([0, { name: "XYZ" }]));
-    expect(container.scrollTop).toBe(2 * 810 + 400 - 24);
   });
 
   describe("search", () => {

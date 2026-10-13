@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { HighlightColor } from "../api/types";
 import { useT } from "../i18n";
 import { currentHighlightId, useHighlightActions, useHighlights } from "./highlights";
-import type { SelectionPart } from "./selectionReader";
+import type { SelectionPart } from "./native/textSelection";
 
 /** A text selection on screen: what it covers, and where the toolbar should sit. */
 export type ActiveSelection = { parts: SelectionPart[]; anchor: DOMRect };

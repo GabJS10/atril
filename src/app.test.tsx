@@ -2,21 +2,17 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { createMemoryHistory } from "@tanstack/react-router";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { App } from "./App";
 import { createQueryClient } from "./api/queries";
 import type { Settings } from "./api/types";
 import { createAppRouter } from "./router";
-
-// The reader is lazy and loads the whole pdf.js viewer; these tests only check the reader messages.
-vi.mock("./reader/PdfViewer", () => ({ PdfViewer: () => null }));
 
 /** Answers for an empty library, so the screens that mount with the app have data. */
 const emptyLibrary = {
   get_home: () => ({ continueReading: [], favorites: [], favoriteCount: 0, bookCount: 0, collections: [] }),
   list_books: () => [],
   get_scan_status: () => ({ running: false, found: 0 }),
-  list_pending_scans: () => [],
   list_library_folders: () => [],
 };
 
@@ -123,7 +119,7 @@ describe("app shell", () => {
       open_path: () => book,
       open_book: (args) => {
         calls.push(JSON.stringify(args));
-        throw { code: "file_missing", message: "stop before pdf.js" };
+        throw { code: "file_missing", message: "stop before the viewer" };
       },
     });
     renderAt("/");

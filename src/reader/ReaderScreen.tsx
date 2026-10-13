@@ -1,20 +1,17 @@
 import { Link } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSettings } from "../api/queries";
 import { exportHighlights, isAppError, openExternalUrl, pickExportPath } from "../api/tauri";
 import type { Book, ReadingStateInput, Zoom, ViewMode } from "../api/types";
 import { useLocaleStore, useT } from "../i18n";
-import { PdfViewer } from "./PdfViewer";
 import { NativeViewer } from "./native/NativeViewer";
 import type { FindResult, ViewerHandle, ViewSnapshot } from "./viewerTypes";
-import { readViewerKind } from "./viewerKind";
 import { useNativeDocument } from "./useNativeDocument";
 import { SearchBar } from "./SearchBar";
 import { ReaderBar } from "./ReaderBar";
 import { initialReadingStart, type ReaderPosition, type ReadingStart } from "./position";
 import { type ReaderAction, useReaderShortcuts } from "./shortcuts";
 import { useChromeVisibility } from "./useChromeVisibility";
-import { usePdfDocument } from "./usePdfDocument";
 import { useReadingPosition } from "./useReadingPosition";
 import { useOpenedBook } from "./useOpenedBook";
 import { useHighlightSession } from "./useHighlightSession";
@@ -23,10 +20,8 @@ import { HighlightsPanel } from "./HighlightsPanel";
 import { OutlinePanel } from "./OutlinePanel";
 import { followOutlineItem } from "./outline";
 import { useNativeOutline } from "./useNativeOutline";
-import { useOutline } from "./useOutline";
 import { exportBookHighlights } from "./highlightExport";
 import { SelectionToolbar } from "./SelectionToolbar";
-import { readerClosed, readerOpened } from "../library/readerActivity";
 
 export function ReaderScreen({ bookId }: { bookId: string }) {
   const t = useT();
@@ -75,11 +70,7 @@ function toSaveState(
 
 function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
   const t = useT();
-  // pdf.js is the default; `localStorage.atril.viewer = "native"` opens the native-engine viewer (see viewerKind.ts).
-  const viewerKind = useMemo(() => readViewerKind(), []);
-  const native = viewerKind === "native";
-  const pdfState = usePdfDocument(book.fileUrl, !native);
-  const nativeState = useNativeDocument(book.id, native);
+  const documentState = useNativeDocument(book.id);
   const viewer = useRef<ViewerHandle>(null);
   const chrome = useChromeVisibility();
   const saver = useReadingPosition(book.id);
@@ -95,21 +86,13 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
     };
   }, [viewMode]);
   const [view, setView] = useState<{ zoom: Zoom; scale: number }>({ zoom: start.zoom, scale: 1 });
-  const documentState = native ? nativeState : pdfState;
-  const pageCount =
-    nativeState.status === "ready" && native
-      ? nativeState.document.pageCount
-      : pdfState.status === "ready"
-        ? pdfState.pdf.numPages
-        : 0;
+  const pageCount = documentState.status === "ready" ? documentState.document.pageCount : 0;
   const highlightSession = useHighlightSession(book.id);
   const { toggleHighlightMode } = highlightSession;
   const locale = useLocaleStore((state) => state.locale);
   const [sidePanel, setSidePanel] = useState<"highlights" | "outline" | null>(null);
   const [exporting, setExporting] = useState(false);
-  const pdfOutline = useOutline(!native && pdfState.status === "ready" ? pdfState.pdf : null);
-  const nativeOutline = useNativeOutline(book.id, native);
-  const outline = native ? nativeOutline : pdfOutline;
+  const outline = useNativeOutline(book.id);
   // Focus mode hides the bar and the panels; only the page stays. F or Escape leaves it.
   const [focusMode, setFocusMode] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -149,12 +132,6 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
       setExporting(false);
     }
   };
-
-  // The background indexer waits while a book is open.
-  useEffect(() => {
-    readerOpened();
-    return () => readerClosed();
-  }, []);
 
   const onChange = useCallback(
     (snapshot: ViewSnapshot) => {
@@ -263,11 +240,7 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
       className="relative h-screen w-full overflow-hidden bg-canvas"
       onMouseMove={focusMode ? undefined : chrome.wake}
     >
-      {nativeState.status === "ready" && native ? (
-        <NativeViewer ref={viewer} bookId={book.id} document={nativeState.document} {...viewerProps} />
-      ) : pdfState.status === "ready" ? (
-        <PdfViewer ref={viewer} pdf={pdfState.pdf} {...viewerProps} />
-      ) : null}
+      <NativeViewer ref={viewer} bookId={book.id} document={documentState.document} {...viewerProps} />
       {highlightSession.selection && !highlightSession.editing ? (
         <SelectionToolbar
           anchor={highlightSession.selection.anchor}
