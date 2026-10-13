@@ -23,7 +23,7 @@ Guía para agentes de IA (y personas) que trabajen en este repositorio.
 | `backend` (`.claude/agents/backend.md`) | Core en Rust: biblioteca, protocolo `atril://`, motor de PDF, SQLite, subrayados, ajustes, comandos Tauri e integración con el sistema | `src-tauri/` (incluye `Cargo.toml`, `tauri.conf.json` y `capabilities/`) |
 
 ### Ciclo de una tarea
-1. **Worktree:** `plan` lo crea a partir de `main` actualizado: `git worktree add ../atril-wt/<tema> -b <fase>/<tema>` (p. ej. rama `r1/motor`, carpeta `/home/gabriel/datos/projects/atril-wt/r1-motor`).
+1. **Worktree:** `plan` lo crea a partir de `main` actualizado: `git worktree add .claude/worktrees/<tema> -b <fase>/<tema>` (p. ej. rama `r1/motor`, carpeta `/home/gabriel/datos/projects/atril/.claude/worktrees/r1-motor`). La carpeta `.claude/worktrees/` está ignorada por git, ESLint, Prettier y el vigilante de Vite.
 2. **Encargo:** `plan` lanza el subagente con un encargo autocontenido: carpeta del worktree, contexto, archivos, criterios de aceptación, checks y si puede lanzar la app.
 3. **Trabajo:** el subagente trabaja solo en su worktree, pasa los checks, hace commit en su rama, `git push -u` y abre el PR con `gh pr create`. Su informe final es la respuesta que recibe `plan`.
 4. **Revisión:** `plan` revisa el diff del PR, espera a la CI y pasa los checks en local. Las correcciones se piden al **mismo** subagente, que conserva su contexto, en vez de lanzar otro. El usuario puede revisar el PR en GitHub.
@@ -42,7 +42,7 @@ Los spikes de medición van en un worktree **sin PR**: solo dejan un informe.
 - **Commits y PRs sin la línea `Co-Authored-By: Claude …`** ni ninguna otra atribución a Claude (pedido del usuario). Mensajes en inglés, Conventional Commits con scope: `feat(frontend): …`, `feat(backend): …`, `docs: …`, `chore(ci): …`.
 - **Límites del equipo** (7 GB de RAM y disco justo):
   - como mucho **2 subagentes a la vez**;
-  - todos los comandos de cargo y tauri llevan delante **`CARGO_TARGET_DIR=/home/gabriel/datos/projects/atril-wt/.target`** (compilación de Rust compartida por todos los worktrees);
+  - todos los comandos de cargo y tauri llevan delante **`CARGO_TARGET_DIR=/home/gabriel/datos/projects/atril/.claude/worktrees/.target`** (compilación de Rust compartida por todos los worktrees);
   - **un solo agente ejecuta la app a la vez** (puerto 1420), y lo indica el encargo.
 - **Contrato IPC en `docs/IPC.md`:** comandos Tauri (nombre, parámetros, retorno y errores), eventos y URLs del protocolo `atril://`. Si un encargo lo cambia, el agente actualiza `IPC.md` en su rama y `plan` lo revisa en el PR. El frontend lo implementa en `src/api/tauri.ts`.
 - **Mientras el backend no esté listo, el frontend trabaja contra `mockIPC`** (`@tauri-apps/api/mocks`) siguiendo `IPC.md` al pie de la letra.

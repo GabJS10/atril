@@ -3,3 +3,4 @@ src-tauri
 package-lock.json
 *.md
 src/routeTree.gen.ts
+.claude/worktrees

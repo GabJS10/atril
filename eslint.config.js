@@ -6,7 +6,7 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", "src-tauri", "src/routeTree.gen.ts"] },
+  { ignores: ["dist", "src-tauri", "src/routeTree.gen.ts", ".claude/worktrees"] },
   {
     files: ["**/*.{ts,tsx}"],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
