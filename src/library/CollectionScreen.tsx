@@ -1,17 +1,31 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useT } from "../i18n";
+import { ghostButton, primaryButton, secondaryButton } from "../ui/buttons";
+import { BookFilterBar } from "./BookFilters";
+import { DEFAULT_FILTERS, filtersToQuery, type BookFilters } from "./filters";
+import { BookGrid } from "./BookGrid";
 import { useCollectionMutations } from "./collectionActions";
-import { BookCard } from "./Cover";
 import { countLabel } from "./format";
+import { roomColorOf } from "./identity";
 import { useBooks, useHome } from "./queries";
+import { CoverFan } from "./sections";
 
-/** A Sala: its books, with rename and delete. Deleting a Sala never deletes books. */
+/** Size of the Sala's name in its header: long names step down. */
+function nameClass(name: string): string {
+  if (name.length <= 12) return "text-hero leading-[0.92]";
+  if (name.length <= 24) return "text-obra leading-none";
+  return "text-page leading-none";
+}
+
+/** A Sala (DESIGN.md, pantalla de Sala): a header tinted with its colour, filters, and its books. */
 export function CollectionScreen({ collectionId }: { collectionId: string }) {
   const t = useT();
   const navigate = useNavigate();
   const home = useHome();
-  const books = useBooks({ collectionId, sort: "title" });
+  const [filters, setFilters] = useState<BookFilters>(DEFAULT_FILTERS);
+  const everything = useBooks({ collectionId });
+  const books = useBooks({ collectionId, ...filtersToQuery(filters) });
   const collection = home.data?.collections.find((item) => item.id === collectionId);
   const { rename, remove } = useCollectionMutations();
   const [editing, setEditing] = useState(false);
@@ -24,86 +38,120 @@ export function CollectionScreen({ collectionId }: { collectionId: string }) {
     rename.mutate({ collectionId, name: trimmed }, { onSuccess: () => setEditing(false) });
   };
 
+  const all = everything.data ?? [];
+  const readingCount = all.filter(
+    (book) => book.progress !== null && book.progress > 0 && book.progress < 1,
+  ).length;
+  const finishedCount = all.filter((book) => book.progress !== null && book.progress >= 1).length;
+  const summary = [
+    countLabel(all.length, t),
+    readingCount > 0 ? t("home.reading", { count: String(readingCount) }) : null,
+    finishedCount === 1
+      ? t("collection.finished.one", { count: "1" })
+      : finishedCount > 1
+        ? t("collection.finished", { count: String(finishedCount) })
+        : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
-    <main className="flex min-h-screen flex-col gap-12 px-16 pb-16">
-      <header className="grid grid-cols-12 items-center gap-6 border-b border-line-strong py-5">
-        <Link to="/" className="col-span-4 text-base font-medium text-ink">
-          ← {t("settings.back")}
-        </Link>
-        <div className="col-span-8 flex justify-end gap-6 text-base">
-          <button
-            type="button"
-            onClick={() => {
-              setName(collection?.name ?? "");
-              setEditing(true);
-            }}
-            className="text-ink"
-          >
-            {t("collections.rename")}
-          </button>
-          <button type="button" onClick={() => setConfirmDelete(true)} className="text-ink-2">
-            {t("collections.delete")}
-          </button>
+    <main className="flex min-h-screen flex-col gap-11 px-14 pt-9 pb-18">
+      <section
+        aria-labelledby="room-title"
+        data-room={roomColorOf(collectionId)}
+        className="flex flex-wrap items-center gap-10 overflow-hidden rounded-panel bg-room-tint px-12 py-10"
+      >
+        <div className="flex min-w-0 flex-1 basis-95 flex-col gap-3">
+          <Link to="/" className="self-start text-ui text-ink-2 hover:text-ink">
+            ← {t("settings.back")}
+          </Link>
+          <div className="mt-3 text-label font-semibold tracking-kicker text-room-ink uppercase">
+            {t("collection.kicker")}
+          </div>
+          {editing ? (
+            <form
+              className="flex flex-wrap items-center gap-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                saveName();
+              }}
+            >
+              <input
+                autoFocus
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                maxLength={100}
+                aria-label={t("collections.placeholder")}
+                className="min-w-0 flex-1 basis-80 rounded-field bg-veil px-4 py-2 font-serif text-obra leading-none font-semibold text-ink"
+              />
+              <button type="submit" className={primaryButton}>
+                {t("collections.save")}
+              </button>
+              <button type="button" className={ghostButton} onClick={() => setEditing(false)}>
+                {t("collections.cancel")}
+              </button>
+            </form>
+          ) : (
+            <h1
+              id="room-title"
+              className={`font-serif font-semibold break-words ${nameClass(collection?.name ?? "")}`}
+            >
+              {collection?.name ?? ""}
+            </h1>
+          )}
+          <p className="text-body text-ink-2">{summary}</p>
+          <div className="mt-5 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setName(collection?.name ?? "");
+                setEditing(true);
+              }}
+              className={secondaryButton}
+            >
+              {t("collections.rename")}
+            </button>
+            <button type="button" onClick={() => setConfirmDelete(true)} className={ghostButton}>
+              {t("collections.delete")}
+            </button>
+          </div>
         </div>
-      </header>
+        {collection ? (
+          <CoverFan books={collection.sampleBooks} size="lg" className="hidden h-65 w-95 lg:block" />
+        ) : null}
+      </section>
 
       {confirmDelete ? (
         <div
           role="alert"
-          className="flex flex-wrap items-center justify-between gap-6 border border-line bg-surface px-7 py-5"
+          className="flex flex-wrap items-center justify-between gap-6 rounded-card bg-card px-8 py-5"
         >
           <span className="text-base text-ink-2">{t("collections.deleteConfirm")}</span>
-          <div className="flex gap-6">
+          <div className="flex gap-3">
             <button
               type="button"
-              className="font-medium text-ink"
+              className={primaryButton}
               onClick={() => remove.mutate(collectionId, { onSuccess: () => navigate({ to: "/" }) })}
             >
               {t("collections.confirm")}
             </button>
-            <button type="button" className="text-ink-2" onClick={() => setConfirmDelete(false)}>
+            <button type="button" className={ghostButton} onClick={() => setConfirmDelete(false)}>
               {t("collections.cancel")}
             </button>
           </div>
         </div>
       ) : null}
 
-      <div className="flex flex-col gap-3">
-        {editing ? (
-          <form
-            className="flex flex-wrap items-center gap-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              saveName();
-            }}
-          >
-            <input
-              autoFocus
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              maxLength={100}
-              aria-label={t("collections.placeholder")}
-              className="min-w-[320px] border-0 border-b border-line bg-transparent font-serif text-hero leading-[0.95] text-ink"
-            />
-            <button type="submit" className="border border-line-strong px-4 py-2 text-base font-medium">
-              {t("collections.save")}
-            </button>
-            <button type="button" className="text-base text-ink-2" onClick={() => setEditing(false)}>
-              {t("collections.cancel")}
-            </button>
-          </form>
-        ) : (
-          <h1 className="font-serif text-hero leading-[0.95]">{collection?.name ?? ""}</h1>
-        )}
-        <div className="text-ui text-ink-3">{countLabel(books.data?.length ?? 0, t)}</div>
-      </div>
-
-      {books.data && books.data.length === 0 ? <p className="text-ink-2">{t("collection.empty")}</p> : null}
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-x-6 gap-y-10">
-        {(books.data ?? []).map((book) => (
-          <BookCard key={book.id} book={book} collectionId={collectionId} />
-        ))}
-      </div>
+      {all.length > 0 ? <BookFilterBar filters={filters} onChange={setFilters} /> : null}
+      {everything.data && all.length === 0 ? <p className="text-ink-2">{t("collection.empty")}</p> : null}
+      {books.data ? (
+        <BookGrid
+          books={books.data}
+          collectionId={collectionId}
+          empty={all.length > 0 ? t("library.noResults") : undefined}
+        />
+      ) : null}
     </main>
   );
 }

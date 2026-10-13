@@ -39,19 +39,29 @@ describe("HighlightsPanel", () => {
     useLocaleStore.getState().setLanguage("es");
   });
 
-  it("lists the highlights grouped by page, with their notes", () => {
+  it("lists the highlights in page order, labelled with pigment and page, with their notes", () => {
     renderPanel([highlight("a", 2, "Segundo texto"), highlight("b", 1, "Primer texto", "una nota")]);
 
-    expect(screen.getByRole("heading", { name: "Página 1" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Página 2" })).toBeTruthy();
+    const cards = screen.getAllByRole("button", { name: /texto/ });
+    expect(cards[0]).toHaveTextContent("Salvia · p. 1");
+    expect(cards[1]).toHaveTextContent("Salvia · p. 2");
     expect(screen.getByText("Primer texto")).toBeTruthy();
     expect(screen.getByText("una nota")).toBeTruthy();
+  });
+
+  it("keeps only the highlights with a note", () => {
+    renderPanel([highlight("a", 2, "Segundo texto"), highlight("b", 1, "Primer texto", "una nota")]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Con nota" }));
+
+    expect(screen.queryByText("Segundo texto")).toBeNull();
+    expect(screen.getByText("Primer texto")).toBeTruthy();
   });
 
   it("jumps to the highlight that was clicked", () => {
     const props = renderPanel([highlight("a", 1, "Primer texto")]);
 
-    fireEvent.click(screen.getByRole("button", { name: "Primer texto" }));
+    fireEvent.click(screen.getByRole("button", { name: /Primer texto/ }));
 
     expect(props.onJump).toHaveBeenCalledWith(expect.objectContaining({ id: "a" }));
   });

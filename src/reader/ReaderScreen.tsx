@@ -22,8 +22,12 @@ import { followOutlineItem } from "./outline";
 import { useNativeOutline } from "./useNativeOutline";
 import { exportBookHighlights } from "./highlightExport";
 import { SelectionToolbar } from "./SelectionToolbar";
+import { secondaryButton } from "../ui/buttons";
 
-export function ReaderScreen({ bookId }: { bookId: string }) {
+/** The side panel a book can open with (the "Subrayados" link of the library). */
+export type ReaderPanel = "highlights" | "outline";
+
+export function ReaderScreen({ bookId, panel = null }: { bookId: string; panel?: ReaderPanel | null }) {
   const t = useT();
   const opened = useOpenedBook(bookId);
   const settings = useSettings();
@@ -36,7 +40,7 @@ export function ReaderScreen({ bookId }: { bookId: string }) {
   if (settings.isError) return <ReaderMessage>{t("reader.error")}</ReaderMessage>;
 
   const start = initialReadingStart(opened.data.readingState, settings.data);
-  return <ReaderView key={bookId} book={opened.data.book} start={start} />;
+  return <ReaderView key={bookId} book={opened.data.book} start={start} initialPanel={panel} />;
 }
 
 function ReaderMessage({ children }: { children: string }) {
@@ -44,7 +48,7 @@ function ReaderMessage({ children }: { children: string }) {
   return (
     <main className="flex h-screen flex-col items-center justify-center gap-6 p-8 text-ink-2">
       <p>{children}</p>
-      <Link to="/" className="text-ink underline underline-offset-4">
+      <Link to="/" className={secondaryButton}>
         {t("reader.back")}
       </Link>
     </main>
@@ -68,7 +72,15 @@ function toSaveState(
   return { page: position.page, offsetInPage: position.offsetInPage, zoom, viewMode, pageCount };
 }
 
-function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
+function ReaderView({
+  book,
+  start,
+  initialPanel,
+}: {
+  book: Book;
+  start: ReadingStart;
+  initialPanel: ReaderPanel | null;
+}) {
   const t = useT();
   const documentState = useNativeDocument(book.id);
   const viewer = useRef<ViewerHandle>(null);
@@ -90,7 +102,7 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
   const highlightSession = useHighlightSession(book.id);
   const { toggleHighlightMode } = highlightSession;
   const locale = useLocaleStore((state) => state.locale);
-  const [sidePanel, setSidePanel] = useState<"highlights" | "outline" | null>(null);
+  const [sidePanel, setSidePanel] = useState<ReaderPanel | null>(initialPanel);
   const [exporting, setExporting] = useState(false);
   const outline = useNativeOutline(book.id);
   // Focus mode hides the bar and the panels; only the page stays. F or Escape leaves it.
@@ -240,10 +252,12 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
       className="relative h-screen w-full overflow-hidden bg-canvas"
       onMouseMove={focusMode ? undefined : chrome.wake}
     >
+      <ReadingProgress page={page} pageCount={pageCount} />
       <NativeViewer ref={viewer} bookId={book.id} document={documentState.document} {...viewerProps} />
       {highlightSession.selection && !highlightSession.editing ? (
         <SelectionToolbar
           anchor={highlightSession.selection.anchor}
+          lastColor={highlightSession.lastColor}
           onPick={highlightSession.toolbar.pick}
           onNote={highlightSession.toolbar.note}
           onCopy={highlightSession.toolbar.copy}
@@ -267,13 +281,14 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
         <div
           role="status"
           onClick={highlightSession.dismissNotice}
-          className="fixed bottom-20 left-1/2 z-30 -translate-x-1/2 border border-line bg-surface px-5 py-3 text-ui text-ink-2"
+          className="fixed bottom-24 left-1/2 z-30 -translate-x-1/2 rounded-pill bg-pill px-5 py-3 text-ui text-ink-2 shadow-float"
         >
           {highlightSession.notice}
         </div>
       ) : null}
       <ReaderBar
         title={book.title}
+        author={book.author}
         page={page}
         pageCount={pageCount}
         scale={view.scale}
@@ -283,12 +298,14 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
         onZoomOut={() => viewer.current?.stepZoom(-1)}
         onFocusWithin={chrome.pin}
         highlightMode={highlightSession.highlightMode}
+        lastColor={highlightSession.lastColor}
         onToggleHighlightMode={toggleHighlightMode}
         highlightCount={highlightSession.highlights.length}
         highlightsOpen={sidePanel === "highlights"}
         onToggleHighlights={() => setSidePanel((open) => (open === "highlights" ? null : "highlights"))}
         outlineOpen={sidePanel === "outline"}
         onToggleOutline={() => setSidePanel((open) => (open === "outline" ? null : "outline"))}
+        panelOpen={sidePanel !== null}
         onOpenSearch={openSearch}
         viewMode={viewMode}
         onViewMode={changeViewMode}
@@ -322,6 +339,16 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
           onClose={() => setSidePanel(null)}
         />
       ) : null}
+    </div>
+  );
+}
+
+/** The thin line at the top of the reader: how far into the book the page is (DESIGN.md, línea de progreso). */
+function ReadingProgress({ page, pageCount }: { page: number; pageCount: number }) {
+  const fill = pageCount > 0 ? Math.min(1, Math.max(0, page / pageCount)) : 0;
+  return (
+    <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[3px] bg-track">
+      <div className="h-full bg-accent" style={{ width: `${fill * 100}%` }} />
     </div>
   );
 }

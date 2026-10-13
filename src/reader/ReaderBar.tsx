@@ -1,12 +1,16 @@
 import { Link } from "@tanstack/react-router";
+import type { ReactNode } from "react";
 import { useLocaleStore, useT } from "../i18n";
 import { formatPercent } from "./zoom";
 import { Segmented } from "../ui/Segmented";
+import { BackIcon, ListIcon, MinusIcon, PenIcon, PlusIcon, SearchIcon } from "../ui/icons";
 import { PageField } from "./PageField";
-import type { ViewMode } from "../api/types";
+import { PIGMENT_COLOR } from "./highlightPresentation";
+import type { HighlightColor, ViewMode } from "../api/types";
 
 export type ReaderBarProps = {
   title: string;
+  author: string | null;
   page: number;
   pageCount: number;
   scale: number;
@@ -19,13 +23,16 @@ export type ReaderBarProps = {
   onFocusWithin: (within: boolean) => void;
   /** The highlighter mode (H): every selection is highlighted with the last pigment. */
   highlightMode: boolean;
+  lastColor: HighlightColor;
   onToggleHighlightMode: () => void;
-  /** The side panels (DESIGN.md, barra del lector): index and highlights. Only one is open at a time. */
+  /** The side panels (DESIGN.md, paneles): index and highlights. Only one is open at a time. */
   highlightCount: number;
   highlightsOpen: boolean;
   onToggleHighlights: () => void;
   outlineOpen: boolean;
   onToggleOutline: () => void;
+  /** A side panel is open: the bar centres on the page that is left. */
+  panelOpen: boolean;
   /** Opens the search bar (also Ctrl+F). */
   onOpenSearch: () => void;
   /** The paper of the reader: normal, sepia or night (DESIGN.md, lector: papel y tinta por modo). */
@@ -33,11 +40,45 @@ export type ReaderBarProps = {
   onViewMode: (mode: ViewMode) => void;
 };
 
-const CONTROL_CLASS = "flex h-8 min-w-8 items-center justify-center text-ink hover:text-ink-2";
+const ICON_BUTTON =
+  "flex size-10 shrink-0 items-center justify-center rounded-field transition-colors duration-fast ease-atril hover:bg-surface-3";
 
-/** Thin bottom bar of the reader: appears with the pointer and fades out after 2 s (DESIGN.md). */
+function Divider() {
+  return <span aria-hidden="true" className="h-7 w-px shrink-0 bg-line" />;
+}
+
+function IconButton({
+  label,
+  onClick,
+  pressed,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  pressed?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      aria-pressed={pressed}
+      onClick={onClick}
+      className={`${ICON_BUTTON} ${pressed ? "bg-surface-3 text-accent-text" : "text-ink-2 hover:text-ink"}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
+ * The floating pill of the reader (DESIGN.md, píldora del lector): it appears with the pointer and fades out
+ * after 2 s without movement.
+ */
 export function ReaderBar({
   title,
+  author,
   page,
   pageCount,
   scale,
@@ -47,12 +88,14 @@ export function ReaderBar({
   onZoomOut,
   onFocusWithin,
   highlightMode,
+  lastColor,
   onToggleHighlightMode,
   highlightCount,
   highlightsOpen,
   onToggleHighlights,
   outlineOpen,
   onToggleOutline,
+  panelOpen,
   onOpenSearch,
   viewMode,
   onViewMode,
@@ -61,80 +104,87 @@ export function ReaderBar({
   const locale = useLocaleStore((state) => state.locale);
 
   return (
-    <nav
-      aria-label={t("reader.controls")}
-      inert={!visible}
-      onFocus={() => onFocusWithin(true)}
-      onBlur={() => onFocusWithin(false)}
-      className={`absolute inset-x-0 bottom-0 flex h-14 items-center gap-6 border-t border-line bg-surface px-8 text-ui text-ink-2 transition-opacity duration-slow ease-atril ${
-        visible ? "opacity-100" : "pointer-events-none opacity-0"
-      }`}
+    <div
+      className={`pointer-events-none absolute inset-x-0 bottom-6 z-20 flex justify-center px-4 transition-[opacity,padding] duration-slow ease-atril ${
+        panelOpen ? "pr-94" : ""
+      } ${visible ? "opacity-100" : "opacity-0"}`}
     >
-      <Link to="/" className="text-ink hover:text-ink-2">
-        <span aria-hidden="true">← </span>
-        {t("reader.back")}
-      </Link>
-      <span className="min-w-0 truncate font-serif text-cartela text-ink">{title}</span>
-      <PageField page={page} pageCount={pageCount} onGoTo={onGoToPage} />
-      <span className="flex-1" />
-      <Segmented
-        compact
-        label={t("reader.paper")}
-        value={viewMode}
-        onChange={onViewMode}
-        options={[
-          { value: "normal", label: t("reader.paper.normal") },
-          { value: "sepia", label: t("reader.paper.sepia") },
-          { value: "night", label: t("reader.paper.night") },
-        ]}
-      />
-      <button type="button" onClick={onOpenSearch} className={CONTROL_CLASS}>
-        {t("search.open")}
-      </button>
-      <button
-        type="button"
-        aria-pressed={outlineOpen}
-        onClick={onToggleOutline}
-        className={`flex items-center gap-2 border px-2.5 py-1 text-label ${
-          outlineOpen ? "border-ink bg-ink text-ink-inverse" : "border-line text-ink-2"
-        }`}
+      <nav
+        aria-label={t("reader.controls")}
+        inert={!visible}
+        onFocus={() => onFocusWithin(true)}
+        onBlur={() => onFocusWithin(false)}
+        className="pointer-events-auto flex max-w-full items-center gap-1 overflow-x-auto rounded-bar bg-pill px-2.5 py-2 text-ui whitespace-nowrap text-ink-2 shadow-pill"
       >
-        {t("outline.title")}
-      </button>
-      <button
-        type="button"
-        aria-pressed={highlightsOpen}
-        onClick={onToggleHighlights}
-        className={`flex items-center gap-2 border px-2.5 py-1 text-label ${
-          highlightsOpen ? "border-ink bg-ink text-ink-inverse" : "border-line text-ink-2"
-        }`}
-      >
-        {t("highlightPanel.toggle")} · {highlightCount}
-      </button>
-      <button
-        type="button"
-        aria-pressed={highlightMode}
-        onClick={onToggleHighlightMode}
-        className={`flex items-center gap-2 border px-2.5 py-1 text-label ${
-          highlightMode ? "border-ink bg-ink text-ink-inverse" : "border-line text-ink-2"
-        }`}
-      >
-        <span
-          aria-hidden="true"
-          className="block h-2 w-2 rounded-full"
-          style={{ background: "var(--pigment-ocre)" }}
+        <Link
+          to="/"
+          aria-label={t("reader.backToLibrary")}
+          title={t("reader.backToLibrary")}
+          className={`${ICON_BUTTON} text-ink-2 hover:text-ink`}
+        >
+          <BackIcon size={20} />
+        </Link>
+        <div className="flex max-w-48 min-w-20 flex-col pr-2.5 pl-0.5">
+          <span className="truncate font-serif text-title-sm leading-[1.1] font-semibold text-ink">
+            {title}
+          </span>
+          {author ? <span className="truncate text-label text-ink-3">{author}</span> : null}
+        </div>
+        <Divider />
+        <PageField page={page} pageCount={pageCount} onGoTo={onGoToPage} />
+        <Divider />
+        <IconButton label={t("outline.title")} pressed={outlineOpen} onClick={onToggleOutline}>
+          <ListIcon size={20} />
+        </IconButton>
+        <IconButton label={t("search.open")} onClick={onOpenSearch}>
+          <SearchIcon size={20} />
+        </IconButton>
+        <IconButton
+          label={`${t("highlightPanel.toggle")} · ${highlightCount}`}
+          pressed={highlightsOpen}
+          onClick={onToggleHighlights}
+        >
+          <PenIcon size={20} />
+        </IconButton>
+        <Divider />
+        <Segmented
+          compact
+          label={t("reader.paper")}
+          value={viewMode}
+          onChange={onViewMode}
+          options={[
+            { value: "normal", label: t("reader.paper.normal") },
+            { value: "sepia", label: t("reader.paper.sepia") },
+            { value: "night", label: t("reader.paper.night") },
+          ]}
         />
-        {t("highlight.mode")}
-      </button>
-      <div className="flex items-center gap-2">
-        <button type="button" aria-label={t("reader.zoomOut")} className={CONTROL_CLASS} onClick={onZoomOut}>
-          −
+        <Divider />
+        <IconButton label={t("reader.zoomOut")} onClick={onZoomOut}>
+          <MinusIcon />
+        </IconButton>
+        <span className="min-w-11.5 text-center text-ui font-semibold text-ink">
+          {formatPercent(scale, locale)}
+        </span>
+        <IconButton label={t("reader.zoomIn")} onClick={onZoomIn}>
+          <PlusIcon />
+        </IconButton>
+        <Divider />
+        <button
+          type="button"
+          aria-pressed={highlightMode}
+          onClick={onToggleHighlightMode}
+          className={`flex shrink-0 items-center gap-2 rounded-field px-2.5 py-2.5 text-ui font-medium transition-colors duration-fast ease-atril hover:bg-surface-3 hover:text-ink ${
+            highlightMode ? "bg-surface-3 text-ink" : "text-ink-2"
+          }`}
+        >
+          <span
+            aria-hidden="true"
+            className="block size-3 rounded-dot"
+            style={{ background: PIGMENT_COLOR[lastColor] }}
+          />
+          {t("highlight.mode")}
         </button>
-        <span className="min-w-14 text-center">{formatPercent(scale, locale)}</span>
-        <button type="button" aria-label={t("reader.zoomIn")} className={CONTROL_CLASS} onClick={onZoomIn}>
-          +
-        </button>
-      </div>
-    </nav>
+      </nav>
+    </div>
   );
 }

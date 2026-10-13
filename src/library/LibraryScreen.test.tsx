@@ -15,6 +15,7 @@ function book(overrides: Partial<Book> & { id: string; title: string }): Book {
     pageCount: 176,
     fileUrl: `atril://localhost/book/${overrides.id}`,
     coverUrl: null,
+    coverColor: null,
     favorite: false,
     missing: false,
     scanState: "done",
@@ -68,6 +69,8 @@ function mockLibrary(options: {
       }
       case "list_library_folders":
         return [];
+      case "list_highlights":
+        return [];
       default:
         throw new Error(`unexpected command ${cmd}`);
     }
@@ -89,7 +92,7 @@ describe("library screen", () => {
     renderLibrary();
 
     expect(await screen.findByText("Seguir leyendo")).toBeInTheDocument();
-    expect(screen.getByText("64 %")).toBeInTheDocument();
+    expect(screen.getAllByText("64 %").length).toBeGreaterThan(0);
     expect(screen.getByText("p. 112 de 176")).toBeInTheDocument();
   });
 
@@ -97,7 +100,7 @@ describe("library screen", () => {
     mockLibrary({});
     renderLibrary();
 
-    expect(await screen.findByText("Favoritos")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Favoritos" })).toBeInTheDocument();
     expect(screen.getAllByText("El Aleph").length).toBeGreaterThan(0);
   });
 

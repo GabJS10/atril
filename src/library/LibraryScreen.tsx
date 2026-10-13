@@ -1,62 +1,92 @@
-import { Link } from "@tanstack/react-router";
-import { useState } from "react";
-import type { BookQuery } from "../api/types";
+import { useEffect, useRef, useState } from "react";
 import { useT } from "../i18n";
-import { AllBooks, type AllBooksFilters } from "./AllBooks";
+import { SearchIcon } from "../ui/icons";
 import { useAddFolder, useOpenPdfFile } from "./actions";
-import { CollectionsSection, ContinueSection, FavoritesSection } from "./sections";
-import { useBooks, useHome, useScanStatus } from "./queries";
+import { BookGrid } from "./BookGrid";
 import { EmptyLibrary, ImportNotice, MissingBanner, ScanBar } from "./Notices";
+import {
+  AlsoReading,
+  ContinueCard,
+  FavoritesBand,
+  RecentlyAdded,
+  RoomsSection,
+  SectionHeader,
+} from "./sections";
+import { useBooks, useHome, useScanStatus } from "./queries";
 import { useDebouncedValue } from "./useDebouncedValue";
 
-/** The gallery wall (DESIGN.md, dirección B): Seguir leyendo, Favoritos, Salas and Todos. */
+/** How many books "Añadidos hace poco" shows. */
+const RECENT_LIMIT = 8;
+
+/** Inicio (DESIGN.md, galería): the header with its summary and search, Seguir leyendo, Favoritos, Salas and the new books. */
 export function LibraryScreen() {
   const t = useT();
   const home = useHome();
   const scan = useScanStatus();
   const everything = useBooks({});
+  const reading = useBooks({ status: "reading" });
+  const recent = useBooks({ sort: "added", descending: true });
   const addFolder = useAddFolder();
   const openFile = useOpenPdfFile();
 
+  const searchField = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
   const search = useDebouncedValue(text.trim(), 250);
-  const [filters, setFilters] = useState<AllBooksFilters>({
-    status: undefined,
-    sort: "title",
-    favoritesOnly: false,
-  });
-  const query: BookQuery = {
-    text: search || undefined,
-    status: filters.status,
-    sort: filters.sort,
-    favoritesOnly: filters.favoritesOnly || undefined,
-  };
-  const todos = useBooks(query);
+  const results = useBooks({ text: search || undefined, sort: "title" });
+
+  // Ctrl+K (Cmd+K) jumps to the search field.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        searchField.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   const data = home.data;
   const missing = (everything.data ?? []).filter((book) => book.missing);
   const busy = addFolder.isPending || openFile.isPending;
-  const showFullWall = !search;
+  const [first, ...others] = data?.continueReading ?? [];
+  const summary = data
+    ? [
+        data.bookCount === 1
+          ? t("library.all.countOne", { count: "1" })
+          : t("library.all.count", { count: String(data.bookCount) }),
+        data.collections.length === 1
+          ? t("home.rooms.one", { count: "1" })
+          : t("home.rooms", { count: String(data.collections.length) }),
+        t("home.reading", { count: String(reading.data?.length ?? 0) }),
+      ].join(" · ")
+    : "";
 
   return (
-    <main className="flex min-h-screen flex-col gap-16 px-16 pb-16">
-      <header className="grid grid-cols-12 items-center gap-6 border-b border-line-strong py-5">
-        <div className="col-span-3 text-base font-semibold tracking-wordmark uppercase">{t("app.name")}</div>
-        <div className="col-span-6">
+    <main className="flex min-h-screen flex-col gap-14 px-14 pt-9 pb-18">
+      <header className="flex flex-wrap items-center gap-5">
+        <div className="mr-auto flex flex-col gap-1.5">
+          <h1 className="font-serif text-page leading-none font-semibold">{t("library.title")}</h1>
+          <p className="text-base text-ink-2">{summary}</p>
+        </div>
+        <label className="flex min-w-55 flex-[0_1_380px] items-center gap-2.5 rounded-field bg-field px-4 py-3 text-ink-3">
+          <SearchIcon />
           <input
+            ref={searchField}
+            aria-label={t("library.search")}
             type="search"
             value={text}
             onChange={(event) => setText(event.target.value)}
-            aria-label={t("library.search")}
-            placeholder={t("library.search")}
-            className="w-full border-0 border-b border-line bg-transparent py-2 text-base text-ink placeholder:text-ink-3"
+            placeholder={t("library.search.placeholder")}
+            className="min-w-0 flex-1 bg-transparent text-base text-ink outline-none placeholder:text-ink-3"
           />
-        </div>
-        <div className="col-span-3 flex justify-end">
-          <Link to="/settings" className="text-base font-medium text-ink">
-            {t("library.settings")}
-          </Link>
-        </div>
+          <kbd
+            aria-hidden="true"
+            className="rounded-tab bg-surface-2 px-1.5 py-0.5 font-sans text-label text-ink-3"
+          >
+            Ctrl K
+          </kbd>
+        </label>
       </header>
 
       {scan.data?.running ? <ScanBar found={scan.data.found} /> : null}
@@ -79,34 +109,24 @@ export function LibraryScreen() {
       {data && data.bookCount > 0 ? (
         <>
           <MissingBanner books={missing} />
-          {showFullWall ? (
-            <>
-              <ContinueSection books={data.continueReading} />
-              <FavoritesSection
-                books={data.favorites}
-                total={data.favoriteCount}
-                onViewAll={() => setFilters((current) => ({ ...current, favoritesOnly: true }))}
+          {search ? (
+            <section aria-labelledby="results-title" className="flex flex-col gap-5">
+              <SectionHeader
+                id="results-title"
+                title={t("library.results")}
+                count={results.data?.length ?? 0}
               />
-              <CollectionsSection collections={data.collections} />
+              <BookGrid books={results.data ?? []} empty={t("library.noResults")} />
+            </section>
+          ) : (
+            <>
+              {first ? <ContinueCard book={first} /> : null}
+              <AlsoReading books={others} />
+              <FavoritesBand books={data.favorites} total={data.favoriteCount} />
+              <RoomsSection collections={data.collections} />
+              <RecentlyAdded books={(recent.data ?? []).slice(0, RECENT_LIMIT)} />
             </>
-          ) : null}
-          <AllBooks
-            books={todos.data ?? []}
-            filters={filters}
-            onChange={setFilters}
-            searching={!!search}
-            hasFilters={filters.status !== undefined || filters.favoritesOnly}
-            label={filters.favoritesOnly ? t("library.favorites") : t("library.all")}
-          />
-          {filters.favoritesOnly ? (
-            <button
-              type="button"
-              onClick={() => setFilters((current) => ({ ...current, favoritesOnly: false }))}
-              className="self-start text-ui text-ink-2 underline underline-offset-4"
-            >
-              {t("library.all")}
-            </button>
-          ) : null}
+          )}
         </>
       ) : null}
     </main>

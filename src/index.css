@@ -1,47 +1,88 @@
-/* Atril design tokens. Source of truth: DESIGN.md (derived from the approved canvas). */
+/* Atril design tokens. Source of truth: DESIGN.md ("Galería nocturna"). */
 @import "tailwindcss";
-@import "@fontsource/cormorant-garamond/latin-400.css";
 @import "@fontsource/cormorant-garamond/latin-500.css";
+@import "@fontsource/cormorant-garamond/latin-600.css";
+@import "@fontsource/cormorant-garamond/latin-500-italic.css";
 @import "@fontsource-variable/inter/wght.css";
 
-/* Theme-independent scale, grid and motion. Colors live below, per theme. */
+/* Theme-independent scale, radii and motion. Colors and shadows live below, per theme. */
 @theme inline {
   --color-canvas: var(--canvas);
   --color-surface: var(--surface);
+  --color-card: var(--card);
+  --color-field: var(--field);
+  --color-raised: var(--raised);
   --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
   --color-line: var(--line);
-  --color-line-strong: var(--line-strong);
   --color-ink: var(--ink);
   --color-ink-2: var(--ink-2);
   --color-ink-3: var(--ink-3);
   --color-ink-inverse: var(--ink-inverse);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-text: var(--accent-text);
+  --color-wash: var(--wash);
+  --color-veil: var(--veil);
+  --color-track: var(--track);
+  --color-pill: var(--pill);
+  --color-scrim: var(--scrim);
 
   --color-paper: var(--paper);
   --color-paper-ink: var(--paper-ink);
+  --color-paper-normal: var(--paper-normal);
+  --color-paper-normal-ink: var(--paper-normal-ink);
+  --color-paper-sepia: var(--paper-sepia);
+  --color-paper-sepia-ink: var(--paper-sepia-ink);
+  --color-paper-night: var(--paper-night);
+  --color-paper-night-ink: var(--paper-night-ink);
   --color-pigment-ocre: var(--pigment-ocre);
   --color-pigment-sienna: var(--pigment-sienna);
   --color-pigment-sage: var(--pigment-sage);
   --color-pigment-slate: var(--pigment-slate);
+
+  --shadow-cover: var(--shadow-cover-value);
+  --shadow-float: var(--shadow-float-value);
+  --shadow-pill: var(--shadow-pill-value);
 
   --font-sans: "Inter Variable", Inter, system-ui, sans-serif;
   --font-serif: "Cormorant Garamond", Georgia, serif;
 
   /* Escala tipográfica (px en rem a 16 px). */
   --text-label: 0.6875rem; /* 11 px: rótulos en versalitas */
+  --text-caption: 0.75rem; /* 12 px: contadores, autor bajo una portada */
   --text-ui: 0.8125rem; /* 13 px: controles secundarios */
   --text-base: 0.875rem; /* 14 px: UI */
+  --text-body: 0.9375rem; /* 15 px: cuerpo de las tarjetas */
   --text-reading: 1.0625rem; /* 17 px: cuerpo del lector (grotesca) */
-  --text-cartela: 1.5rem; /* 24 px: títulos de cartela */
-  --text-sala: 2.125rem; /* 34 px: títulos de Sala */
-  --text-obra: 3.5rem; /* 56 px: títulos de obra en pantalla grande */
-  --text-display: 4.75rem; /* 76 px: título de obra en "Seguir leyendo" */
-  --text-hero: 7rem; /* 112 px: Sala en cabecera */
+  --text-title-sm: 1.125rem; /* 18 px: título bajo una portada (serif) */
+  --text-title-md: 1.3125rem; /* 21 px: título de una tarjeta (serif) */
+  --text-quote: 1.375rem; /* 22 px: cita de un subrayado (serif cursiva) */
+  --text-cartela: 1.5rem; /* 24 px: títulos cortos y de aviso */
+  --text-panel: 1.875rem; /* 30 px: título de panel y de tarjeta de Ajustes */
+  --text-sala: 2.125rem; /* 34 px: título de sección */
+  --text-room-name: 2.5rem; /* 40 px: nombre de Sala en su tarjeta */
+  --text-page: 3rem; /* 48 px: título de pantalla */
+  --text-obra: 3.5rem; /* 56 px: Ajustes, libro con título largo */
+  --text-feature: 4rem; /* 64 px: título de "Seguir leyendo" */
+  --text-hero: 6rem; /* 96 px: nombre de la Sala en su cabecera */
 
   --tracking-label: 0.14em;
+  --tracking-kicker: 0.16em;
   --tracking-wordmark: 0.32em;
 
+  /* Radios: esquinas suaves en todo salvo la portada, que casi no se redondea. */
   --radius-none: 0;
   --radius-dot: 9999px;
+  --radius-pill: 9999px;
+  --radius-tab: 0.5rem; /* 8 px: opciones de un segmentado */
+  --radius-control: 0.625rem; /* 10 px: botones y entradas de la barra lateral */
+  --radius-field: 0.75rem; /* 12 px: campos y bandejas */
+  --radius-tile: 0.875rem; /* 14 px: tarjetas pequeñas y filas */
+  --radius-bar: 1.125rem; /* 18 px: píldora del lector */
+  --radius-card: 1.25rem; /* 20 px: tarjetas */
+  --radius-panel: 1.5rem; /* 24 px: cabecera de Sala */
+  --radius-cover: 3px 6px 6px 3px;
 
   --ease-atril: cubic-bezier(0.22, 1, 0.36, 1);
   --duration-fast: 200ms;
@@ -49,31 +90,69 @@
   --duration-slow: 300ms;
 }
 
-/* Tema oscuro (predeterminado) y "cubo blanco" (data-theme="light"). */
+/* Tema oscuro, "galería nocturna" (predeterminado) y "cubo blanco" (data-theme="light"). */
 :root,
 :root[data-theme="dark"] {
-  --canvas: #0d0d0d;
-  --surface: #161616;
-  --surface-2: #1f1f1f;
-  --line: #2a2a2a;
-  --line-strong: #edeae4;
+  --canvas: #12100e;
+  --surface: #171512;
+  --card: #1a1714;
+  --field: #1c1916;
+  --raised: #221f1b;
+  --surface-2: #24201b;
+  --surface-3: #2a2621;
+  --line: #3a352e;
   --ink: #edeae4;
-  --ink-2: #a39e95;
-  --ink-3: #8a857c;
-  --ink-inverse: #0d0d0d;
+  --ink-2: #b3ada3;
+  --ink-3: #958f85;
+  --ink-inverse: #12100e;
+  --accent: #c9a05a;
+  --accent-ink: #1a1410;
+  --accent-text: #c9a05a;
+  --wash: rgb(237 234 228 / 0.08);
+  --veil: rgb(0 0 0 / 0.28);
+  --track: rgb(237 234 228 / 0.12);
+  --pill: rgb(28 25 22 / 0.94);
+  --scrim: rgb(18 16 14 / 0.82);
+  --tint-strength: 18%;
+  --room-strength: 16%;
+  --shadow-cover-value:
+    inset 5px 0 0 rgb(0 0 0 / 0.22), inset 6px 0 0 rgb(255 255 255 / 0.07),
+    0 24px 36px -18px rgb(0 0 0 / 0.8), 0 2px 6px rgb(0 0 0 / 0.35);
+  --shadow-float-value: 0 16px 30px -10px rgb(0 0 0 / 0.6);
+  --shadow-pill-value: 0 20px 40px -12px rgb(0 0 0 / 0.7);
   color-scheme: dark;
 }
 
+/* Cubo blanco: la misma estructura (tonos en vez de hilos), con los tonos hacia arriba; el acento se oscurece
+   para cumplir el contraste, y las portadas siguen a color. */
 :root[data-theme="light"] {
   --canvas: #f5f4f0;
-  --surface: #ecebe6;
-  --surface-2: #e2e0d9;
-  --line: #d9d6ce;
-  --line-strong: #121212;
-  --ink: #121212;
-  --ink-2: #5c5852;
-  --ink-3: #6e6a63;
+  --surface: #ece9e1;
+  --card: #e9e5db;
+  --field: #e4e0d5;
+  --raised: #f3f1ea;
+  --surface-2: #fbfaf7;
+  --surface-3: #e0dcd0;
+  --line: #cfc9bc;
+  --ink: #1a1714;
+  --ink-2: #54504a;
+  --ink-3: #5f5a52;
   --ink-inverse: #f5f4f0;
+  --accent: #85601c;
+  --accent-ink: #fffbf2;
+  --accent-text: #6f4f14;
+  --wash: rgb(26 23 20 / 0.07);
+  --veil: rgb(255 255 255 / 0.5);
+  --track: rgb(26 23 20 / 0.14);
+  --pill: rgb(251 250 247 / 0.94);
+  --scrim: rgb(245 244 240 / 0.85);
+  --tint-strength: 12%;
+  --room-strength: 14%;
+  --shadow-cover-value:
+    inset 5px 0 0 rgb(0 0 0 / 0.14), inset 6px 0 0 rgb(255 255 255 / 0.2),
+    0 18px 28px -16px rgb(40 30 15 / 0.5), 0 2px 5px rgb(40 30 15 / 0.28);
+  --shadow-float-value: 0 16px 30px -10px rgb(40 30 15 / 0.3);
+  --shadow-pill-value: 0 20px 40px -12px rgb(40 30 15 / 0.35);
   color-scheme: light;
 }
 
@@ -81,6 +160,12 @@
 :root {
   --paper: #f4f1ea;
   --paper-ink: #1c1a17;
+  --paper-normal: #f4f1ea;
+  --paper-normal-ink: #1c1a17;
+  --paper-sepia: #f1e6cf;
+  --paper-sepia-ink: #3a2e22;
+  --paper-night: #0d0d0d;
+  --paper-night-ink: #edeae4;
   --pigment-ocre: #b5914f;
   --pigment-sienna: #a0644a;
   --pigment-sage: #8a9a7b;
@@ -89,13 +174,148 @@
 }
 
 :root[data-reader-mode="sepia"] {
-  --paper: #f1e6cf;
-  --paper-ink: #3a2e22;
+  --paper: var(--paper-sepia);
+  --paper-ink: var(--paper-sepia-ink);
 }
 
 :root[data-reader-mode="night"] {
-  --paper: #0d0d0d;
-  --paper-ink: #edeae4;
+  --paper: var(--paper-night);
+  --paper-ink: var(--paper-night-ink);
+}
+
+/* Portadas tipográficas (un libro sin portada): catorce combinaciones de fondo, tinta y marca; la de cada libro sale
+   de su id (library/identity.ts). */
+[data-tone="0"] {
+  --cover-bg: #7a2e26;
+  --cover-ink: #f1e3cf;
+  --cover-mark: #d9a95b;
+}
+[data-tone="1"] {
+  --cover-bg: #1f3a4d;
+  --cover-ink: #e9e2d3;
+  --cover-mark: #c9a05a;
+}
+[data-tone="2"] {
+  --cover-bg: #3b2a1e;
+  --cover-ink: #d9b86a;
+  --cover-mark: #d9b86a;
+}
+[data-tone="3"] {
+  --cover-bg: #c9a24a;
+  --cover-ink: #1e1a14;
+  --cover-mark: #7a2e26;
+}
+[data-tone="4"] {
+  --cover-bg: #e6decd;
+  --cover-ink: #24201b;
+  --cover-mark: #a33a2c;
+}
+[data-tone="5"] {
+  --cover-bg: #2f4a3a;
+  --cover-ink: #ede6d6;
+  --cover-mark: #c9a05a;
+}
+[data-tone="6"] {
+  --cover-bg: #a64b2a;
+  --cover-ink: #f6ebdd;
+  --cover-mark: #f6ebdd;
+}
+[data-tone="7"] {
+  --cover-bg: #22252b;
+  --cover-ink: #d8c38e;
+  --cover-mark: #d8c38e;
+}
+[data-tone="8"] {
+  --cover-bg: #4a5a78;
+  --cover-ink: #f0ebdf;
+  --cover-mark: #e3c77f;
+}
+[data-tone="9"] {
+  --cover-bg: #5b1e2d;
+  --cover-ink: #e6cf96;
+  --cover-mark: #e6cf96;
+}
+[data-tone="10"] {
+  --cover-bg: #d9cfba;
+  --cover-ink: #2b2620;
+  --cover-mark: #2f4a3a;
+}
+[data-tone="11"] {
+  --cover-bg: #3d5b58;
+  --cover-ink: #f2eadb;
+  --cover-mark: #e3c77f;
+}
+[data-tone="12"] {
+  --cover-bg: #191919;
+  --cover-ink: #e8e2d6;
+  --cover-mark: #b5914f;
+}
+[data-tone="13"] {
+  --cover-bg: #6e7a88;
+  --cover-ink: #f4f0e8;
+  --cover-mark: #f4f0e8;
+}
+
+/* Color de cada Sala: ocho tonos apagados, uno por Sala según su id (library/identity.ts). */
+[data-room="0"] {
+  --room: #6f9a7e;
+}
+[data-room="1"] {
+  --room: #9c86c2;
+}
+[data-room="2"] {
+  --room: #c47a5a;
+}
+[data-room="3"] {
+  --room: #7c9cbf;
+}
+[data-room="4"] {
+  --room: #bf7c8e;
+}
+[data-room="5"] {
+  --room: #5fa3a0;
+}
+[data-room="6"] {
+  --room: #a3a566;
+}
+[data-room="7"] {
+  --room: #b8896a;
+}
+
+/* Superficies teñidas: el color de una Sala o de la portada (`--tint`) mezclado con el lienzo. */
+@utility bg-room {
+  background-color: var(--room);
+}
+@utility bg-room-tint {
+  background-color: color-mix(in oklab, var(--room) var(--room-strength), var(--canvas));
+}
+@utility text-room-ink {
+  color: color-mix(in oklab, var(--room) 55%, var(--ink));
+}
+@utility bg-cover-tint {
+  background-color: color-mix(in oklab, var(--tint) var(--tint-strength), var(--canvas));
+}
+
+/* Portada: el lomo (canto) sobre la imagen o la cara tipográfica. El tamaño de la letra sigue al ancho. */
+@utility cover-spine {
+  background-image: linear-gradient(to right, rgb(0 0 0 / 0.22) 5px, rgb(255 255 255 / 0.07) 5px 6px);
+  border-radius: var(--radius-cover);
+}
+@utility cover-box {
+  container-type: inline-size;
+}
+@utility cover-face {
+  background-color: var(--cover-bg);
+  color: var(--cover-ink);
+}
+@utility cover-mark {
+  background-color: var(--cover-mark);
+}
+@utility cover-title {
+  font-size: 14.5cqw;
+}
+@utility cover-author {
+  font-size: 5.2cqw;
 }
 
 @layer base {
@@ -108,8 +328,8 @@
   }
 
   :focus-visible {
-    outline: 1px solid var(--ink);
-    outline-offset: 3px;
+    outline: 2px solid var(--accent-text);
+    outline-offset: 2px;
   }
 }
 
@@ -119,4 +339,9 @@
     --duration-base: 0ms;
     --duration-slow: 0ms;
   }
+}
+
+/* Texto subrayado dentro de la interfaz (tarjeta de "Seguir leyendo", panel): el pigmento (`--mark`) con poca opacidad. */
+@utility highlight-mark {
+  background-color: color-mix(in srgb, var(--mark) 40%, transparent);
 }

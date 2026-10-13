@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useT } from "../i18n";
 import { activeOutlineItem, hasOutline, type OutlineItem } from "./outline";
+import { SidePanel } from "./SidePanel";
 
 /** Indentation of each level of the index (Tailwind's spacing scale). */
 const INDENT = ["pl-0", "pl-4", "pl-8", "pl-12"] as const;
@@ -10,7 +11,7 @@ function indentFor(depth: number): string {
 }
 
 /**
- * The reader's index panel (DESIGN.md, paneles: 320 px, opaque, a 1 px line on the left). The entry of the current
+ * The reader's index panel (DESIGN.md, paneles: opaque, a tone of its own). The entry of the current
  * section is marked; a click goes to the entry; each entry with children folds.
  */
 export function OutlinePanel({
@@ -45,26 +46,26 @@ export function OutlinePanel({
         const hasChildren = item.items.length > 0;
         return (
           <li key={path}>
-            <div className={`flex items-center gap-2 py-1 ${indentFor(depth)}`}>
+            <div className={`flex items-center gap-2 py-0.5 ${indentFor(depth)}`}>
               {hasChildren ? (
                 <button
                   type="button"
                   aria-expanded={!isFolded}
                   aria-label={t(isFolded ? "outline.expand" : "outline.collapse", { title: item.title })}
                   onClick={() => toggle(path)}
-                  className="flex h-5 w-5 shrink-0 items-center justify-center text-ui text-ink-3"
+                  className="flex size-6 shrink-0 items-center justify-center rounded-tab text-ui text-ink-3 hover:bg-raised hover:text-ink"
                 >
                   {isFolded ? "+" : "−"}
                 </button>
               ) : (
-                <span aria-hidden="true" className="h-5 w-5 shrink-0" />
+                <span aria-hidden="true" className="size-6 shrink-0" />
               )}
               <button
                 type="button"
                 aria-current={item === active ? "true" : undefined}
                 onClick={() => onGo(item)}
-                className={`min-w-0 flex-1 text-left text-base ${
-                  item === active ? "font-medium text-ink" : "text-ink-2"
+                className={`min-w-0 flex-1 rounded-control px-2.5 py-1.5 text-left text-base transition-colors duration-fast ease-atril hover:text-ink ${
+                  item === active ? "bg-raised font-semibold text-ink" : "text-ink-2"
                 }`}
               >
                 <span className="block truncate">{item.title}</span>
@@ -83,20 +84,8 @@ export function OutlinePanel({
   );
 
   return (
-    <aside
-      aria-label={t("outline.label")}
-      onKeyDown={(event) => {
-        if (event.key === "Escape") onClose();
-      }}
-      className="absolute bottom-14 right-0 top-0 flex w-80 flex-col border-l border-line bg-surface text-base text-ink"
-    >
-      <header className="flex items-center justify-between px-5 pb-3 pt-5">
-        <h2 className="text-label font-medium uppercase tracking-label text-ink-2">{t("outline.title")}</h2>
-        <button type="button" onClick={onClose} className="text-ui text-ink-2 underline underline-offset-4">
-          {t("highlight.close")}
-        </button>
-      </header>
-      <nav aria-label={t("outline.title")} className="flex-1 overflow-y-auto px-5 pb-5">
+    <SidePanel label={t("outline.label")} title={t("outline.title")} onClose={onClose}>
+      <nav aria-label={t("outline.title")} className="-mx-2 flex-1 overflow-y-auto px-2">
         {items === null ? (
           <p className="text-ui text-ink-2">{t("outline.loading")}</p>
         ) : hasOutline(items) ? (
@@ -105,6 +94,6 @@ export function OutlinePanel({
           <p className="text-ui text-ink-2">{t("outline.empty")}</p>
         )}
       </nav>
-    </aside>
+    </SidePanel>
   );
 }
