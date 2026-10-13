@@ -1,6 +1,6 @@
 # Contrato IPC (frontend ⇄ backend)
 
-**Versión:** v0.8 (texto con cajas, búsqueda por eventos, índice y enlaces son de la v0.8; el motor nativo, `open_document` y `GET /page/…`, es de la v0.7; la ruta `POST /jpx` es de la v0.6). **Dueño:** `plan`. `backend` propone los cambios y `frontend` los implementa en `src/api/tauri.ts`. Un cambio que rompa el contrato se coordina antes con `plan` (ver `AGENTS.md`).
+**Versión:** v1.0 (cierre de la fase R: se quitan la ruta `POST /jpx` y los comandos del indexador de pdf.js `list_pending_scans`, `save_book_scan` y `mark_scan_failed`; texto con cajas, búsqueda por eventos, índice y enlaces son de la v0.8; el motor nativo, `open_document` y `GET /page/…`, es de la v0.7). **Dueño:** `plan`. `backend` propone los cambios y `frontend` los implementa en `src/api/tauri.ts`. Un cambio que rompa el contrato se coordina antes con `plan` (ver `AGENTS.md`).
 
 Este documento es la única fuente de verdad sobre los comandos Tauri, los eventos, las URLs del protocolo `atril://` y los tipos compartidos. Si el código y este archivo no coinciden, se corrige uno de los dos en el mismo cambio.
 
@@ -12,7 +12,7 @@ Este documento es la única fuente de verdad sobre los comandos Tauri, los event
 - **IDs de libro:** huella del contenido en hex minúsculas (`sha256(tamaño + primer MiB + último MiB)`).
 - **Campos opcionales en las salidas:** `T | null`, nunca `undefined` (`Option<T>` sin `skip_serializing_if`).
 - **Campos opcionales en las entradas:** `campo?: T` (`Option<T>` con `#[serde(default)]`); omitido = valor por defecto.
-- **URLs:** las construye siempre el backend y llegan listas para usar en pdf.js o `<img>`. El front nunca construye URLs ni maneja rutas de archivos (salvo pasar al backend la ruta que eligió el usuario en un diálogo o que soltó en la ventana).
+- **URLs:** las construye siempre el backend y llegan listas para usar en `<img>` o en el visor. El front nunca construye URLs ni maneja rutas de archivos (salvo pasar al backend la ruta que eligió el usuario en un diálogo o que soltó en la ventana).
 
 ## Errores
 Todo comando devuelve `Result<T, AppError>`. Si hay error, `invoke` rechaza la promesa con:
@@ -37,7 +37,6 @@ type ErrorCode =
 | `atril://localhost/book/<id>` | El PDF. `200` sin `Range` (carga el archivo entero: evitarlo), `206` con `Range` (sirve **exactamente** el rango pedido, con `Content-Range` y `Content-Length`; solo el primer rango si piden varios), `416` si el rango es inválido. `Accept-Ranges: bytes`, `Content-Type: application/pdf`, CORS para el origen de la app con `Content-Range`, `Accept-Ranges` y `Content-Length` expuestas. `404` si el ID no existe o falta el archivo (y lo marca `missing`) |
 | `atril://localhost/cover/<id>` | La portada, con su `Content-Type` real (`image/jpeg` o `image/webp`, según la firma del archivo guardado). `404` si no hay portada |
 | `GET atril://localhost/page/<id>/<n>?scale=<f>` | La página `n` (1-based) del libro renderizada por el motor nativo (MuPDF), como `image/jpeg` (calidad 85). `scale` = píxeles por punto PDF (1 = 72 ppp), por defecto `1`, de `0.1` a `8`; se cuantiza a centésimas. El front **no construye la URL**: `open_document` devuelve la base `pageBaseUrl` y el front añade `/<n>?scale=<f>`. `Cache-Control: private, max-age=3600`. `400` si `scale` no es válido; `404` si el ID o la forma de la ruta no son válidos, el libro no existe, falta el archivo (lo marca `missing`) o `n` está fuera del libro; `410` si la petición quedó superada por otra zona o por un cambio de escala (ver "Motor de PDF (v0.7)"); `422` si el PDF no se puede leer; `500` si falla el render. Detalle en "Motor de PDF (v0.7)" |
-| `POST atril://localhost/jpx?components=N&indexed=0\|1&smask=0\|1&reduce=R` | Decodifica un JPX (JP2 o codestream) que va en el cuerpo y devuelve los píxeles. `200` con `application/octet-stream` y las cabeceras `X-Jpx-Width`, `X-Jpx-Height`, `X-Jpx-Channels`; `422` con el motivo en texto; `400` si la query no es válida; `413` si el cuerpo pasa de 64 MiB. Detalle en "JPX (v0.6)" |
 
 En Windows la forma es `http://atril.localhost/…`: por eso las URLs vienen siempre del backend (`Book.fileUrl`, `Book.coverUrl`).
 
@@ -118,26 +117,15 @@ Valores por defecto: `language: "system"`, `theme: "dark"`, `defaultZoom: "page_
 | `get_scan_status` | — | `ScanStatus` (para pintar el estado "escaneando" al entrar en la biblioteca) | — |
 | `import_files` | `{ paths: string[] }` | `ImportResult`. Cada ruta se procesa por separado; los fallos van en `rejected` y no detienen el resto | `invalid_input` (lista vacía), `db` |
 
-**Indexador (2.B2; desde R1.3 el front no recibe pendientes, ver abajo)**
-| Comando | Argumentos | Devuelve | Errores |
-|---|---|---|---|
-| `list_pending_scans` | — | `Book[]`. **Desde R1.3 siempre `[]`**: el indexador nativo (ver abajo) procesa los pendientes, así que el front no recibe ninguno y no hay dos indexadores sobre el mismo libro. Antes devolvía los `scanState: "pending"` sin `missing`. Se borra en R2 junto con el indexador de pdf.js | — |
-| `save_book_scan` | Cabeceras: `X-Book-Id`, `X-Page-Count`; opcionales `X-Title`, `X-Author` (UTF-8, URL-encoded). Cuerpo binario: la portada en **JPEG** (o WebP), detectada por su firma (`invoke("save_book_scan", coverBytes, { headers })`). El front genera JPEG porque WebKitGTK no codifica WebP en `canvas.toBlob` | `Book` (`scanState: "done"`, `coverUrl` listo). Guarda los bytes tal cual en `covers/<id>.jpg` (o `.webp`), con fichero temporal + renombrado, y borra la portada anterior con la otra extensión | `not_found`, `invalid_input` (portada que no es JPEG ni WebP, de más de 2 MiB o `pageCount < 1`), `io`, `db` |
-| `mark_scan_failed` | `{ bookId: string }` | `Book` (`scanState: "failed"`). Evita reintentar un PDF que pdf.js no puede leer | `not_found`, `db` |
-
-> Por qué las cabeceras: con un cuerpo binario, Tauri no serializa la portada como un array JSON (lento). Los metadatos viajan en cabeceras, así que el comando no recibe `{ … }` como en el borrador de `PLAN.md`.
->
-> `save_book_scan` y `mark_scan_failed` siguen funcionando hasta R2, aunque el front ya no reciba pendientes.
-
 **Indexador nativo (R1.3, `src-tauri/src/indexer.rs`)**
 
-Sustituye al indexador de pdf.js para los libros con `scanState: "pending"` y sin `missing`. Procesa uno a uno, en un hilo propio (`atril-indexer`) con su propia copia del documento de MuPDF. Ese hilo baja su prioridad (nice 19 en Linux) y no empieza un libro mientras haya renders del visor en cola, para no retrasar las páginas del lector.
+Indexa los libros con `scanState: "pending"` y sin `missing`. Procesa uno a uno, en un hilo propio (`atril-indexer`) con su propia copia del documento de MuPDF. Ese hilo baja su prioridad (nice 19 en Linux) y no empieza un libro mientras haya renders del visor en cola, para no retrasar las páginas del lector.
 
 - **Cuándo se ejecuta:** al arrancar la app; tras cada escaneo de carpetas (también el de vigilancia); tras `import_files` si entró algún libro; al abrir un PDF desde el sistema con la app ya abierta; y cada 30 s por si entra un libro por otra vía.
 - **Qué hace con cada libro:**
   - si el archivo falta: `missing = 1`;
   - si MuPDF no lo puede abrir o no tiene páginas: `scanState: "failed"` (no se reintenta);
-  - si no: número de páginas, título y autor (limpios como `cleanMetadataText` del front: espacios colapsados, sin basura como "Microsoft Word…", nombres de archivo, "Anónimo" o solo símbolos y dígitos, y como mucho 200 caracteres; si no vale, el título se queda con el nombre del archivo), y la portada: la página 1 a 400 px de ancho, JPEG (calidad 85). Se guarda como `save_book_scan` (`covers/<id>.jpg`, fichero temporal + renombrado) y el libro pasa a `scanState: "done"`.
+  - si no: número de páginas, título y autor, y la portada: la página 1 a 400 px de ancho, JPEG (calidad 85). El título y el autor de los metadatos se limpian: espacios colapsados, y se descartan los de menos de 2 caracteres, los que solo tienen símbolos, dígitos o letras no ASCII (sin ninguna letra A-Z), los de basura como "Microsoft Word…", "Untitled" o "Sin título", los que acaban en una extensión de archivo (`.pdf`, `.docx`…) y, para el autor, "Anónimo", "Unknown" y similares; el resultado se corta a 200 caracteres. Si el título no vale, se queda con el nombre del archivo. La portada se guarda en `covers/<id>.jpg` (fichero temporal + renombrado) y el libro pasa a `scanState: "done"`.
 - **Un libro no se reintenta en el mismo proceso.** Si no se puede guardar (error de base de datos o de disco) queda pendiente hasta reiniciar la app.
 - **Evento:** por cada libro indexado con éxito se emite `library://changed` con `reason: "index"` (ver "Eventos"). El payload no lleva el libro: el front vuelve a pedir la biblioteca.
 
@@ -390,50 +378,6 @@ Linux primero. Un PDF llega a Atril de tres formas: doble clic con la app cerrad
 2. `bundle.fileAssociations` declara `pdf` como `application/pdf` con rol `Viewer`: el `.deb` y el AppImage registran Atril como lector.
 3. Con la instancia única, un segundo lanzamiento no arranca una ventana nueva.
 4. Iconos: la app usa todavía los iconos de la plantilla. Los propios los define el diseño; no se añaden hasta que `frontend` los apruebe.
-
-### JPX (v0.6): decodificación de escaneos JPEG 2000
-
-**Por qué:** pdf.js decodifica los JPX de los escaneos con OpenJPEG en WebAssembly o, si WebKitGTK no compila el wasm, con su respaldo en JS: 17–25 s por página en los libros del usuario. El front pide aquí los píxeles y los pinta. El formato de salida es el de `imageData` de pdf.js (`src/decoder.c` y `src/myjs.js` de mozilla/pdf.js.openjpeg), así que no hace falta cambiar nada en pdf.js.
-
-**Petición:** `POST atril://localhost/jpx?components=0&indexed=0&smask=0&reduce=0`, con los bytes del JPX (JP2 o codestream) como cuerpo.
-
-| Parámetro | Valores | Significado (igual que `jp2_decode` de pdf.js) |
-|---|---|---|
-| `components` | 0–255, por defecto `0` | `0`: salida RGBA (4 canales). Mayor que 0: copia los primeros `min(canales, N)` canales sin convertir (solo 1, 3 o 4 son válidos) |
-| `indexed` | `0` o `1`, por defecto `0` | `1`: no aplica la paleta y devuelve los índices sin escalar a 8 bits |
-| `smask` | `0` o `1`, por defecto `0` | `1`: el alfa viene dentro del JPX. Con 4 canales se copian tal cual (el cuarto es el alfa); con gris + alfa se devuelve RGBA |
-| `reduce` | 0–31, por defecto `0` | Reducción de resolución: las dimensiones de salida son `ceil(ancho / 2^reduce)` por `ceil(alto / 2^reduce)` |
-
-Los parámetros que faltan valen lo indicado por defecto; los desconocidos se ignoran. Un valor no válido da `400`.
-
-**Respuesta `200`:** el cuerpo son los píxeles de 8 bits, intercalados, de arriba abajo y de izquierda a derecha, con `X-Jpx-Channels` bytes por píxel. Cabeceras: `Content-Type: application/octet-stream`, `Content-Length`, `X-Jpx-Width`, `X-Jpx-Height` y `X-Jpx-Channels`. Las tres `X-Jpx-*` van en `Access-Control-Expose-Headers`.
-
-**Salida** (con `components=0`, siempre 4 canales):
-- Gris: `(g, g, g, 255)`.
-- RGB: `(r, g, b, 255)`.
-- CMYK: RGB con la fórmula de `color_cmyk_to_rgb` de OpenJPEG, y alfa 255. Solo si no hay `smask` con 4 canales.
-- Gris + alfa con `smask=1`: `(g, g, g, a)`.
-- 4 canales con `smask=1`: tal cual, RGBA.
-- Con `indexed=0`, la paleta se aplica. Los valores se escalan a 8 bits como OpenJPEG: con más de 8 bits se desplazan a la derecha; con menos, `v · 255 / (2^n − 1)` entera.
-- Con `components=N>0`: sin conversión de color, `min(canales, N)` canales (1, 3 o 4).
-
-**Errores:**
-- `422`: datos corruptos o que no son JPEG 2000 (y `decoder panicked` si hayro entra en pánico con ellos: la app sigue funcionando); imagen con más de 16 Mpx en la resolución original; reducción que deja la imagen sin píxeles o pasa de los niveles de resolución del JPX; combinación que pdf.js no pinta (dos canales sin `smask`, o `components=2`). El cuerpo es texto en inglés con el motivo. Ante un `422` por tamaño, el front puede dejar la página en manos del decodificador de pdf.js, que tarda más pero no tiene este límite.
-- `400`: `components`, `indexed`, `smask` o `reduce` no válidos.
-- `413`: el cuerpo pasa de 64 MiB.
-- `405`: cualquier método distinto de `POST` en `/jpx` (el preflight `OPTIONS` sí se atiende).
-
-**Preflight:** `OPTIONS /jpx` devuelve `204` con `Access-Control-Allow-Methods: POST, OPTIONS` y `Access-Control-Allow-Headers: Content-Type`, para el origen de la app. Las rutas de `GET` no cambian.
-
-**Límites:** 64 MiB de cuerpo y 16 Mpx en la resolución original. El límite de píxeles se mide sobre la imagen sin reducir porque `hayro-jpeg2000` reserva el tamaño completo aunque se pida una reducción.
-
-**Diferencias con pdf.js** (ver `src-tauri/src/jpx.rs`):
-1. Dos canales sin alfa: pdf.js no escribe nada y devuelve `undefined`. Aquí es `422`.
-2. Los valores difieren de los de pdf.js (que usa OpenJPEG) en ±1 en una fracción pequeña de los bytes (en 10 escaneos reales, entre el 0,002 % y el 0,04 %). `hayro-jpeg2000` trabaja en coma flotante.
-3. Sin `colr` y con submuestreo de crominancia, pdf.js adivina sYCC y lo convierte. Aquí no, porque `hayro-jpeg2000` no expone el submuestreo. Un `colr` sYCC sí se convierte.
-4. `indexed=1` no desactiva las cajas `cdef`, porque `hayro-jpeg2000` no tiene ese interruptor.
-
-**Fixtures de los tests:** `src-tauri/tests/fixtures/jpx/*.jp2` (gris, gris + alfa, RGB, RGBA, CMYK, indexado, 16 bits y un patrón plano). Se generan con `python3 src-tauri/tests/fixtures/jpx/generate.py`, que necesita `ffmpeg` compilado con libopenjpeg. Los píxeles son patrones deterministas, no imágenes de nadie.
 
 ## Eventos (borrador)
 | Evento | Payload | Cuándo |
