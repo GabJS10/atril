@@ -7,7 +7,7 @@ A minimalist, lightweight desktop PDF reader for books, with a library at its he
 - **Highlights save themselves** the moment you make them. Your PDF files are never modified.
 - Night and sepia page modes, outline, search, notes exportable to Markdown, and open PDFs straight from your file manager.
 
-Built with Tauri 2, React, TypeScript, Rust and pdf.js. Linux first; Windows later.
+Built with Tauri 2, React, TypeScript, Rust and MuPDF. Linux first; Windows later.
 
 > Status: early development (phase 0). See `docs/ROADMAP.md`.
 
