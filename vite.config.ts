@@ -12,10 +12,15 @@ const host = process.env.TAURI_DEV_HOST;
 
 // JPEG 2000 is decoded by the backend through this file, which pdf.js loads in place of openjpeg.wasm.
 const jpxBridgeSource = "src/reader/jpxBridge.js";
+// pdf.js's own JavaScript decoder, served under another name: the bridge imports it for the images the backend
+// refuses, and it is copied from node_modules at build time, so no binary is committed.
+const jsFallbackSource = "node_modules/pdfjs-dist/wasm/openjpeg_nowasm_fallback.js";
+const jsFallbackName = "openjpeg_js_fallback.js";
 
 /**
- * Fails the build unless dist/pdfjs/wasm holds our JPEG 2000 bridge under pdf.js's fallback name and no
- * openjpeg.wasm: pdf.js would otherwise compile a decoder that WebKitGTK refuses (relaxed SIMD).
+ * Fails the build unless dist/pdfjs/wasm holds our JPEG 2000 bridge under pdf.js's fallback name, the renamed copy of
+ * pdf.js's JavaScript decoder, and no openjpeg.wasm: pdf.js would otherwise compile a decoder that WebKitGTK refuses
+ * (relaxed SIMD).
  */
 function jpxBridgeCheck(): Plugin {
   let root = process.cwd();
@@ -39,6 +44,13 @@ function jpxBridgeCheck(): Plugin {
         throw new Error(`${fallback} is missing: pdf.js would have no JPEG 2000 decoder`);
       if (!readFileSync(fallback).equals(readFileSync(path.resolve(root, jpxBridgeSource)))) {
         throw new Error(`${fallback} is not ${jpxBridgeSource}`);
+      }
+      const jsFallback = path.join(wasmDir, jsFallbackName);
+      if (!existsSync(jsFallback)) {
+        throw new Error(`${jsFallback} is missing: the bridge imports it for the images the backend refuses`);
+      }
+      if (!readFileSync(jsFallback).equals(readFileSync(path.resolve(root, jsFallbackSource)))) {
+        throw new Error(`${jsFallback} is not pdf.js's ${jsFallbackSource}`);
       }
     },
   };
@@ -75,6 +87,8 @@ export default defineConfig({
           dest: "pdfjs/wasm",
           rename: { stripBase: true, name: "openjpeg_nowasm_fallback.js" },
         },
+        // pdf.js's JavaScript decoder under another name (second level, imported by the bridge).
+        { src: jsFallbackSource, dest: "pdfjs/wasm", rename: { stripBase: true, name: jsFallbackName } },
         { src: "node_modules/pdfjs-dist/cmaps/*", dest: "pdfjs/cmaps", rename: { stripBase: true } },
         {
           src: "node_modules/pdfjs-dist/standard_fonts/*",
@@ -103,5 +117,8 @@ export default defineConfig({
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
     css: false,
+    // The bridge imports the renamed pdf.js decoder from its own folder. The file only exists in dist/ after the build,
+    // so the tests resolve that import to node_modules, where the build copies it from.
+    alias: [{ find: /^\.\/openjpeg_js_fallback\.js$/, replacement: path.resolve(jsFallbackSource) }],
   },
 });

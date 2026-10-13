@@ -8,18 +8,27 @@
 // The contract (parameters, statuses and headers) is docs/IPC.md, section JPX. The request is synchronous because
 // pdf.js needs the return code at once; it blocks this worker, not the page.
 //
-// This file is copied as it is and runs inside pdf.js's worker, so it must not import anything. Its types are in
-// jpxBridge.d.ts and its contract is tested in jpxBridge.test.ts.
+// Second level: when the backend refuses an image (422) or the request fails, the same codestream is decoded with
+// the same arguments by pdf.js's own JavaScript decoder, served next to this file as openjpeg_js_fallback.js. It is
+// imported statically because _jp2_decode is synchronous and cannot wait for a download. Each reason is logged once.
+//
+// This file is copied as it is and runs inside pdf.js's worker, so its only import is that fallback file. Its types
+// are in jpxBridge.d.ts and its contract is tested in jpxBridge.test.ts.
+
+import OpenJPEG from "./openjpeg_js_fallback.js";
 
 /** Base of the atril:// protocol on Linux, as protocol.rs builds it. */
 export const LINUX_BASE = "atril://localhost";
 /** Base of the protocol on Windows, where WebView2 serves custom schemes over http. */
 export const WINDOWS_BASE = "http://atril.localhost";
 
-/** `_jp2_decode` return code: the backend refused the codestream (HTTP 422). */
+/** `_jp2_decode` return code: the backend refused the codestream (HTTP 422) and the fallback could not decode it. */
 export const DECODE_FAILED = 1;
-/** `_jp2_decode` return code: the request failed or did not answer with pixels (any other status). */
+/** `_jp2_decode` return code: the request failed or did not answer with pixels, and the fallback could not either. */
 export const REQUEST_FAILED = 2;
+
+/** Reasons already logged, so each one is warned about once per worker. */
+const warned = new Set();
 
 /**
  * Base of the protocol for the platform this worker runs on. A worker cannot take it from its own location, which
@@ -66,6 +75,62 @@ function sizeMatchesHeaders(xhr, bytes) {
 }
 
 /**
+ * Asks the backend for the pixels of one codestream. Never throws: a refusal, a failed request and a bad answer all
+ * come back as { ok: false, reason, message }, so the caller can decode the image with the fallback instead.
+ *
+ * @param {Uint8Array} codestream
+ * @param {number} components
+ * @param {boolean} indexed
+ * @param {boolean} smask
+ * @param {number} reduce
+ * @returns {{ ok: true, pixels: Uint8ClampedArray } | { ok: false, reason: string, message: string }}
+ */
+function requestBackend(codestream, components, indexed, smask, reduce) {
+  // The contract's defaults are 0; pdf.js does not always give a number (no colour space, no reduction).
+  const url =
+    `${protocolBase(globalThis.navigator?.userAgent ?? "")}/jpx` +
+    `?components=${Number(components) || 0}&indexed=${indexed ? 1 : 0}&smask=${smask ? 1 : 0}` +
+    `&reduce=${Number(reduce) || 0}`;
+  let xhr;
+  try {
+    xhr = new globalThis.XMLHttpRequest();
+    // Synchronous (the third argument is false) and without request headers: a simple request, no preflight.
+    xhr.open("POST", url, false);
+    xhr.responseType = "arraybuffer";
+    xhr.send(codestream);
+  } catch (error) {
+    return { ok: false, reason: "request", message: `${url} could not be requested: ${error}` };
+  }
+
+  const body = xhr.response;
+  if (xhr.status === 200 && body && body.byteLength > 0) {
+    if (!sizeMatchesHeaders(xhr, body.byteLength)) {
+      const message = `${url} answered ${body.byteLength} bytes, not the size its X-Jpx-* headers give`;
+      return { ok: false, reason: "size", message };
+    }
+    return { ok: true, pixels: new Uint8ClampedArray(body) };
+  }
+  if (xhr.status === 422) return { ok: false, reason: "422", message: messageOf(body) };
+  if (xhr.status === 200) return { ok: false, reason: "empty", message: `${url} answered with no pixels` };
+  return { ok: false, reason: `status ${xhr.status}`, message: `${url} answered ${xhr.status}` };
+}
+
+/**
+ * Logs a reason for the second level once per worker, so a document with many refused images does not flood the
+ * console.
+ *
+ * @param {string} reason
+ * @param {string} message
+ */
+function warnOnce(reason, message) {
+  // Numbers differ from image to image (sizes, offsets): they are not part of the reason.
+  const key = `${reason}: ${message}`.replace(/\d+/g, "#").slice(0, 200);
+  if (warned.has(key)) return;
+  warned.add(key);
+  console.warn(`JPEG 2000 image decoded by pdf.js's own decoder, the backend did not: ${key}`);
+}
+
+/**
  * Records a failure the way JpxImage.decode reads it: no pixels, and the message in errorMessages.
  *
  * @param {import("./jpxBridge").JpxModule} decoder
@@ -80,15 +145,49 @@ function fail(decoder, code, message) {
 }
 
 /**
- * The module pdf.js expects from its default export. Every call returns a new module with its own buffers.
+ * The module pdf.js expects from its default export. Every call returns a new module with its own buffers, and
+ * resolves once pdf.js's JavaScript decoder is ready (pdf.js adopts the promise it gets from the default export).
  *
- * @returns {import("./jpxBridge").JpxModule}
+ * @returns {Promise<import("./jpxBridge").JpxModule>}
  */
-export default function openjpeg() {
+export default async function openjpeg() {
+  const fallback = await OpenJPEG();
+
   // Codestreams written by pdf.js, by pointer. Pointers start at 1: pdf.js frees a pointer only when it is not 0.
   /** @type {Map<number, Uint8Array>} */
   const buffers = new Map();
   let nextPointer = 1;
+
+  /**
+   * Decodes with pdf.js's own decoder, with the arguments pdf.js gave the bridge.
+   *
+   * @param {Uint8Array} codestream
+   * @param {[number, boolean, boolean, number]} flags components, indexed, smask, reduce
+   * @param {string} backendMessage why the backend did not decode it
+   * @returns {number}
+   */
+  function decodeWithFallback(codestream, flags, backendMessage) {
+    let pointer;
+    try {
+      pointer = fallback._malloc(codestream.length);
+      fallback.writeArrayToMemory(codestream, pointer);
+      const [components, indexed, smask, reduce] = flags;
+      const ret = fallback._jp2_decode(pointer, codestream.length, components, indexed, smask, reduce);
+      if (ret === 0 && fallback.imageData) {
+        decoder.imageData = fallback.imageData;
+        delete decoder.errorMessages;
+        return 0;
+      }
+      const reason = fallback.errorMessages ?? "no pixels";
+      return fail(decoder, ret || DECODE_FAILED, `${backendMessage}; pdf.js's decoder: ${reason}`);
+    } catch (error) {
+      return fail(decoder, REQUEST_FAILED, `${backendMessage}; pdf.js's decoder threw: ${error}`);
+    } finally {
+      if (pointer) fallback._free(pointer);
+      fallback.imageData = null;
+      delete fallback.errorMessages;
+    }
+  }
 
   /** @type {import("./jpxBridge").JpxModule} */
   const decoder = {
@@ -113,35 +212,15 @@ export default function openjpeg() {
       const codestream = buffers.get(pointer)?.subarray(0, size);
       if (!codestream) return fail(decoder, REQUEST_FAILED, "no codestream was written for this pointer");
 
-      // The contract's defaults are 0; pdf.js does not always give a number (no colour space, no reduction).
-      const url =
-        `${protocolBase(globalThis.navigator?.userAgent ?? "")}/jpx` +
-        `?components=${Number(components) || 0}&indexed=${indexed ? 1 : 0}&smask=${smask ? 1 : 0}` +
-        `&reduce=${Number(reduce) || 0}`;
-      let xhr;
-      try {
-        xhr = new globalThis.XMLHttpRequest();
-        // Synchronous (the third argument is false) and without request headers: a simple request, no preflight.
-        xhr.open("POST", url, false);
-        xhr.responseType = "arraybuffer";
-        xhr.send(codestream);
-      } catch (error) {
-        return fail(decoder, REQUEST_FAILED, `${url} could not be requested: ${error}`);
-      }
-
-      const body = xhr.response;
-      if (xhr.status === 200 && body && body.byteLength > 0) {
-        if (!sizeMatchesHeaders(xhr, body.byteLength)) {
-          const message = `${url} answered ${body.byteLength} bytes, not the size its X-Jpx-* headers give`;
-          return fail(decoder, REQUEST_FAILED, message);
-        }
-        decoder.imageData = new Uint8ClampedArray(body);
+      const backend = requestBackend(codestream, components, indexed, smask, reduce);
+      if (backend.ok) {
+        decoder.imageData = backend.pixels;
         delete decoder.errorMessages;
         return 0;
       }
-      if (xhr.status === 422) return fail(decoder, DECODE_FAILED, messageOf(body));
-      if (xhr.status === 200) return fail(decoder, REQUEST_FAILED, `${url} answered with no pixels`);
-      return fail(decoder, REQUEST_FAILED, `${url} answered ${xhr.status}`);
+      warnOnce(backend.reason, backend.message);
+      const flags = [Number(components) || 0, !!indexed, !!smask, Number(reduce) || 0];
+      return decodeWithFallback(codestream, flags, backend.message);
     },
   };
   return decoder;

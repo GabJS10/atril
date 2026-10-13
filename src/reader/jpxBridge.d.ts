@@ -28,4 +28,5 @@ export declare const WINDOWS_BASE: "http://atril.localhost";
 export declare const DECODE_FAILED: 1;
 export declare const REQUEST_FAILED: 2;
 export declare function protocolBase(userAgent: string): string;
-export default function openjpeg(): JpxModule;
+/** Resolves once pdf.js's own JavaScript decoder (the second level) is ready. */
+export default function openjpeg(): Promise<JpxModule>;
