@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as SpikeDisplayRouteImport } from './routes/spike-display'
 import { Route as CollectionCollectionIdRouteImport } from './routes/collection.$collectionId'
 import { Route as ReadBookIdRouteImport } from './routes/read.$bookId'
 
@@ -22,6 +23,11 @@ const IndexRoute = IndexRouteImport.update({
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SpikeDisplayRoute = SpikeDisplayRouteImport.update({
+  id: '/spike-display',
+  path: '/spike-display',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CollectionCollectionIdRoute = CollectionCollectionIdRouteImport.update({
@@ -38,12 +44,14 @@ const ReadBookIdRoute = ReadBookIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/settings': typeof SettingsRoute
+  '/spike-display': typeof SpikeDisplayRoute
   '/collection/$collectionId': typeof CollectionCollectionIdRoute
   '/read/$bookId': typeof ReadBookIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/settings': typeof SettingsRoute
+  '/spike-display': typeof SpikeDisplayRoute
   '/collection/$collectionId': typeof CollectionCollectionIdRoute
   '/read/$bookId': typeof ReadBookIdRoute
 }
@@ -51,18 +59,30 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/settings': typeof SettingsRoute
+  '/spike-display': typeof SpikeDisplayRoute
   '/collection/$collectionId': typeof CollectionCollectionIdRoute
   '/read/$bookId': typeof ReadBookIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/settings' | '/collection/$collectionId' | '/read/$bookId'
+  fullPaths:
+    | '/'
+    | '/settings'
+    | '/spike-display'
+    | '/collection/$collectionId'
+    | '/read/$bookId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/settings' | '/collection/$collectionId' | '/read/$bookId'
+  to:
+    | '/'
+    | '/settings'
+    | '/spike-display'
+    | '/collection/$collectionId'
+    | '/read/$bookId'
   id:
     | '__root__'
     | '/'
     | '/settings'
+    | '/spike-display'
     | '/collection/$collectionId'
     | '/read/$bookId'
   fileRoutesById: FileRoutesById
@@ -70,6 +90,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   SettingsRoute: typeof SettingsRoute
+  SpikeDisplayRoute: typeof SpikeDisplayRoute
   CollectionCollectionIdRoute: typeof CollectionCollectionIdRoute
   ReadBookIdRoute: typeof ReadBookIdRoute
 }
@@ -88,6 +109,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/spike-display': {
+      id: '/spike-display'
+      path: '/spike-display'
+      fullPath: '/spike-display'
+      preLoaderRoute: typeof SpikeDisplayRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/collection/$collectionId': {
@@ -110,6 +138,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SettingsRoute: SettingsRoute,
+  SpikeDisplayRoute: SpikeDisplayRoute,
   CollectionCollectionIdRoute: CollectionCollectionIdRoute,
   ReadBookIdRoute: ReadBookIdRoute,
 }
