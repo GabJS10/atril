@@ -1,8 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSettings } from "../api/queries";
-import { exportHighlights, isAppError, openBook, pickExportPath } from "../api/tauri";
+import { exportHighlights, isAppError, pickExportPath } from "../api/tauri";
 import type { Book, ReadingStateInput, Zoom, ViewMode } from "../api/types";
 import { useLocaleStore, useT } from "../i18n";
 import { PdfViewer } from "./PdfViewer";
@@ -17,6 +16,7 @@ import { type ReaderAction, useReaderShortcuts } from "./shortcuts";
 import { useChromeVisibility } from "./useChromeVisibility";
 import { usePdfDocument } from "./usePdfDocument";
 import { useReadingPosition } from "./useReadingPosition";
+import { useOpenedBook } from "./useOpenedBook";
 import { useHighlightSession } from "./useHighlightSession";
 import { HighlightEditor } from "./HighlightEditor";
 import { HighlightsPanel } from "./HighlightsPanel";
@@ -28,12 +28,7 @@ import { readerClosed, readerOpened } from "../library/readerActivity";
 
 export function ReaderScreen({ bookId }: { bookId: string }) {
   const t = useT();
-  const opened = useQuery({
-    queryKey: ["book", bookId],
-    queryFn: () => openBook(bookId),
-    staleTime: Infinity,
-    retry: false,
-  });
+  const opened = useOpenedBook(bookId);
   const settings = useSettings();
 
   if (opened.isPending || settings.isPending) return <ReaderMessage>{t("reader.loading")}</ReaderMessage>;
