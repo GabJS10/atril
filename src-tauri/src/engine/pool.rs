@@ -10,11 +10,12 @@ use std::thread::JoinHandle;
 
 use super::cache::{ByteLru, PageKey};
 use super::document::{DocumentInfo, OpenDocument};
+use super::raw;
 use super::scheduler::{Job, PageBytes, PageResult, Queue, Waiter};
 use super::search::{self, SearchEvent, SearchRegistry, SearchState};
 use super::{
-    DEFAULT_CACHE_BYTES, EngineError, OPEN_DOCUMENTS_PER_WORKER, OPEN_DOCUMENTS_READER,
-    WORKER_THREADS, dequantize_scale, quantize_scale,
+    DEFAULT_CACHE_BYTES, DEFAULT_STORE_BYTES, EngineError, OPEN_DOCUMENTS_PER_WORKER,
+    OPEN_DOCUMENTS_READER, WORKER_THREADS, dequantize_scale, quantize_scale,
 };
 
 #[derive(Debug, Clone)]
@@ -25,6 +26,9 @@ pub struct EngineConfig {
     pub cache_bytes: usize,
     /// Documentos abiertos por hilo.
     pub open_documents: usize,
+    /// Tope del store de recursos de MuPDF que se mantiene tras cada trabajo, en bytes (ver `raw::shrink_store`).
+    /// 0 = sin recortar, es decir, el tope del crate (256 MB).
+    pub store_bytes: usize,
 }
 
 impl Default for EngineConfig {
@@ -33,8 +37,18 @@ impl Default for EngineConfig {
             threads: WORKER_THREADS,
             cache_bytes: DEFAULT_CACHE_BYTES,
             open_documents: OPEN_DOCUMENTS_PER_WORKER,
+            store_bytes: DEFAULT_STORE_BYTES,
         }
     }
+}
+
+/// Porcentaje del tope del store de MuPDF que deja `store_bytes` (100 si no hay que recortar).
+pub fn store_percent(store_bytes: usize) -> u32 {
+    if store_bytes == 0 || store_bytes >= raw::STORE_MAX_BYTES {
+        return 100;
+    }
+    let percent = (store_bytes as u128 * 100 / raw::STORE_MAX_BYTES as u128).max(1);
+    u32::try_from(percent).unwrap_or(100)
 }
 
 /// Estado de un hilo del pool: los documentos que tiene abiertos (LRU, el más reciente al final).
@@ -132,13 +146,14 @@ impl Engine {
             page_counts: Mutex::new(HashMap::new()),
         });
         let thread_count = config.threads.max(1);
+        let store = store_percent(config.store_bytes);
         let threads = (0..thread_count)
             .filter_map(|index| {
                 let shared = Arc::clone(&shared);
                 let capacity = config.open_documents;
                 std::thread::Builder::new()
                     .name(format!("atril-render-{index}"))
-                    .spawn(move || worker_loop(&shared, index, capacity))
+                    .spawn(move || worker_loop(&shared, index, capacity, store))
                     .map_err(|error| tracing::error!(%error, "could not start a render thread"))
                     .ok()
             })
@@ -146,7 +161,7 @@ impl Engine {
         let (reader_tx, reader_rx) = mpsc::channel::<ReaderJob>();
         let reader_thread = std::thread::Builder::new()
             .name("atril-read".into())
-            .spawn(move || reader_loop(reader_rx))
+            .spawn(move || reader_loop(reader_rx, store))
             .map_err(|error| tracing::error!(%error, "could not start the reading thread"))
             .ok();
         let reader = reader_thread.is_some().then_some(reader_tx);
@@ -441,15 +456,16 @@ impl Drop for Engine {
     }
 }
 
-fn reader_loop(jobs: mpsc::Receiver<ReaderJob>) {
+fn reader_loop(jobs: mpsc::Receiver<ReaderJob>, store_percent: u32) {
     let mut worker = Worker::new(READER_INDEX, OPEN_DOCUMENTS_READER);
     for job in jobs {
         // Un pánico en un trabajo no tumba el hilo: quien espera recibe un error.
         let _ = catch_unwind(AssertUnwindSafe(|| job(&mut worker)));
+        raw::shrink_store(store_percent);
     }
 }
 
-fn worker_loop(shared: &Shared, index: usize, open_documents: usize) {
+fn worker_loop(shared: &Shared, index: usize, open_documents: usize, store_percent: u32) {
     let mut worker = Worker::new(index, open_documents);
     loop {
         let job = {
@@ -489,6 +505,7 @@ fn worker_loop(shared: &Shared, index: usize, open_documents: usize) {
                 }
             }
         }
+        raw::shrink_store(store_percent);
     }
 }
 
@@ -497,4 +514,17 @@ fn render(shared: &Shared, worker: &mut Worker, key: &PageKey, path: &Path) -> P
     lock(&shared.page_counts).insert(key.book_id.clone(), document.page_count());
     let jpeg = document.render_jpeg(key.page, dequantize_scale(key.scale_q))?;
     Ok(Arc::new(jpeg))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_store_cap_is_a_percent_of_the_crate_store() {
+        assert_eq!(store_percent(0), 100);
+        assert_eq!(store_percent(DEFAULT_STORE_BYTES), 25);
+        assert_eq!(store_percent(raw::STORE_MAX_BYTES), 100);
+        assert_eq!(store_percent(1), 1);
+    }
 }

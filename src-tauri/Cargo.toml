@@ -44,6 +44,9 @@ hayro-jpeg2000 = { version = "0.4.1", default-features = false, features = ["std
 # necesita libclang para bindgen. Sin `system-fonts` (con fuentes no incrustadas tardaba ~20 s por libro) y
 # con `base14-fonts` (sin ellas el texto se extrae mal). Atril pasa a AGPL por esta dependencia.
 mupdf = { version = "0.8.0", default-features = false, features = ["base14-fonts"] }
+# Mismas features que `mupdf` (`zerocopy`, `base14-fonts`) para que no se recompile MuPDF. Solo `engine/raw.rs` la usa:
+# recortar el store de recursos de MuPDF (`fz_shrink_store`), algo que el crate `mupdf` 0.8 no expone.
+mupdf-sys = { version = "0.8.0", default-features = false, features = ["zerocopy", "base14-fonts"] }
 # Codificación JPEG de las páginas renderizadas (Rust puro; `simd` = AVX2 con detección en tiempo de ejecución).
 jpeg-encoder = { version = "0.6", features = ["simd"] }
 # Indexador nativo (src/indexer.rs): limpieza de título y autor, igual que `cleanMetadataText` del front.

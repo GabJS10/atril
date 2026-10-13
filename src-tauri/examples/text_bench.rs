@@ -115,7 +115,15 @@ fn main() {
     };
     let query = args.get(1).map_or("dios", String::as_str);
     let path = PathBuf::from(book);
-    let engine = Engine::new(EngineConfig::default());
+    // ATRIL_STORE_MB fija el tope del store de MuPDF en MB (256 = sin recortar; sin variable, el del motor).
+    let mut config = EngineConfig::default();
+    if let Some(mb) = std::env::var("ATRIL_STORE_MB")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+    {
+        config.store_bytes = mb << 20;
+    }
+    let engine = Engine::new(config);
 
     let started = Instant::now();
     let info = engine.document_info(BOOK, &path).expect("open the book");
@@ -282,6 +290,15 @@ fn main() {
         "en reposo, escala 1,01 (control)",
         after.len(),
         summary(after.clone()),
+    );
+    // Re-render de páginas escaneadas ya vistas (las primeras de la fase en reposo) a otra escala: no están en la caché
+    // de JPEG, pero MuPDF puede seguir teniendo sus imágenes decodificadas en el store.
+    let revisit: Vec<u32> = idle_pages.iter().take(8).copied().collect();
+    let revisited = render_times(&engine, &path, &revisit, 1.02);
+    print_row(
+        "re-render de páginas ya vistas, escala 1,02",
+        revisited.len(),
+        summary(revisited.clone()),
     );
     println!("RSS al final: {:.0} MB", rss_mb());
 }

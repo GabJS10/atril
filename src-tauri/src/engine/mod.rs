@@ -24,6 +24,7 @@ pub mod geometry;
 pub mod links;
 pub mod outline;
 pub mod pool;
+pub mod raw;
 #[cfg(test)]
 mod reading_tests;
 pub mod scheduler;
@@ -51,6 +52,9 @@ pub const OPEN_DOCUMENTS_PER_WORKER: usize = 3;
 pub const OPEN_DOCUMENTS_READER: usize = 3;
 /// Límite por defecto de la caché de JPEG. Fácil de cambiar: `EngineConfig::cache_bytes`.
 pub const DEFAULT_CACHE_BYTES: usize = 256 * 1024 * 1024;
+/// Tope del store de recursos de MuPDF que se mantiene tras cada trabajo (`EngineConfig::store_bytes`). Con 64 MB,
+/// un escaneo ya visto suele seguir decodificado y el proceso no crece más por los escaneos.
+pub const DEFAULT_STORE_BYTES: usize = 64 * 1024 * 1024;
 /// Calidad JPEG de las páginas (63 ms a 1240 px con `image`; ver la medición en el PR).
 pub const JPEG_QUALITY: u8 = 85;
 
