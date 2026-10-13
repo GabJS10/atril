@@ -249,7 +249,8 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
         });
       },
       goToDestination(dest) {
-        void links.current?.goToDestination(dest);
+        // The native viewer's destinations (a page and a height) mean nothing to pdf.js.
+        if (typeof dest === "string" || Array.isArray(dest)) void links.current?.goToDestination(dest);
       },
       revealHighlight(highlight) {
         const instance = viewer.current;

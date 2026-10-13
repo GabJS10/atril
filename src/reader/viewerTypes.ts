@@ -10,6 +10,15 @@ export type FindResult = { current: number; total: number; notFound: boolean };
 
 export type FindOptions = { again?: boolean; findPrevious?: boolean };
 
+/** A place in the book for the native engine: a page (1-based) and how far down it, in points at scale 1 (null: the top). */
+export type PageDestination = { page: number; y: number | null };
+
+/**
+ * Where an entry of the index leads: pdf.js takes a named or explicit destination, the native viewer a page and a
+ * height. Each viewer ignores the kind it does not know.
+ */
+export type ViewerDestination = string | unknown[] | PageDestination;
+
 /** Props both viewers (pdf.js and native) take besides their document. */
 export type ViewerProps = {
   /** Zoom and position to start from. Applied once, before the view is shown. */
@@ -36,7 +45,7 @@ export type ViewerHandle = {
   /** Searches the book without case or accents. An empty query clears the matches. */
   find: (query: string, options?: FindOptions) => void;
   /** Goes to a destination of the book (an entry of its index): the page and the place on it. */
-  goToDestination: (dest: string | unknown[]) => void;
+  goToDestination: (dest: ViewerDestination) => void;
   /** Scrolls the highlight into view (the panel's click). */
   revealHighlight: (highlight: Highlight) => void;
   /** One page forward or back, from the page the view is on (not from React state, which can lag behind key repeats). */

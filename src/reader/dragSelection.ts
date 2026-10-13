@@ -11,6 +11,8 @@ export type DragSelectionOptions = {
   caretAt?: CaretAt;
   rectsOf?: RectsOf;
   selectionOf?: () => Selection | null;
+  /** The selector of the element that holds the page's text. pdf.js: `.textLayer` (default). */
+  layerSelector?: string;
 };
 
 /** The browser's own caret lookup (WebKit and Blink; not in the jsdom test environment). */
@@ -71,6 +73,7 @@ export function attachDragSelection(root: HTMLElement, options: DragSelectionOpt
   const caretAt = options.caretAt ?? caretAtPoint;
   const rectsOf = options.rectsOf ?? textRects;
   const selectionOf = options.selectionOf ?? (() => window.getSelection());
+  const layerSelector = options.layerSelector ?? ".textLayer";
   let dragging = false;
 
   /** A text caret inside any text layer (the pointer may leave `root` into the next page), else the nearest in `root`. */
@@ -78,7 +81,7 @@ export function attachDragSelection(root: HTMLElement, options: DragSelectionOpt
     const caret = caretAt(x, y);
     if (
       caret?.node.nodeType === Node.TEXT_NODE &&
-      (caret.node as Text).parentElement?.closest(".textLayer")
+      (caret.node as Text).parentElement?.closest(layerSelector)
     ) {
       return { node: caret.node as Text, offset: caret.offset };
     }

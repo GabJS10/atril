@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSettings } from "../api/queries";
-import { exportHighlights, isAppError, pickExportPath } from "../api/tauri";
+import { exportHighlights, isAppError, openExternalUrl, pickExportPath } from "../api/tauri";
 import type { Book, ReadingStateInput, Zoom, ViewMode } from "../api/types";
 import { useLocaleStore, useT } from "../i18n";
 import { PdfViewer } from "./PdfViewer";
@@ -21,6 +21,8 @@ import { useHighlightSession } from "./useHighlightSession";
 import { HighlightEditor } from "./HighlightEditor";
 import { HighlightsPanel } from "./HighlightsPanel";
 import { OutlinePanel } from "./OutlinePanel";
+import { followOutlineItem } from "./outline";
+import { useNativeOutline } from "./useNativeOutline";
 import { useOutline } from "./useOutline";
 import { exportBookHighlights } from "./highlightExport";
 import { SelectionToolbar } from "./SelectionToolbar";
@@ -106,8 +108,8 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
   const [sidePanel, setSidePanel] = useState<"highlights" | "outline" | null>(null);
   const [exporting, setExporting] = useState(false);
   const pdfOutline = useOutline(!native && pdfState.status === "ready" ? pdfState.pdf : null);
-  // The native viewer has no index until R2.2.
-  const outline = native ? [] : pdfOutline;
+  const nativeOutline = useNativeOutline(book.id, native);
+  const outline = native ? nativeOutline : pdfOutline;
   // Focus mode hides the bar and the panels; only the page stays. F or Escape leaves it.
   const [focusMode, setFocusMode] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -262,7 +264,7 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
       onMouseMove={focusMode ? undefined : chrome.wake}
     >
       {nativeState.status === "ready" && native ? (
-        <NativeViewer ref={viewer} document={nativeState.document} {...viewerProps} />
+        <NativeViewer ref={viewer} bookId={book.id} document={nativeState.document} {...viewerProps} />
       ) : pdfState.status === "ready" ? (
         <PdfViewer ref={viewer} pdf={pdfState.pdf} {...viewerProps} />
       ) : null}
@@ -329,7 +331,12 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
         <OutlinePanel
           items={outline}
           currentPage={page}
-          onGo={(item) => viewer.current?.goToDestination(item.dest)}
+          onGo={(item) =>
+            followOutlineItem(item, {
+              goTo: (dest) => viewer.current?.goToDestination(dest),
+              openExternal: (uri) => void openExternalUrl(uri).catch(() => undefined),
+            })
+          }
           onClose={() => setSidePanel(null)}
         />
       ) : null}

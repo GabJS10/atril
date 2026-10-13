@@ -1,6 +1,18 @@
+import { emit } from "@tauri-apps/api/event";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { describe, expect, it } from "vitest";
-import { getSettings, isAppError, updateSettings } from "./tauri";
+import {
+  cancelSearch,
+  getOutline,
+  getPageLinks,
+  getPageText,
+  getSettings,
+  isAppError,
+  onSearchDone,
+  onSearchProgress,
+  searchDocument,
+  updateSettings,
+} from "./tauri";
 import type { Settings } from "./types";
 
 const defaults: Settings = {
@@ -40,5 +52,51 @@ describe("tauri wrappers", () => {
     expect(isAppError({ message: "no code" })).toBe(false);
     expect(isAppError("boom")).toBe(false);
     expect(isAppError(null)).toBe(false);
+  });
+});
+
+describe("engine wrappers (docs/IPC.md, v0.8)", () => {
+  it("send the book and the page of each call with the names of the contract", async () => {
+    const calls: { cmd: string; payload: unknown }[] = [];
+    mockIPC((cmd, payload) => {
+      calls.push({ cmd, payload });
+      return cmd === "search_document" ? { searchId: "s1" } : [];
+    });
+
+    await getPageText("b", 3);
+    await getPageLinks("b", 4);
+    await getOutline("b");
+    await expect(searchDocument("b", "dios")).resolves.toEqual({ searchId: "s1" });
+    await cancelSearch("s1");
+
+    expect(calls).toEqual([
+      { cmd: "get_page_text", payload: { bookId: "b", page: 3 } },
+      { cmd: "get_page_links", payload: { bookId: "b", page: 4 } },
+      { cmd: "get_outline", payload: { bookId: "b" } },
+      { cmd: "search_document", payload: { bookId: "b", query: "dios" } },
+      { cmd: "cancel_search", payload: { searchId: "s1" } },
+    ]);
+  });
+
+  it("hand over the payload of the search events", async () => {
+    mockIPC(() => null, { shouldMockEvents: true });
+    const progress: unknown[] = [];
+    const finished: unknown[] = [];
+    const stopProgress = await onSearchProgress((event) => progress.push(event));
+    const stopDone = await onSearchDone((event) => finished.push(event));
+
+    await emit("search://progress", { searchId: "s1", page: 2, matches: [] });
+    await emit("search://done", {
+      searchId: "s1",
+      total: 0,
+      pagesSearched: 5,
+      cancelled: false,
+      error: null,
+    });
+
+    expect(progress).toEqual([{ searchId: "s1", page: 2, matches: [] }]);
+    expect(finished).toEqual([{ searchId: "s1", total: 0, pagesSearched: 5, cancelled: false, error: null }]);
+    await stopProgress();
+    await stopDone();
   });
 });

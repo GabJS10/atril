@@ -3,11 +3,13 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow, type CloseRequestedEvent } from "@tauri-apps/api/window";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import type {
   AppError,
   Book,
   BookQuery,
   Collection,
+  EngineOutlineItem,
   Highlight,
   HighlightExport,
   HighlightInput,
@@ -17,11 +19,16 @@ import type {
   LibraryFolder,
   OpenedBook,
   OpenedDocument,
+  PageLink,
   ReadingStateInput,
   ScanMetadata,
   ScanStatus,
+  SearchDone,
+  SearchProgress,
+  SearchStarted,
   Settings,
   SettingsPatch,
+  TextWord,
 } from "./types";
 
 // The only place that talks to Rust: one wrapper per command in docs/IPC.md.
@@ -46,6 +53,46 @@ export function openBook(bookId: string): Promise<OpenedBook> {
 /** Opens the book in the native engine: page sizes and the base URL of the page images. */
 export function openDocument(bookId: string): Promise<OpenedDocument> {
   return invoke<OpenedDocument>("open_document", { bookId });
+}
+
+/** The words of one page (1-based) with their boxes, for the text layer. */
+export function getPageText(bookId: string, page: number): Promise<TextWord[]> {
+  return invoke<TextWord[]>("get_page_text", { bookId, page });
+}
+
+/** The usable links of one page (1-based): internal ones and http, https and mailto. */
+export function getPageLinks(bookId: string, page: number): Promise<PageLink[]> {
+  return invoke<PageLink[]>("get_page_links", { bookId, page });
+}
+
+/** The book's index; empty when the PDF has none. */
+export function getOutline(bookId: string): Promise<EngineOutlineItem[]> {
+  return invoke<EngineOutlineItem[]>("get_outline", { bookId });
+}
+
+/** Starts a search and returns at once; the matches arrive as `search://progress` events. */
+export function searchDocument(bookId: string, query: string): Promise<SearchStarted> {
+  return invoke<SearchStarted>("search_document", { bookId, query });
+}
+
+/** Stops a search. Does nothing when it already finished. */
+export function cancelSearch(searchId: string): Promise<null> {
+  return invoke<null>("cancel_search", { searchId });
+}
+
+/** The matches of one page of the running search. Resolves to the function that stops listening. */
+export function onSearchProgress(handler: (event: SearchProgress) => void): Promise<UnlistenFn> {
+  return listen<SearchProgress>("search://progress", (event) => handler(event.payload));
+}
+
+/** The end of a search: finished, cancelled or failed. */
+export function onSearchDone(handler: (event: SearchDone) => void): Promise<UnlistenFn> {
+  return listen<SearchDone>("search://done", (event) => handler(event.payload));
+}
+
+/** Opens an http, https or mailto link outside the app (the system browser or mail client). */
+export function openExternalUrl(uri: string): Promise<void> {
+  return openUrl(uri);
 }
 
 export function getBook(bookId: string): Promise<Book> {

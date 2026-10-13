@@ -91,7 +91,7 @@ export function useHighlightSession(bookId: string) {
 
   const copy = () => {
     if (!selection) return;
-    const text = selection.parts.map((part) => part.text).join("\n");
+    const text = selection.parts.map((part) => part.copyText ?? part.text).join("\n");
     void navigator.clipboard?.writeText(text).catch(() => undefined);
   };
 
