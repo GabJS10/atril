@@ -1,0 +1,183 @@
+{
+  "variant": "d",
+  "label": "d · PNG en <img>",
+  "format": "png",
+  "startedAt": "2026-10-13T02:22:29.499Z",
+  "display": {
+    "innerWidth": 1280,
+    "innerHeight": 800,
+    "devicePixelRatio": 1,
+    "hardwareConcurrency": 8,
+    "userAgent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/60.5 Safari/605.1.15"
+  },
+  "config": {
+    "viewerPages": 300,
+    "pageWidth": 1240,
+    "zoomWidth": 2480,
+    "zoomScale": 2,
+    "reading": {
+      "pxPerSecond": 200,
+      "durationMs": 45000
+    },
+    "fast": {
+      "pxPerSecond": 4000,
+      "durationMs": 20000,
+      "jumpEveryMs": 4000,
+      "jumpPages": 20
+    }
+  },
+  "precode": {
+    "formats": ["png"],
+    "limit": 30,
+    "pages1240": 60,
+    "pages2480": 2,
+    "cacheBytes": 50868630,
+    "precodeMs": 2116
+  },
+  "reading": {
+    "durationMs": 45024,
+    "frames": 2439,
+    "jumps": 0,
+    "frameMs": {
+      "n": 2439,
+      "p50": 18,
+      "p95": 25,
+      "max": 43,
+      "mean": 18.5,
+      "over50": 0
+    },
+    "blankFrames": 0,
+    "enters": 5,
+    "blankEnters": 0,
+    "abandoned": 0,
+    "requested": 5,
+    "errors": 0,
+    "lateDiscards": 0,
+    "enterLatencyMs": {
+      "n": 0,
+      "p50": 0,
+      "p95": 0,
+      "max": 0,
+      "mean": 0
+    },
+    "readyMs": {
+      "n": 7,
+      "p50": 123,
+      "p95": 283,
+      "max": 283,
+      "mean": 142.6
+    },
+    "transferMs": {
+      "n": 7,
+      "p50": 72,
+      "p95": 227,
+      "max": 227,
+      "mean": 85.1
+    },
+    "decodeMs": {
+      "n": 7,
+      "p50": 52,
+      "p95": 82,
+      "max": 82,
+      "mean": 57.1
+    },
+    "drawMs": {
+      "n": 7,
+      "p50": 0,
+      "p95": 0,
+      "max": 0,
+      "mean": 0
+    },
+    "rustServe": {
+      "requests": 5,
+      "bytes": 3557793,
+      "totalMs": 2.8,
+      "maxMsSinceStart": 1.725693
+    }
+  },
+  "fast": {
+    "durationMs": 20014,
+    "frames": 756,
+    "jumps": 5,
+    "frameMs": {
+      "n": 756,
+      "p50": 22,
+      "p95": 53,
+      "max": 441,
+      "mean": 26.5,
+      "over50": 41
+    },
+    "blankFrames": 27,
+    "enters": 48,
+    "blankEnters": 7,
+    "abandoned": 0,
+    "requested": 68,
+    "errors": 0,
+    "lateDiscards": 3,
+    "enterLatencyMs": {
+      "n": 6,
+      "p50": 257,
+      "p95": 387,
+      "max": 387,
+      "mean": 217.8
+    },
+    "readyMs": {
+      "n": 62,
+      "p50": 199,
+      "p95": 486,
+      "max": 965,
+      "mean": 243.6
+    },
+    "transferMs": {
+      "n": 62,
+      "p50": 118,
+      "p95": 347,
+      "max": 865,
+      "mean": 148.7
+    },
+    "decodeMs": {
+      "n": 62,
+      "p50": 85,
+      "p95": 205,
+      "max": 309,
+      "mean": 94.4
+    },
+    "drawMs": {
+      "n": 62,
+      "p50": 0,
+      "p95": 0,
+      "max": 0,
+      "mean": 0
+    },
+    "rustServe": {
+      "requests": 63,
+      "bytes": 49212582,
+      "totalMs": 215.1,
+      "maxMsSinceStart": 34.24353
+    }
+  },
+  "zoom": [
+    {
+      "page": 0,
+      "scaleMs": 60,
+      "sharpMs": 313,
+      "transferMs": 59,
+      "decodeMs": 179,
+      "drawMs": 0,
+      "blankFrames": 0,
+      "frames": 13,
+      "sharpPixelWidth": 2480
+    },
+    {
+      "page": 30,
+      "scaleMs": 44,
+      "sharpMs": 435,
+      "transferMs": 141.00000000001455,
+      "decodeMs": 244,
+      "drawMs": 0,
+      "blankFrames": 0,
+      "frames": 24,
+      "sharpPixelWidth": 2480
+    }
+  ]
+}
