@@ -8,7 +8,10 @@
 //!    se ve ahora va antes que lo que se pidió hace un momento). A igual distancia, la más reciente.
 //! 4. Cancelación: cada petición del visor descarta las del mismo libro que quedan a más de `STALE_DISTANCE`
 //!    páginas (el visor ya está en otra zona) y toda la precarga pendiente de ese libro, que se vuelve a
-//!    planificar alrededor de la nueva página. Las peticiones descartadas reciben `EngineError::Superseded`.
+//!    planificar alrededor de la nueva página. También descarta las del mismo libro en cola con otra escala
+//!    (el usuario cambió el zoom y espera el render nítido, no el de la escala anterior). Las que ya están en
+//!    curso no se cancelan: terminan, avisan a sus destinatarios y llenan la caché.
+//!    Las peticiones descartadas reciben `EngineError::Superseded`.
 //! 5. Peticiones iguales (mismo libro, página y escala) se funden en una sola con varios destinatarios.
 
 use std::collections::{HashMap, VecDeque};
@@ -128,7 +131,8 @@ impl<C> Queue<C> {
             let same_book = task.key.book_id == key.book_id;
             let stale = same_book
                 && task.class == Class::Viewer
-                && task.key.page.abs_diff(key.page) > STALE_DISTANCE;
+                && (task.key.page.abs_diff(key.page) > STALE_DISTANCE
+                    || task.key.scale_q != key.scale_q);
             if same_book && (task.class == Class::Prefetch || stale) && task.key != key {
                 dropped.extend(task.waiters);
             } else {
@@ -410,6 +414,57 @@ mod tests {
             pages.iter().all(|page| (78..=82).contains(page)),
             "{pages:?}"
         );
+    }
+
+    #[test]
+    fn a_new_scale_supersedes_queued_requests_at_the_old_one() {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let mut q = Q::default();
+        request(&mut q, "a", 10, Some(waiter(&log, "p10@100")));
+        request(&mut q, "a", 11, Some(waiter(&log, "p11@100")));
+        let zoomed = PageKey {
+            scale_q: 150,
+            ..key("a", 10)
+        };
+        let dropped = q.viewer_request(
+            zoomed,
+            PathBuf::from("/x.pdf"),
+            Some(waiter(&log, "p10@150")),
+            Some(100),
+            &never_cached,
+        );
+        fail_all(dropped);
+
+        let mut log = log.lock().expect("log").clone();
+        log.sort();
+        assert_eq!(
+            log,
+            vec!["p10@100:request superseded", "p11@100:request superseded"]
+        );
+        match q.pop(0) {
+            Some(Job::Render { key, .. }) => assert_eq!((key.page, key.scale_q), (10, 150)),
+            _ => panic!("expected a render job"),
+        }
+        // Y nada de lo que queda es de la escala vieja.
+        while let Some(Job::Render { key, .. }) = q.pop(0) {
+            assert_eq!(key.scale_q, 150);
+        }
+    }
+
+    #[test]
+    fn a_new_scale_does_not_cancel_renders_already_in_flight() {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let mut q = Q::default();
+        request(&mut q, "a", 10, Some(waiter(&log, "p10@100")));
+        assert_eq!(pop_render(&mut q).1, 10); // en curso
+        let zoomed = PageKey {
+            scale_q: 150,
+            ..key("a", 10)
+        };
+        let dropped = q.viewer_request(zoomed, PathBuf::new(), None, Some(100), &never_cached);
+
+        assert!(dropped.is_empty());
+        assert_eq!(q.complete(&key("a", 10)).len(), 1);
     }
 
     #[test]
