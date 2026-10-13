@@ -27,16 +27,29 @@ pub fn thread_context() -> *mut fz_context {
 
 /// Recorta el store compartido a `percent` (1 a 99) de su tope. Con 100 o más no hace nada.
 pub fn shrink_store(percent: u32) {
-    if percent >= 100 {
-        return;
+    if percent < 100 {
+        let context = thread_context();
+        // SAFETY: `context` es el contexto de este hilo, válido mientras viva el hilo. `fz_shrink_store` solo toma los
+        // cerrojos de MuPDF y no lanza excepciones.
+        unsafe {
+            mupdf_sys::fz_shrink_store(context, percent);
+        }
     }
-    let context = thread_context();
-    // SAFETY: `context` es el contexto de este hilo, válido mientras viva el hilo. `fz_shrink_store` solo toma los
-    // cerrojos de MuPDF y no lanza excepciones.
+    release_heap();
+}
+
+/// Pide a glibc que devuelva al sistema la memoria libre de sus heaps. Tras recortar el store, sin esto el RSS apenas
+/// baja: glibc retiene las páginas de las decodificaciones grandes que MuPDF ya soltó.
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+fn release_heap() {
+    // SAFETY: `malloc_trim` solo reorganiza los heaps de glibc; no tiene precondiciones.
     unsafe {
-        mupdf_sys::fz_shrink_store(context, percent);
+        libc::malloc_trim(0);
     }
 }
+
+#[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+fn release_heap() {}
 
 #[cfg(test)]
 mod tests {
