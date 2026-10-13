@@ -3,7 +3,7 @@ name = "atril"
 version = "0.1.0"
 description = "Minimalist PDF reader with a library"
 authors = ["GabJS10"]
-license = "MIT"
+license = "AGPL-3.0-only"
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -37,9 +37,6 @@ unicode-normalization = "0.1.25"
 uuid = { version = "1.28.0", features = ["v4"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-single-instance = "2"
-# JPEG 2000 de los PDF (src/jpx.rs). Sin features por defecto ni `simd`: sin `unsafe` en ninguna dependencia.
-hayro-jpeg2000 = { version = "0.4.1", default-features = false, features = ["std"] }
-
 # Motor de PDF nativo (fase R, src/engine/). MuPDF se compila desde fuente y se enlaza estático; `mupdf-sys`
 # necesita libclang para bindgen. Sin `system-fonts` (con fuentes no incrustadas tardaba ~20 s por libro) y
 # con `base14-fonts` (sin ellas el texto se extrae mal). Atril pasa a AGPL por esta dependencia.
@@ -49,7 +46,7 @@ mupdf = { version = "0.8.0", default-features = false, features = ["base14-fonts
 mupdf-sys = { version = "0.8.0", default-features = false, features = ["zerocopy", "base14-fonts"] }
 # Codificación JPEG de las páginas renderizadas (Rust puro; `simd` = AVX2 con detección en tiempo de ejecución).
 jpeg-encoder = { version = "0.6", features = ["simd"] }
-# Indexador nativo (src/indexer.rs): limpieza de título y autor, igual que `cleanMetadataText` del front.
+# Indexador nativo (src/indexer.rs): limpieza de título y autor.
 regex = "1"
 # Indexador nativo: `setpriority` sobre el hilo de indexado (Linux) para que el render del visor gane la CPU.
 libc = "0.2"
@@ -60,7 +57,8 @@ libc = "0.2"
 codegen-units = 1
 lto = true
 opt-level = 3
-# unwind (no abort): `jpx::decode` atrapa un pánico de hayro con catch_unwind y responde 422.
+# unwind (no abort): el pool de render y la búsqueda (`engine/pool.rs`, `engine/search.rs`) atrapan los pánicos con
+# `catch_unwind` para que un PDF raro no tire la app.
 panic = "unwind"
 strip = true
 
