@@ -75,6 +75,7 @@ Comparado con Okular, el lector con pdf.js en WebKitGTK no es fluido: scroll, zo
   - `backend`: MuPDF frente a PDFium con los libros del usuario. Apertura, render de texto y de escaneos, texto con cajas, búsqueda, memoria, render en paralelo y tamaño.
   - `frontend`: cómo mostrar las páginas en WebKitGTK (BMP en `<img>`, RGBA en canvas o JPEG): tirones de scroll, latencia y memoria.
   - `plan`: compara con Okular y **lo decide el usuario** (motor y licencia).
+  - Resultado: los informes de R0.1 y R0.2 quedan en los tags `spike-r0-engines` y `spike-r0-display` (las ramas se borraron).
 - **R1 · Motor en Rust (`backend`):** `src-tauri/src/engine/` (documentos abiertos, pool de render con cancelación, caché LRU por bytes, precarga), comandos `open_document`, `get_page_text`, `search_document`, `get_outline` y `get_page_links`, protocolo `atril://page/<id>/<n>?scale=`, y metadatos y portadas en Rust. `IPC.md` pasa a v1.0.
 - **R2 · Visor nuevo (`frontend`):** visor propio virtualizado con imagen, capa de texto, subrayados y enlaces por página, y zoom en dos pasos (CSS al instante y render nítido después). Los subrayados guardados siguen valiendo (`PageMapping` desde la matriz de Rust). Búsqueda, índice y posición pasan a los comandos nuevos. Sale `pdfjs-dist`.
 - **R3 · Limpieza:** quitar `jpx.rs`, `POST /jpx`, `hayro-jpeg2000`, `jpxBridge.js` y el indexador del front. Actualizar los docs.
@@ -93,9 +94,9 @@ Comparado con Okular, el lector con pdf.js en WebKitGTK no es fluido: scroll, zo
 ## Flujo de cada fase
 1. `plan` fija el IPC de la fase en `IPC.md` (o lo encarga en la primera tarea del backend).
 2. Cada tarea se hace en un worktree propio con un subagente (ver `AGENTS.md`, «Ciclo de una tarea»). Como mucho 2 a la vez; el front usa `mockIPC` hasta que el backend esté listo.
-3. Cada tarea termina en un PR. `plan` lo revisa, espera a la CI y lo fusiona en `main` con squash.
-4. `plan` pasa todos los checks en `main` y verifica en la app real.
-5. El usuario da el visto bueno → tag `fase-N` y push.
+3. Cada tarea termina en un PR a `dev`. `plan` lo revisa, espera a la CI y lo fusiona en `dev` con squash.
+4. `plan` pasa todos los checks en `dev` y verifica en la app real.
+5. El usuario da el visto bueno → PR de `dev` a `main` (merge commit), tag `fase-N` en `main` y push.
 
 ## Definición de terminado
 - `npm run lint`, `npm run typecheck` y `npm test` pasan.

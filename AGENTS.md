@@ -23,12 +23,16 @@ Guía para agentes de IA (y personas) que trabajen en este repositorio.
 | `frontend` (`.claude/agents/frontend.md`) | UI en React, diseño, visor, estado del cliente y wrappers de `invoke()` | `src/`, `public/`, `DESIGN.md`, `PRODUCT.md`, `index.html`, `vite.config.*`, `tsconfig*.json`, configs de ESLint/Prettier/Vitest, `package.json` y `package-lock.json` |
 | `backend` (`.claude/agents/backend.md`) | Core en Rust: biblioteca, protocolo `atril://`, motor de PDF, SQLite, subrayados, ajustes, comandos Tauri e integración con el sistema | `src-tauri/` (incluye `Cargo.toml`, `tauri.conf.json` y `capabilities/`) |
 
+### Ramas
+- **`dev`** es la rama de desarrollo: los worktrees salen de `dev` y todos los PR van a `dev`.
+- **`main`** es la rama de releases. Recibe `dev` solo al cerrar una fase o una release, con un PR de `dev` a `main` fusionado con **merge commit** (no squash), para que las dos ramas no diverjan. Los tags `fase-N` van en `main`.
+
 ### Ciclo de una tarea
-1. **Worktree:** `plan` lo crea a partir de `main` actualizado: `git worktree add .claude/worktrees/<tema> -b <fase>/<tema>` (p. ej. rama `r1/motor`, carpeta `/home/gabriel/datos/projects/atril/.claude/worktrees/r1-motor`). La carpeta `.claude/worktrees/` está ignorada por git, ESLint, Prettier y el vigilante de Vite.
+1. **Worktree:** `plan` lo crea a partir de `dev` actualizado: `git worktree add .claude/worktrees/<tema> -b <fase>/<tema>` (p. ej. rama `r1/motor`, carpeta `/home/gabriel/datos/projects/atril/.claude/worktrees/r1-motor`). La carpeta `.claude/worktrees/` está ignorada por git, ESLint, Prettier y el vigilante de Vite.
 2. **Encargo:** `plan` lanza el subagente con un encargo autocontenido: carpeta del worktree, contexto, archivos, criterios de aceptación, checks y si puede lanzar la app.
 3. **Trabajo:** el subagente trabaja solo en su worktree, pasa los checks, hace commit en su rama, `git push -u` y abre el PR con `gh pr create`. Su informe final es la respuesta que recibe `plan`.
 4. **Revisión:** `plan` revisa el diff del PR, espera a la CI y pasa los checks en local. Las correcciones se piden al **mismo** subagente, que conserva su contexto, en vez de lanzar otro. El usuario puede revisar el PR en GitHub.
-5. **Fusión:** `plan` fusiona con `gh pr merge --squash --delete-branch` (título del PR en Conventional Commits), actualiza `main` en local y borra el worktree (`git worktree remove`).
+5. **Fusión:** `plan` fusiona con `gh pr merge --squash --delete-branch` (título del PR en Conventional Commits), actualiza `dev` en local y borra el worktree (`git worktree remove`).
 
 Los spikes de medición van en un worktree **sin PR**: solo dejan un informe.
 
@@ -39,7 +43,7 @@ Los spikes de medición van en un worktree **sin PR**: solo dejan un informe.
 
 ### Reglas de coordinación
 - **Cada agente edita solo sus archivos** (tabla de arriba), salvo que el encargo diga otra cosa. Excepción: una dependencia npm que necesite `backend` (p. ej. un plugin de Tauri) la añade `frontend`.
-- **Cada subagente trabaja solo en su worktree.** Nunca toca `/home/gabriel/datos/projects/atril`, que es `main` y donde trabajan `plan` y el usuario, ni otros worktrees.
+- **Cada subagente trabaja solo en su worktree.** Nunca toca `/home/gabriel/datos/projects/atril`, que es la carpeta principal (rama `dev`) y donde trabajan `plan` y el usuario, ni otros worktrees.
 - **Commits y PRs sin la línea `Co-Authored-By: Claude …`** ni ninguna otra atribución a Claude (pedido del usuario). Mensajes de commit en inglés; **PRs en español** (título con prefijo Conventional Commits, p. ej. `feat(engine): búsqueda por eventos`; descripción en español). Conventional Commits con scope: `feat(frontend): …`, `feat(backend): …`, `docs: …`, `chore(ci): …`.
 - **Límites del equipo** (7 GB de RAM y disco justo):
   - como mucho **2 subagentes a la vez**;
@@ -47,7 +51,7 @@ Los spikes de medición van en un worktree **sin PR**: solo dejan un informe.
   - **un solo agente ejecuta la app a la vez** (puerto 1420), y lo indica el encargo.
 - **Contrato IPC en `docs/IPC.md`:** comandos Tauri (nombre, parámetros, retorno y errores), eventos y URLs del protocolo `atril://`. Si un encargo lo cambia, el agente actualiza `IPC.md` en su rama y `plan` lo revisa en el PR. El frontend lo implementa en `src/api/tauri.ts`.
 - **Mientras el backend no esté listo, el frontend trabaja contra `mockIPC`** (`@tauri-apps/api/mocks`) siguiendo `IPC.md` al pie de la letra.
-- Los push a `main`, las fusiones, los tags y las releases los hace `plan`. Sus propios cambios de docs y de proceso (`docs/`, `AGENTS.md`, `.claude/`) van directos a `main`, sin PR.
+- Los push a `dev` y a `main`, las fusiones, los tags y las releases los hace `plan`. Sus propios cambios de docs y de proceso (`docs/`, `AGENTS.md`, `.claude/`) van directos a `dev`, sin PR, y llegan a `main` con el siguiente PR de release.
 - Decisiones de arquitectura nuevas: las registra `plan` en `docs/PLAN.md`.
 
 ## Stack
