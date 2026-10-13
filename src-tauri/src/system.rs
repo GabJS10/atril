@@ -99,7 +99,11 @@ pub fn open_paths(db: &Mutex<Connection>, paths: &[PathBuf]) -> Vec<String> {
 pub fn handle_second_instance<R: Runtime>(app: &AppHandle<R>, args: &[String], cwd: &Path) {
     let paths = pdf_paths_from_args(args, cwd);
     let state = app.state::<AppState>();
-    for book_id in open_paths(&state.db, &paths) {
+    let opened = open_paths(&state.db, &paths);
+    if !opened.is_empty() {
+        state.indexer.wake();
+    }
+    for book_id in opened {
         if let Err(error) = app.emit("app://open-file", OpenFilePayload { book_id }) {
             tracing::warn!(%error, "could not emit app://open-file");
         }

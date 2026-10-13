@@ -269,6 +269,11 @@ impl Engine {
         self.shared.wake.notify_all();
     }
 
+    /// Renders del visor esperando turno. El indexador de portadas espera a que sea 0 antes de cada libro.
+    pub fn queued_renders(&self) -> usize {
+        lock(&self.shared.queue).queued()
+    }
+
     /// Versión bloqueante de `request_page` (pruebas, banco de pruebas y comandos que quieren los bytes).
     pub fn page_jpeg(
         &self,

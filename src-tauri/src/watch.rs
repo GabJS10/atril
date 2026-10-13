@@ -17,6 +17,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
 use crate::folders;
+use crate::indexer;
 use crate::scan::{self, ScanStatus, SharedScanStatus};
 
 /// Peticiones al hilo de biblioteca.
@@ -39,17 +40,19 @@ struct ChangedPayload {
     reason: &'static str,
 }
 
-/// Arranca el hilo. `tx` se usa también para que `notify` le avise.
+/// Arranca el hilo. `tx` se usa también para que `notify` le avise. Tras cada escaneo despierta a
+/// `indexer` para que indexe los libros nuevos.
 pub fn spawn(
     app: AppHandle,
     db: Arc<Mutex<Connection>>,
     status: SharedScanStatus,
     tx: Sender<Msg>,
     rx: Receiver<Msg>,
+    indexer: indexer::Handle,
 ) {
     let spawned = thread::Builder::new()
         .name("library-watch".into())
-        .spawn(move || Worker::new(app, db, status, tx).run(rx));
+        .spawn(move || Worker::new(app, db, status, tx, indexer).run(rx));
     if let Err(error) = spawned {
         tracing::error!(%error, "could not start the library worker");
     }
@@ -59,6 +62,7 @@ struct Worker {
     app: AppHandle,
     db: Arc<Mutex<Connection>>,
     status: SharedScanStatus,
+    indexer: indexer::Handle,
     watcher: Option<RecommendedWatcher>,
     /// Carpetas que están siendo vigiladas ahora mismo.
     watched: HashSet<PathBuf>,
@@ -72,6 +76,7 @@ impl Worker {
         db: Arc<Mutex<Connection>>,
         status: SharedScanStatus,
         tx: Sender<Msg>,
+        indexer: indexer::Handle,
     ) -> Self {
         let watcher = match notify::recommended_watcher(
             move |_event: notify::Result<notify::Event>| {
@@ -89,6 +94,7 @@ impl Worker {
             app,
             db,
             status,
+            indexer,
             watcher,
             watched: HashSet::new(),
             available: HashSet::new(),
@@ -157,6 +163,7 @@ impl Worker {
         self.set_status(|status| status.running = false);
         self.emit_scan();
         self.emit_changed(reason);
+        self.indexer.wake();
     }
 
     /// Vigila las carpetas que existen y deja de vigilar las que ya no.
@@ -204,12 +211,14 @@ impl Worker {
     }
 
     fn emit_changed(&self, reason: &'static str) {
-        if let Err(error) = self
-            .app
-            .emit("library://changed", ChangedPayload { reason })
-        {
-            tracing::warn!(%error, "could not emit library://changed");
-        }
+        emit_changed(&self.app, reason);
+    }
+}
+
+/// Avisa al front de que la biblioteca cambió (`library://changed`). Lo emiten el escaneo y el indexador.
+pub fn emit_changed(app: &AppHandle, reason: &'static str) {
+    if let Err(error) = app.emit("library://changed", ChangedPayload { reason }) {
+        tracing::warn!(%error, "could not emit library://changed");
     }
 }
 

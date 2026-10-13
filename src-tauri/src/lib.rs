@@ -5,6 +5,7 @@ pub mod engine;
 pub mod error;
 pub mod folders;
 pub mod highlights;
+pub mod indexer;
 pub mod jpx;
 pub mod library;
 pub mod protocol;
@@ -39,6 +40,8 @@ pub struct AppState {
     pub pending_open: PendingOpen,
     /// Motor de PDF nativo (MuPDF): render de páginas y acceso a los documentos.
     pub engine: Arc<engine::Engine>,
+    /// Despierta al indexador de metadatos y portadas (`indexer.rs`).
+    pub indexer: indexer::Handle,
 }
 
 impl AppState {
@@ -82,6 +85,13 @@ pub fn run() {
                 &system::pdf_paths_from_args(&argv, &cwd),
             ));
             let scan = SharedScanStatus::default();
+            let engine = Arc::new(engine::Engine::new(engine::EngineConfig::default()));
+            let indexer = indexer::spawn(
+                app.handle().clone(),
+                Arc::clone(&db),
+                covers_dir.clone(),
+                Arc::clone(&engine),
+            );
             let (tx, rx) = mpsc::channel();
             watch::spawn(
                 app.handle().clone(),
@@ -89,6 +99,7 @@ pub fn run() {
                 Arc::clone(&scan),
                 tx.clone(),
                 rx,
+                indexer.clone(),
             );
 
             app.manage(AppState {
@@ -97,7 +108,8 @@ pub fn run() {
                 worker: tx,
                 scan,
                 pending_open,
-                engine: Arc::new(engine::Engine::new(engine::EngineConfig::default())),
+                engine,
+                indexer,
             });
             Ok(())
         })

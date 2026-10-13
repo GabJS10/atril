@@ -34,12 +34,38 @@ pub struct Inherited {
     pub rotate: Option<i32>,
 }
 
+/// Diccionario `/Info` del PDF de prueba (los campos que no se pongan no se escriben).
+#[derive(Debug, Clone, Default)]
+pub struct Info {
+    pub title: Option<String>,
+    pub author: Option<String>,
+}
+
 fn rect(values: [f64; 4]) -> String {
     format!("[{} {} {} {}]", values[0], values[1], values[2], values[3])
 }
 
+/// Texto de PDF en UTF-16BE con BOM (`<FEFF…>`), para que los acentos lleguen intactos.
+fn pdf_text(text: &str) -> String {
+    let mut hex = String::from("<FEFF");
+    for unit in text.encode_utf16() {
+        write!(hex, "{unit:04X}").expect("write to string");
+    }
+    hex.push('>');
+    hex
+}
+
 /// Construye un PDF con una página por `PageSpec`.
 pub fn build_pdf(pages: &[PageSpec], inherited: &Inherited) -> Vec<u8> {
+    build_pdf_with_info(pages, inherited, None)
+}
+
+/// Como `build_pdf`, con un diccionario `/Info` (título y autor) si `info` no es `None`.
+pub fn build_pdf_with_info(
+    pages: &[PageSpec],
+    inherited: &Inherited,
+    info: Option<&Info>,
+) -> Vec<u8> {
     // Objetos: 1 catálogo, 2 árbol de páginas, 3 fuente; por página: página, contenido y, si hace falta,
     // la caja indirecta.
     let mut objects: Vec<String> = Vec::new();
@@ -128,6 +154,20 @@ pub fn build_pdf(pages: &[PageSpec], inherited: &Inherited) -> Vec<u8> {
             ));
         }
     }
+    let mut trailer_info = String::new();
+    if let Some(info) = info {
+        let info_id = next;
+        let mut dict = String::from("<<");
+        if let Some(title) = &info.title {
+            write!(dict, " /Title {}", pdf_text(title)).expect("write to string");
+        }
+        if let Some(author) = &info.author {
+            write!(dict, " /Author {}", pdf_text(author)).expect("write to string");
+        }
+        dict.push_str(" >>");
+        streams.push((info_id, dict, None));
+        write!(trailer_info, " /Info {info_id} 0 R").expect("write to string");
+    }
     streams.sort_by_key(|(id, _, _)| *id);
 
     let mut out = b"%PDF-1.7\n".to_vec();
@@ -160,7 +200,7 @@ pub fn build_pdf(pages: &[PageSpec], inherited: &Inherited) -> Vec<u8> {
     }
     write!(
         xref,
-        "trailer\n<< /Size {total} /Root 1 0 R >>\nstartxref\n{xref_at}\n%%EOF\n"
+        "trailer\n<< /Size {total} /Root 1 0 R{trailer_info} >>\nstartxref\n{xref_at}\n%%EOF\n"
     )
     .expect("write to string");
     out.extend_from_slice(xref.as_bytes());

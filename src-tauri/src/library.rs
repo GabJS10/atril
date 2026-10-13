@@ -469,6 +469,24 @@ pub fn list_pending_scans(conn: &Connection) -> Result<Vec<Book>, AppError> {
     .collect())
 }
 
+/// Id y ruta de los libros pendientes de indexar (sin `missing`), por fecha de alta. Es lo que lee el
+/// indexador nativo (`indexer.rs`), que necesita la ruta para abrir el PDF.
+pub fn pending_scan_paths(conn: &Connection) -> Result<Vec<(String, PathBuf)>, AppError> {
+    let mut stmt = conn.prepare(
+        "SELECT id, path FROM books
+         WHERE removed_at IS NULL AND scan_state = 'pending' AND missing = 0
+         ORDER BY added_at, id",
+    )?;
+    let rows = stmt
+        .query_map([], |row| {
+            let id: String = row.get(0)?;
+            let path: String = row.get(1)?;
+            Ok((id, PathBuf::from(path)))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
 /// Guarda los metadatos y la portada (WebP) que calculó el indexador.
 pub fn save_book_scan(
     conn: &Connection,
