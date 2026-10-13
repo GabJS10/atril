@@ -227,7 +227,7 @@ type PageGeometry = {
 - Cada petición descarta las pendientes (en cola, no las que ya se están renderizando) del mismo libro que quedan a más de 12 páginas (el visor ya está en otra zona) o que son de otra escala (el usuario cambió el zoom): esas reciben `410 Gone`. Un `410` significa «ya no hacía falta»; si el `<img>` sigue en pantalla, hay que volver a pedirla. Una página que ya se está renderizando termina siempre y queda en caché.
 - Tras cada petición se precargan ±2 páginas, primero las del sentido de avance, con la misma escala. La precarga no tiene destinatario: solo llena la caché.
 - Caché de JPEG ya codificados en memoria (256 MB por defecto), clave (libro, página, escala cuantizada).
-- Store de recursos de MuPDF (imágenes decodificadas, fuentes): todos los contextos comparten uno de 256 MB, que el motor recorta a 64 MB tras cada trabajo (`EngineConfig::store_bytes`). Un escaneo visto de nuevo sigue decodificado mientras quepa en ese límite; si no, se vuelve a decodificar.
+- Memoria de MuPDF: todos los contextos comparten un store de recursos de 256 MB (imágenes decodificadas, fuentes). El motor lo recorta a 64 MB tras cada trabajo (`EngineConfig::store_bytes`) y después pide a glibc que devuelva la memoria libre de sus heaps (`malloc_trim`). Con ambos, el proceso queda en torno a 230 MB tras 48 escaneos de render, y un escaneo ya visto se vuelve a dibujar en unos 13 ms (sin devolver el heap: unos 365 MB y unos 480 ms).
 
 **Errores del protocolo en el visor:** `404` y `422` no se reintentan; `410` se reintenta si la página sigue visible; `500` se puede reintentar una vez.
 
