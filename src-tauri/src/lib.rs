@@ -6,7 +6,6 @@ pub mod error;
 pub mod folders;
 pub mod highlights;
 pub mod indexer;
-pub mod jpx;
 pub mod library;
 pub mod protocol;
 pub mod query;
@@ -137,9 +136,6 @@ pub fn run() {
             commands::rescan_library,
             commands::get_scan_status,
             commands::import_files,
-            commands::list_pending_scans,
-            commands::save_book_scan,
-            commands::mark_scan_failed,
             commands::list_collections,
             commands::create_collection,
             commands::rename_collection,

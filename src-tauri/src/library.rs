@@ -103,7 +103,7 @@ impl ReadingStateInput {
     }
 }
 
-/// Datos de `save_book_scan` que no son la portada (vienen en cabeceras).
+/// Datos de `save_book_scan` que no son la portada (los calcula el indexador nativo).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScanInput {
     pub page_count: i64,
@@ -456,19 +456,6 @@ pub fn remove_book(conn: &Connection, id: &str) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Libros con portada pendiente, sin `missing`, por fecha de alta.
-pub fn list_pending_scans(conn: &Connection) -> Result<Vec<Book>, AppError> {
-    Ok(query_records(
-        conn,
-        "WHERE b.removed_at IS NULL AND b.scan_state = 'pending' AND b.missing = 0
-         ORDER BY b.added_at, b.id",
-        [],
-    )?
-    .into_iter()
-    .map(|record| record.book)
-    .collect())
-}
-
 /// Id y ruta de los libros pendientes de indexar (sin `missing`), por fecha de alta. Es lo que lee el
 /// indexador nativo (`indexer.rs`), que necesita la ruta para abrir el PDF.
 pub fn pending_scan_paths(conn: &Connection) -> Result<Vec<(String, PathBuf)>, AppError> {
@@ -512,16 +499,32 @@ pub fn save_book_scan(
 
     write_cover(covers_dir, id, format, cover)?;
 
+    // Sin título válido en los metadatos, un título que antes salió de ellos (reindexación con reglas nuevas)
+    // vuelve al nombre del archivo, y otra vez sigue al nombre si se renombra.
+    let stored_path: String =
+        conn.query_row("SELECT path FROM books WHERE id = ?1", params![id], |row| {
+            row.get(0)
+        })?;
+    let file_title = Path::new(&stored_path)
+        .file_stem()
+        .map_or(stored_path.clone(), |stem| {
+            stem.to_string_lossy().into_owned()
+        });
+
     conn.execute(
         "UPDATE books SET
              page_count = COALESCE(page_count, ?1),
-             title = COALESCE(?2, title),
+             title = CASE WHEN ?2 IS NOT NULL THEN ?2
+                          WHEN title_source = 'metadata' THEN ?5
+                          ELSE title END,
              author = COALESCE(?3, author),
              scan_state = 'done',
-             title_source = CASE WHEN ?2 IS NULL THEN title_source ELSE 'metadata' END,
+             title_source = CASE WHEN ?2 IS NOT NULL THEN 'metadata'
+                                 WHEN title_source = 'metadata' THEN 'filename'
+                                 ELSE title_source END,
              has_cover = 1
          WHERE id = ?4",
-        params![scan.page_count, scan.title, scan.author, id],
+        params![scan.page_count, scan.title, scan.author, id, file_title],
     )?;
     get_book(conn, id)
 }
@@ -1199,7 +1202,7 @@ mod tests {
     }
 
     #[test]
-    fn pending_scans_drop_done_failed_and_missing_books() {
+    fn pending_scan_paths_drop_done_failed_and_missing_books() {
         let dir = tempfile::tempdir().expect("tempdir");
         let covers = tempfile::tempdir().expect("covers");
         let (_db, mut conn) = open_temp_db();
@@ -1216,10 +1219,10 @@ mod tests {
         .expect("done");
         mark_scan_failed(&conn, &failed.id).expect("failed");
 
-        let list = list_pending_scans(&conn).expect("pending");
+        let list = pending_scan_paths(&conn).expect("pending");
 
         assert_eq!(
-            list.iter().map(|b| b.id.as_str()).collect::<Vec<_>>(),
+            list.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
             vec![pending.id.as_str()]
         );
         assert_eq!(

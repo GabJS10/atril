@@ -2,12 +2,11 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { createMemoryHistory } from "@tanstack/react-router";
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { App } from "../App";
 import { createQueryClient } from "../api/queries";
 import type { Book, Collection, HomeData } from "../api/types";
 import { createAppRouter } from "../router";
-import { resetReaderActivity } from "./readerActivity";
 import { BOOK_DRAG_TYPE } from "./Cover";
 
 function book(id: string, title: string): Book {
@@ -55,7 +54,6 @@ function recordCommands() {
         return { running: false, found: 0 };
       case "list_books":
         return [meditaciones];
-      case "list_pending_scans":
       case "list_library_folders":
         return [];
       default:
@@ -70,8 +68,6 @@ function renderAt(path: string) {
   const router = createAppRouter(createMemoryHistory({ initialEntries: [path] }));
   return render(<App router={router} queryClient={createQueryClient()} />);
 }
-
-beforeEach(() => resetReaderActivity());
 
 describe("Salas and removals", () => {
   it("creates a Sala with the trimmed name", async () => {

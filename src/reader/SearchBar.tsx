@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useT } from "../i18n";
-import type { FindOptions, FindResult } from "./PdfViewer";
+import type { FindOptions, FindResult } from "./viewerTypes";
 
 /**
  * The search bar of the reader (roadmap 4.F2, DESIGN.md: search field without a box, a line underneath). Typing

@@ -2,10 +2,10 @@
 
 **Dueño:** `plan`. Se actualiza cuando cambia la estructura: módulos nuevos, hilos, flujos de datos o decisiones de fondo. El contrato exacto de comandos, eventos y URLs está en [`IPC.md`](IPC.md); las decisiones y su porqué, en [`PLAN.md`](PLAN.md).
 
-**Estado:** fase R en curso.
-- R1 (motor nativo en Rust) está fusionado.
-- R2.1 (visor nativo base) está fusionado. Hasta que termine R2.2 conviven los dos visores: pdf.js, el predeterminado, y el nativo, que se activa con `VITE_ATRIL_VIEWER=native` o con `localStorage["atril.viewer"]="native"` (`reader/viewerKind.ts`; manda localStorage, luego la variable).
-- R3 eliminará pdf.js y el puente JPX.
+**Estado:** fase R cerrada (tag `fase-R`).
+- R1 (motor nativo en Rust) y R2 (visor nativo, con texto, subrayados, búsqueda, índice y enlaces) están hechos.
+- R2.3 quitó pdf.js del frontend: el visor nativo es el único.
+- R3 quitó el puente JPX (`jpx.rs`, `POST /jpx`, `jpxBridge.js`, `pdfjs-dist`), los comandos del indexador viejo y corrigió los títulos con nombre de archivo. La licencia es AGPL-3.0.
 
 ## Vista general
 ```
@@ -14,8 +14,8 @@
 │                                                                     │
 │  Biblioteca (routes/index, collection.$id)   Ajustes (settings)     │
 │  Lector (routes/read.$bookId → reader/ReaderScreen)                 │
-│    ├ NativeViewer: <img> por página, capa de subrayados   (R2)      │
-│    └ PdfViewer: pdf.js (legado, sale en R3)                         │
+│    └ NativeViewer (reader/native): <img> por página, texto,         │
+│      subrayados, búsqueda, índice y enlaces                         │
 │                                                                     │
 │  api/tauri.ts — único punto de contacto con Rust                    │
 └──────────┬───────────────────────────────┬─────────────────────────┘
@@ -83,18 +83,18 @@ MuPDF (crate `mupdf` 0.8, enlazado estático, `base14-fonts`, sin `system-fonts`
 |---|---|
 | `api/` | `tauri.ts` (wrappers tipados de `invoke`), `types.ts` (tipos de `IPC.md`) y `queries.ts` (TanStack Query) |
 | `routes/` | Rutas por archivos: `index` (biblioteca), `collection.$collectionId`, `read.$bookId` y `settings` |
-| `library/` | Pantalla de biblioteca, Salas, ajustes, eventos de biblioteca y soltar archivos. `indexer.ts` es el indexador de pdf.js, **legado**: desde R1.3 no recibe pendientes y sale en R2/R3 |
+| `library/` | Pantalla de biblioteca, Salas, ajustes, eventos de biblioteca y soltar archivos. El indexador de pdf.js (`indexer.ts`) salió en R2.3; el de Rust es `indexer.rs` |
 | `reader/` | Pantalla de lectura, barra, atajos, posición, subrayados, índice y búsqueda. Detalle abajo |
 | `i18n/` | Textos en `es.ts` y `en.ts` |
 | `ui/`, `theme.ts` | Componentes comunes y tema (tokens del diseño "museo de noche") |
 
 ### Lector
-- **`ReaderScreen.tsx`** elige el visor con `viewerKind.ts` y le habla con una interfaz común (`viewerTypes.ts`). Así el resto de la pantalla no depende del visor: barra, paneles, atajos, posición y subrayados.
-- **Visor nativo (`reader/native/`, R2.1):** `NativeViewer.tsx`, con `PageSlot` y `PageImage` por página y lógica pura y testeada en `layout.ts` (offsets y búsqueda binaria), `mapping.ts` (`PageMapping` desde `transform`), `scale.ts`, `anchor.ts` (punto fijo del zoom), `imageReducer.ts` (doble búfer) y `pageFetch.ts` (reintentos ante `410`). Todavía no tiene capa de texto, búsqueda, índice ni enlaces: eso llega en R2.2.
+- **`ReaderScreen.tsx`** habla con el visor por una interfaz común (`viewerTypes.ts`). Así el resto de la pantalla no depende del visor: barra, paneles, atajos, posición y subrayados. El visor nativo es el único desde R2.3.
+- **Visor nativo (`reader/native/`, R2.1–R2.2):** `NativeViewer.tsx`, con `PageSlot` y `PageImage` por página y lógica pura y testeada en `layout.ts` (offsets y búsqueda binaria), `mapping.ts` (`PageMapping` desde `transform`), `scale.ts`, `anchor.ts` (punto fijo del zoom), `imageReducer.ts` (doble búfer) y `pageFetch.ts` (reintentos ante `410`). Tiene capa de texto para seleccionar y copiar (`textLayer.ts`, `TextLayer.tsx`), subrayados, búsqueda con resaltado (`searchController.ts`), índice y enlaces (`links.ts`, `LinkLayer.tsx`).
   - **Lista virtualizada.** La altura total sale de `open_document` desde el primer instante. Solo están en el DOM las páginas visibles ±1. La página visible se busca por búsqueda binaria sobre los offsets acumulados, así que nada crece con el número de páginas.
   - **Imágenes.** Cada página es un `<img>` a escala zoom × `devicePixelRatio`. Ante un `410` se reintenta si la página sigue visible.
   - **Zoom en dos pasos.** Primero escala CSS inmediata; tras ~150 ms quieto, se pide la imagen nítida y se cambia cuando ha cargado (doble búfer), conservando el punto de anclaje.
-- **Geometría** (`geometry.ts`): los subrayados se guardan en **espacio de usuario PDF**. Cada visor aporta un `PageMapping`; el nativo lo construye con `transform` × zoom. Por eso los subrayados hechos con pdf.js siguen en su sitio.
+- **Geometría** (`geometry.ts`): los subrayados se guardan en **espacio de usuario PDF**. El visor construye el `PageMapping` con `transform` × zoom. Por eso los subrayados hechos con pdf.js siguen en su sitio.
 - **Posición:** `useReadingPosition`, `position.ts` y `positionSaver.ts` guardan la página y `offsetInPage` en `reading_state`. El libro y su posición se leen con `useOpenedBook` (`gcTime: 0`). La consulta no sobrevive al cierre del lector, porque una copia en caché reabría el libro en la posición vieja.
 
 ## Flujos principales
@@ -127,7 +127,5 @@ Los libros se quedan donde están; la DB guarda su ruta y su huella.
   - `cargo run --release --example engine_bench -- <pdf>` (render y memoria);
   - `--example text_bench -- <pdf> [consulta]` (texto, búsqueda, índice e impacto en el render).
 
-## Pendiente de la fase R
-- **R2.2:** capa de texto y selección, búsqueda, índice y enlaces en el visor nativo.
-- **R2.3:** el visor nativo pasa a ser el único y se quitan pdf.js, `indexer.ts` y la copia de `/pdfjs/`.
-- **R3:** quitar `jpx.rs` y `POST /jpx`; licencia AGPL en `LICENSE`; `IPC.md` v1.0.
+## Siguiente
+- **Fase 5:** sistema y release para Linux (ver `ROADMAP.md`).

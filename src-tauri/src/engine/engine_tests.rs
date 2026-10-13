@@ -366,10 +366,10 @@ fn huge_scales_are_reduced_to_the_pixel_limit() {
     assert!(width < 24_000);
 }
 
-/// Un escaneo JPEG 2000 (aquí 48x64 px, el fixture de `tests/fixtures/jpx`) se dibuja con el openjpeg de MuPDF.
+/// Un escaneo JPEG 2000 (aquí 48x64 px, el fixture `tests/fixtures/rgb.jp2`) se dibuja con el openjpeg de MuPDF.
 #[test]
 fn a_page_with_a_jpeg_2000_image_renders_the_image() {
-    let jpx = include_bytes!("../../tests/fixtures/jpx/rgb.jp2").to_vec();
+    let jpx = include_bytes!("../../tests/fixtures/rgb.jp2").to_vec();
     let specs = vec![PageSpec {
         media_box: Some([0.0, 0.0, 400.0, 400.0]),
         jpx_image: Some(jpx),

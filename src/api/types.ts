@@ -94,12 +94,6 @@ export type ScanStatus = { running: boolean; found: number };
 
 export type LibraryFolder = { id: string; path: string; addedAt: string };
 
-export type ScanMetadata = {
-  pageCount: number;
-  title?: string;
-  author?: string;
-};
-
 export type ImportRejection = { path: string; error: AppError };
 
 export type ImportResult = { imported: Book[]; rejected: ImportRejection[] };
@@ -150,4 +144,45 @@ export type OpenedDocument = {
   pageCount: number;
   pageBaseUrl: string;
   pages: PageGeometry[];
+};
+
+// Text, search, index and links of the native engine (docs/IPC.md, "Texto, búsqueda, índice y enlaces (v0.8)").
+
+/** x0, y0, x1, y1 in the viewer space at scale 1: origin top-left, y down, in points. The front multiplies by the zoom. */
+export type ViewRect = [number, number, number, number];
+
+export type TextWord = {
+  text: string;
+  rect: ViewRect;
+  /** Last word of its line: a line break when copying. */
+  lineEnd: boolean;
+  /** Last word of its block (paragraph): a blank line when copying. */
+  blockEnd: boolean;
+};
+
+export type LinkTarget = { page: number; y: number | null } | { uri: string };
+
+export type PageLink = { rect: ViewRect; target: LinkTarget };
+
+/** An entry of the index as the engine returns it. `reader/outline.ts` turns it into the panel's `OutlineItem`. */
+export type EngineOutlineItem = {
+  title: string;
+  page: number | null;
+  y: number | null;
+  uri: string | null;
+  children: EngineOutlineItem[];
+};
+
+export type SearchStarted = { searchId: string };
+
+/** Event `search://progress`: the matches of one page, in page order. */
+export type SearchProgress = { searchId: string; page: number; matches: { rects: ViewRect[] }[] };
+
+/** Event `search://done`: once per search. */
+export type SearchDone = {
+  searchId: string;
+  total: number;
+  pagesSearched: number;
+  cancelled: boolean;
+  error: AppError | null;
 };

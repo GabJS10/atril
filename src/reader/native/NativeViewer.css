@@ -35,7 +35,7 @@
 }
 
 /*
- * Reader paper (DESIGN.md, 2.2), as in the pdf.js viewer: the filters go on the page image only, and the highlights
+ * Reader paper (DESIGN.md, 2.2): the filters go on the page image only, and the highlights
  * above it keep their own colours. Sepia multiplies the scan onto the sepia paper; night inverts it (hue kept).
  */
 :root[data-reader-mode="sepia"] .atril-native-page .atril-page-image {
@@ -44,4 +44,63 @@
 
 :root[data-reader-mode="night"] .atril-native-page .atril-page-image {
   filter: invert(1) hue-rotate(180deg);
+}
+
+/*
+ * R2.2 layers. The overlay is drawn in the page's own units (points) and scaled to the page box with a transform, so
+ * the text and the links follow the zoom at once, before the sharp image arrives. Only the words take the pointer.
+ */
+.atril-native-page .atril-search-hits {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* Search matches: a tint of the reader's ink, stronger on the one in focus (monochrome, as the rest of the UI). */
+.atril-search-hit {
+  position: absolute;
+  background-color: color-mix(in srgb, var(--paper-ink) 22%, transparent);
+}
+
+.atril-search-hit[data-active="true"] {
+  background-color: color-mix(in srgb, var(--paper-ink) 55%, transparent);
+}
+
+.atril-page-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
+.atril-link-layer,
+.atril-text-layer {
+  position: absolute;
+  inset: 0;
+}
+
+.atril-link {
+  position: absolute;
+}
+
+.atril-text-word {
+  position: absolute;
+  transform-origin: 0 0;
+  font-family: var(--font-sans);
+  color: transparent;
+  white-space: pre;
+  pointer-events: auto;
+  user-select: text;
+  cursor: text;
+}
+
+.atril-text-word::selection {
+  background-color: color-mix(in srgb, var(--paper-ink) 28%, transparent);
+}
+
+.atril-native-viewer.atril-over-link .atril-text-word {
+  cursor: pointer;
 }

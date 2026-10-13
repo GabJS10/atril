@@ -1,6 +1,6 @@
 import type { Highlight, Zoom } from "../api/types";
 import type { ReaderPosition } from "./position";
-import type { SelectionPart } from "./selectionReader";
+import type { SelectionPart } from "./native/textSelection";
 
 /** What the reader screen needs to know of the view: where it is, how it is zoomed. */
 export type ViewSnapshot = { position: ReaderPosition; zoom: Zoom; scale: number };
@@ -10,7 +10,10 @@ export type FindResult = { current: number; total: number; notFound: boolean };
 
 export type FindOptions = { again?: boolean; findPrevious?: boolean };
 
-/** Props both viewers (pdf.js and native) take besides their document. */
+/** A place in the book: a page (1-based) and how far down it, in points at scale 1 (null: the top). */
+export type PageDestination = { page: number; y: number | null };
+
+/** Props the viewer takes besides its document. */
 export type ViewerProps = {
   /** Zoom and position to start from. Applied once, before the view is shown. */
   start: { zoom: Zoom; position: ReaderPosition | null };
@@ -30,13 +33,13 @@ export type ViewerProps = {
   onFindResult: (result: FindResult) => void;
 };
 
-/** Commands the reader's keyboard map and bar send to the viewer. Both viewers implement it. */
+/** Commands the reader's keyboard map and bar send to the viewer. */
 export type ViewerHandle = {
   goToPage: (page: number) => void;
   /** Searches the book without case or accents. An empty query clears the matches. */
   find: (query: string, options?: FindOptions) => void;
   /** Goes to a destination of the book (an entry of its index): the page and the place on it. */
-  goToDestination: (dest: string | unknown[]) => void;
+  goToDestination: (dest: PageDestination) => void;
   /** Scrolls the highlight into view (the panel's click). */
   revealHighlight: (highlight: Highlight) => void;
   /** One page forward or back, from the page the view is on (not from React state, which can lag behind key repeats). */
