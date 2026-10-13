@@ -22,4 +22,6 @@ System dependencies (Ubuntu/Mint): `libwebkit2gtk-4.1-dev build-essential libssl
 
 ## License
 
+Copyright (C) 2026 GabJS10.
+
 Atril is licensed under the GNU Affero General Public License v3.0 (see `LICENSE`). It uses MuPDF, which is AGPL-3.0 too.
