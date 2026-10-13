@@ -1,0 +1,48 @@
+# Banco de pruebas R0.1 (spike de medición). NO es parte de la app: no tocar src-tauri/.
+[package]
+name = "engines-spike"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Workspace propio: que cargo no lo mezcle con ningún workspace padre.
+[workspace]
+
+[dependencies]
+anyhow = "1"
+serde_json = "1"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "bmp"] }
+# MuPDF 0.8.0 (mupdf-sys compila MuPDF desde fuente, enlazado estático; bindgen necesita libclang).
+mupdf = { version = "0.8.0", optional = true, default-features = false }
+# PDFium vía pdfium-render 0.9.4 (libpdfium se carga en tiempo de ejecución con dlopen).
+pdfium-render = { version = "0.9.4", optional = true }
+
+[features]
+default = []
+# MuPDF mínimo: sin ninguna feature opcional (solo base14 de mupdf-sys).
+mupdf = ["dep:mupdf"]
+# MuPDF mínimo + fuentes base14 de mupdf-sys (necesarias para extraer bien el texto de PDFs con fuentes base14 sin incrustar).
+mupdf-base14 = ["mupdf", "mupdf/base14-fonts"]
+# MuPDF mínimo + base14 + fuentes del sistema (system-fonts, font-kit).
+mupdf-base14-sysfonts = ["mupdf-base14", "mupdf/system-fonts"]
+# MuPDF con sus features por defecto (js, xps, svg, cbz, img, html, epub, system-fonts, tesseract, brotli, docx-output, base14-fonts).
+mupdf-default = ["mupdf", "mupdf/default"]
+# MuPDF mínimo + fuentes empaquetadas (droid, noto, sil; incluye CJK de droid).
+mupdf-bundled-fonts = ["mupdf", "mupdf/bundled-fonts"]
+# MuPDF mínimo + fuentes del sistema para glifos que falten (fontconfig/font-kit).
+mupdf-sysfonts = ["mupdf", "mupdf/system-fonts"]
+pdfium = ["dep:pdfium-render"]
+
+[[bin]]
+name = "bench-baseline"
+path = "src/bin/baseline.rs"
+
+[[bin]]
+name = "bench-mupdf"
+path = "src/bin/mupdf.rs"
+required-features = ["mupdf"]
+
+[[bin]]
+name = "bench-pdfium"
+path = "src/bin/pdfium.rs"
+required-features = ["pdfium"]

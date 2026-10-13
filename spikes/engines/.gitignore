@@ -1,0 +1,4 @@
+# Artefactos del spike (no se commitean)
+vendor/
+out/
+target/
