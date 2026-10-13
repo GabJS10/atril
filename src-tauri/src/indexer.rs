@@ -5,6 +5,9 @@
 //! MuPDF tiene su contexto, así que no comparte nada con el pool del visor. El hilo baja su prioridad del sistema
 //! (nice 19 en Linux, por hilo) y no empieza un libro mientras haya renders del visor en cola.
 //!
+//! Los libros que ya tenían portada antes de `Book.coverColor` reciben el color en segundo plano, sin reindexar
+//! ([`backfill_cover_colors`]).
+//!
 //! Es el único indexador: el front no indexa ni guarda portadas, solo recibe `library://changed` (docs/IPC.md).
 //!
 //! Título: el de los metadatos solo vale si dice algo (ver [`clean_metadata_text`] y [`clean_title`]). Si no vale,
@@ -22,6 +25,7 @@ use regex::Regex;
 use rusqlite::Connection;
 use tauri::AppHandle;
 
+use crate::cover_color;
 use crate::engine::{Engine, EngineError, OpenDocument, geometry};
 use crate::library::{self, ScanInput};
 use crate::protocol;
@@ -33,6 +37,8 @@ pub const COVER_WIDTH_PX: f64 = 400.0;
 pub const MAX_METADATA_LENGTH: usize = 200;
 /// Cada cuánto se busca trabajo aunque nadie avise (libros que entran por una vía sin aviso).
 const POLL: Duration = Duration::from_secs(30);
+/// Portadas por lote al rellenar el color de las que ya existen (un aviso a la UI por lote).
+const COLOR_BATCH: usize = 25;
 /// Espera entre comprobaciones de la cola del visor mientras el indexador cede.
 const YIELD: Duration = Duration::from_millis(100);
 
@@ -146,13 +152,14 @@ fn read_scan(path: &Path) -> Result<Scan, EngineError> {
     let title = document.pdf().metadata(MetadataName::Title).ok();
     let file_name = path.file_name().map(|name| name.to_string_lossy());
     let author = document.pdf().metadata(MetadataName::Author).ok();
-    let cover = document.render_jpeg(1, COVER_WIDTH_PX / first.width.max(1.0))?;
+    let (cover, cover_color) = document.render_cover(1, COVER_WIDTH_PX / first.width.max(1.0))?;
 
     Ok(Scan {
         input: ScanInput {
             page_count: i64::from(page_count),
             title: clean_title(title.as_deref(), file_name.as_deref()),
             author: clean_metadata_text(author.as_deref(), TextKind::Author),
+            cover_color,
         },
         cover,
     })
@@ -233,6 +240,58 @@ pub fn index_pending(
     report
 }
 
+/// Rellena `books.cover_color` de los libros que ya tenían portada antes de que existiera el color, sin reindexarlos:
+/// lee `covers/<id>.jpg` (o `.webp`), la decodifica con el crate `image` (Rust puro; no hace falta abrir el PDF ni
+/// usar MuPDF, así que es barato: unos ms por portada de 400 px) y calcula el color. Va por lotes de
+/// [`COLOR_BATCH`]: `before_each` se llama antes de cada portada (ahí cede al visor) y `on_batch` con el número de
+/// libros actualizados al acabar cada lote. Una portada que falla (ilegible o ausente) entra en `attempted` y no se
+/// vuelve a intentar durante la sesión. Devuelve cuántos libros se actualizaron.
+pub fn backfill_cover_colors(
+    db: &Mutex<Connection>,
+    covers_dir: &Path,
+    attempted: &mut HashSet<String>,
+    mut before_each: impl FnMut(),
+    mut on_batch: impl FnMut(usize),
+) -> usize {
+    let ids = match library::lock_db(db).and_then(|conn| library::books_without_cover_color(&conn))
+    {
+        Ok(ids) => ids,
+        Err(error) => {
+            tracing::warn!(%error, "could not list the books without a cover color");
+            return 0;
+        }
+    };
+    let ids: Vec<String> = ids
+        .into_iter()
+        .filter(|id| attempted.insert(id.clone()))
+        .collect();
+    let mut total = 0;
+    for batch in ids.chunks(COLOR_BATCH) {
+        let mut updated = 0;
+        for id in batch {
+            before_each();
+            let color = match cover_color::color_from_cover_file(covers_dir, id) {
+                Ok(color) => color,
+                Err(reason) => {
+                    tracing::warn!(book = %id, %reason, "could not compute the cover color");
+                    continue;
+                }
+            };
+            match library::lock_db(db).and_then(|conn| library::set_cover_color(&conn, id, &color))
+            {
+                Ok(true) => updated += 1,
+                Ok(false) => {}
+                Err(error) => tracing::warn!(book = %id, %error, "could not save the cover color"),
+            }
+        }
+        if updated > 0 {
+            on_batch(updated);
+        }
+        total += updated;
+    }
+    total
+}
+
 /// Despierta al indexador. No espera: si ya hay una pasada en curso, se hace otra al acabar.
 #[derive(Clone)]
 pub struct Handle {
@@ -272,6 +331,7 @@ fn run(
 ) {
     lower_priority();
     let mut attempted = HashSet::new();
+    let mut color_attempted = HashSet::new();
     loop {
         index_pending(
             db,
@@ -290,6 +350,17 @@ fn run(
                     watch::emit_changed(app, "index");
                 }
             },
+        );
+        backfill_cover_colors(
+            db,
+            covers_dir,
+            &mut color_attempted,
+            || {
+                while engine.queued_renders() > 0 {
+                    thread::sleep(YIELD);
+                }
+            },
+            |_| watch::emit_changed(app, "index"),
         );
         match wakes.recv_timeout(POLL) {
             Ok(()) => while wakes.try_recv().is_ok() {},
@@ -467,6 +538,7 @@ mod tests {
                 page_count: 1,
                 title: Some("01-Prefacio_3a.pmd".into()),
                 author: None,
+                cover_color: None,
             },
             &jpeg_bytes(1000),
         )
@@ -578,6 +650,7 @@ mod tests {
                 page_count: 1,
                 title: None,
                 author: None,
+                cover_color: None,
             },
             &jpeg_bytes(1000),
         )
@@ -677,6 +750,109 @@ mod tests {
         assert_eq!(saved.page_count, Some(1));
     }
 
+    #[test]
+    fn indexing_stores_the_cover_color_from_the_rendered_pixels() {
+        let books = tempfile::tempdir().expect("books");
+        let covers = tempfile::tempdir().expect("covers");
+        let (_db_dir, mut conn) = open_temp_db();
+        let book = import(&mut conn, &pdf_with_info(books.path(), "a.pdf", 1, None));
+
+        let db = Mutex::new(conn);
+        let report = index_pending(&db, covers.path(), &mut HashSet::new(), || {}, |_| {});
+
+        assert_eq!(report[0].outcome, Outcome::Done);
+        let conn = db.lock().expect("lock");
+        let color = get_book(&conn, &book.id).expect("book").cover_color;
+        // Texto negro sobre papel blanco: no hay color, sale un gris.
+        let color = color.expect("a color");
+        assert!(cover_color::is_valid_hex(&color), "{color}");
+        assert_eq!(color[1..3], color[3..5]);
+        assert_eq!(color[3..5], color[5..7]);
+    }
+
+    /// Inserta un libro con portada (`covers/<id>.jpg`) y sin color, como los indexados antes de `coverColor`.
+    fn insert_book_with_cover(conn: &Connection, covers: &Path, id: &str, jpeg: &[u8]) {
+        conn.execute(
+            "INSERT INTO books (id, path, file_size, title, added_at, scan_state, has_cover)
+             VALUES (?1, ?1, 1, ?1, ?1, 'done', 1)",
+            [id],
+        )
+        .expect("insert");
+        std::fs::write(covers.join(format!("{id}.jpg")), jpeg).expect("cover");
+    }
+
+    fn red_jpeg() -> Vec<u8> {
+        let rgb: Vec<u8> = (0..40 * 60).flat_map(|_| [200u8, 30, 30]).collect();
+        crate::engine::encode::encode_jpeg(&rgb, 40, 60).expect("jpeg")
+    }
+
+    #[test]
+    fn backfill_fills_existing_covers_in_batches_and_skips_undecodable_ones() {
+        let covers = tempfile::tempdir().expect("covers");
+        let (_db_dir, conn) = open_temp_db();
+        let total = COLOR_BATCH + 1;
+        for n in 0..total {
+            insert_book_with_cover(&conn, covers.path(), &format!("book{n:02}"), &red_jpeg());
+        }
+        insert_book_with_cover(&conn, covers.path(), "broken", &jpeg_bytes(1000));
+        let db = Mutex::new(conn);
+        let mut attempted = HashSet::new();
+        let (mut before, mut batches) = (0, Vec::new());
+
+        let updated = backfill_cover_colors(
+            &db,
+            covers.path(),
+            &mut attempted,
+            || before += 1,
+            |count| batches.push(count),
+        );
+
+        assert_eq!(updated, total);
+        // 26 legibles = dos lotes (25 + 1); el ilegible no suma a ninguno.
+        assert_eq!(batches.iter().sum::<usize>(), total);
+        assert_eq!(batches.len(), 2, "{batches:?}");
+        assert_eq!(
+            before,
+            total + 1,
+            "yields before every cover, readable or not"
+        );
+        {
+            let conn = db.lock().expect("lock");
+            let book = get_book(&conn, "book00").expect("book");
+            let [r, g, b] = {
+                let color = book.cover_color.expect("color");
+                let value = |at: usize| u8::from_str_radix(&color[at..at + 2], 16).expect("hex");
+                [value(1), value(3), value(5)]
+            };
+            assert!(r > 150 && g < 80 && b < 80, "{r},{g},{b}");
+            assert_eq!(get_book(&conn, "broken").expect("book").cover_color, None);
+        }
+
+        // No se reintenta: ni el ilegible ni nada más en la misma sesión.
+        let mut again = 0;
+        let updated =
+            backfill_cover_colors(&db, covers.path(), &mut attempted, || again += 1, |_| {});
+        assert_eq!((updated, again), (0, 0));
+        // Una sesión nueva sí lo intenta una vez (y vuelve a fallar sin romper nada).
+        let mut fresh = HashSet::new();
+        let mut tried = 0;
+        let updated = backfill_cover_colors(&db, covers.path(), &mut fresh, || tried += 1, |_| {});
+        assert_eq!((updated, tried), (0, 1));
+    }
+
+    #[test]
+    fn backfill_ignores_books_with_a_missing_cover_file() {
+        let covers = tempfile::tempdir().expect("covers");
+        let (_db_dir, conn) = open_temp_db();
+        insert_book_with_cover(&conn, covers.path(), "gone", &red_jpeg());
+        std::fs::remove_file(covers.path().join("gone.jpg")).expect("remove");
+        let db = Mutex::new(conn);
+
+        let updated = backfill_cover_colors(&db, covers.path(), &mut HashSet::new(), || {}, |_| {});
+
+        assert_eq!(updated, 0);
+    }
+
     /// Prueba real, no se ejecuta por defecto. Indexa los PDF de `ATRIL_REAL_BOOKS` (por defecto `~/datos/libros`)
     /// en una base temporal, mide el tiempo por libro y deja las portadas en `ATRIL_REAL_OUT` para revisarlas.
     /// Solo lee los libros (nunca los copia al repo). Ejecutar con:
@@ -712,10 +888,11 @@ mod tests {
         for indexed in &report {
             let book = get_book(&conn, &indexed.book_id).expect("book");
             println!(
-                "{:>10.2?} {:<8?} pages={:<5} title={:?} author={:?} file={}",
+                "{:>10.2?} {:<8?} pages={:<5} color={:?} title={:?} author={:?} file={}",
                 indexed.elapsed,
                 indexed.outcome,
                 book.page_count.unwrap_or_default(),
+                book.cover_color,
                 book.title,
                 book.author,
                 book.file_name,
