@@ -65,7 +65,7 @@ Los spikes de medición van en un worktree **sin PR**: solo dejan un informe.
 ```
 src/                       # Frontend React
   api/tauri.ts             # wrappers tipados de invoke(); único punto de contacto con Rust
-  routes/                  # __root, index (biblioteca), collection.$id, read.$bookId, settings
+  routes/                  # __root, _shell (barra lateral) con index, books.$scope, collection.$id y settings; read.$bookId
   reader/                  # native/ (NativeViewer), HighlightLayer, SelectionToolbar, OutlinePanel, SearchBar, HighlightsPanel, geometry.ts
   library/                 # BookCard, Shelf, CollectionList
   i18n/                    # es.ts, en.ts
