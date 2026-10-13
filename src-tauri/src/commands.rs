@@ -2,8 +2,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use chrono::Utc;
-use percent_encoding::percent_decode_str;
-use tauri::http::HeaderMap;
 use tauri::ipc::{InvokeBody, Request};
 use tauri::{AppHandle, Emitter, State};
 
@@ -17,7 +15,7 @@ use crate::engine::{self, api::OpenedDocument};
 use crate::error::AppError;
 use crate::folders::{self, LibraryFolder};
 use crate::highlights::{self, ExportResult, Highlight, HighlightInput, Language};
-use crate::library::{self, Book, ImportResult, OpenedBook, ReadingStateInput, ScanInput};
+use crate::library::{self, Book, ImportResult, OpenedBook, ReadingStateInput};
 use crate::query::{self, BookQuery, HomeData};
 use crate::scan::ScanStatus;
 use crate::settings::{self, Settings, SettingsPatch};
@@ -272,36 +270,6 @@ pub fn import_files(
     Ok(result)
 }
 
-/// Desde R1.3 el indexador nativo (`indexer.rs`) procesa los pendientes, así que el front no recibe ninguno y
-/// no hay dos indexadores trabajando sobre el mismo libro. Se borra junto con el indexador de pdf.js en R2.
-#[tauri::command]
-pub fn list_pending_scans(_app: State<'_, AppState>) -> Result<Vec<Book>, AppError> {
-    Ok(Vec::new())
-}
-
-/// Metadatos en cabeceras (`X-Book-Id`, `X-Page-Count`, opcionales `X-Title`, `X-Author`)
-/// y la portada WebP como cuerpo binario (`docs/IPC.md`, fase 2).
-#[tauri::command]
-pub fn save_book_scan(app: State<'_, AppState>, request: Request<'_>) -> Result<Book, AppError> {
-    let (book_id, scan) = parse_scan_headers(request.headers())?;
-    let cover = match request.body() {
-        InvokeBody::Raw(bytes) => bytes,
-        InvokeBody::Json(_) => {
-            return Err(AppError::invalid_input(
-                "the cover must be sent as a binary body",
-            ));
-        }
-    };
-    let conn = app.db()?;
-    library::save_book_scan(&conn, &app.covers_dir, &book_id, &scan, cover)
-}
-
-#[tauri::command]
-pub fn mark_scan_failed(app: State<'_, AppState>, book_id: String) -> Result<Book, AppError> {
-    let conn = app.db()?;
-    library::mark_scan_failed(&conn, &book_id)
-}
-
 #[tauri::command]
 pub fn list_collections(app: State<'_, AppState>) -> Result<Vec<Collection>, AppError> {
     let conn = app.db()?;
@@ -422,80 +390,4 @@ pub fn set_default_pdf_reader() -> Result<(), AppError> {
 #[tauri::command]
 pub fn is_default_pdf_reader() -> Result<bool, AppError> {
     system::is_default_pdf_reader()
-}
-
-/// Lee las cabeceras de `save_book_scan`. Títulos y autores van URL-encoded en UTF-8.
-fn parse_scan_headers(headers: &HeaderMap) -> Result<(String, ScanInput), AppError> {
-    let text = |name: &str| -> Result<Option<String>, AppError> {
-        match headers.get(name) {
-            None => Ok(None),
-            Some(value) => {
-                let raw = value
-                    .to_str()
-                    .map_err(|_| AppError::invalid_input(format!("{name} is not ASCII")))?;
-                let decoded = percent_decode_str(raw)
-                    .decode_utf8()
-                    .map_err(|_| AppError::invalid_input(format!("{name} is not UTF-8")))?
-                    .trim()
-                    .to_owned();
-                Ok((!decoded.is_empty()).then_some(decoded))
-            }
-        }
-    };
-
-    let book_id =
-        text("x-book-id")?.ok_or_else(|| AppError::invalid_input("missing X-Book-Id header"))?;
-    let page_count = text("x-page-count")?
-        .ok_or_else(|| AppError::invalid_input("missing X-Page-Count header"))?
-        .parse::<i64>()
-        .map_err(|_| AppError::invalid_input("X-Page-Count is not a number"))?;
-
-    Ok((
-        book_id,
-        ScanInput {
-            page_count,
-            title: text("x-title")?,
-            author: text("x-author")?,
-        },
-    ))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tauri::http::HeaderValue;
-
-    #[test]
-    fn scan_headers_are_parsed_and_decoded() {
-        let mut headers = HeaderMap::new();
-        headers.insert("x-book-id", HeaderValue::from_static("abc"));
-        headers.insert("x-page-count", HeaderValue::from_static("176"));
-        headers.insert("x-title", HeaderValue::from_static("Pedro%20P%C3%A1ramo"));
-        headers.insert("x-author", HeaderValue::from_static("%20"));
-
-        let (id, scan) = parse_scan_headers(&headers).expect("parse");
-
-        assert_eq!(id, "abc");
-        assert_eq!(scan.page_count, 176);
-        assert_eq!(scan.title.as_deref(), Some("Pedro Páramo"));
-        assert_eq!(scan.author, None);
-    }
-
-    #[test]
-    fn scan_headers_require_id_and_page_count() {
-        let mut headers = HeaderMap::new();
-        headers.insert("x-page-count", HeaderValue::from_static("10"));
-        assert_eq!(
-            parse_scan_headers(&headers).expect_err("no id").code,
-            crate::error::ErrorCode::InvalidInput
-        );
-
-        let mut headers = HeaderMap::new();
-        headers.insert("x-book-id", HeaderValue::from_static("abc"));
-        headers.insert("x-page-count", HeaderValue::from_static("diez"));
-        assert_eq!(
-            parse_scan_headers(&headers).expect_err("not a number").code,
-            crate::error::ErrorCode::InvalidInput
-        );
-    }
 }

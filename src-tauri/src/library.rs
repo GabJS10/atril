@@ -103,7 +103,7 @@ impl ReadingStateInput {
     }
 }
 
-/// Datos de `save_book_scan` que no son la portada (vienen en cabeceras).
+/// Datos de `save_book_scan` que no son la portada (los calcula el indexador nativo).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScanInput {
     pub page_count: i64,
@@ -454,19 +454,6 @@ pub fn remove_book(conn: &Connection, id: &str) -> Result<(), AppError> {
         return Err(not_found(id));
     }
     Ok(())
-}
-
-/// Libros con portada pendiente, sin `missing`, por fecha de alta.
-pub fn list_pending_scans(conn: &Connection) -> Result<Vec<Book>, AppError> {
-    Ok(query_records(
-        conn,
-        "WHERE b.removed_at IS NULL AND b.scan_state = 'pending' AND b.missing = 0
-         ORDER BY b.added_at, b.id",
-        [],
-    )?
-    .into_iter()
-    .map(|record| record.book)
-    .collect())
 }
 
 /// Id y ruta de los libros pendientes de indexar (sin `missing`), por fecha de alta. Es lo que lee el
@@ -1199,7 +1186,7 @@ mod tests {
     }
 
     #[test]
-    fn pending_scans_drop_done_failed_and_missing_books() {
+    fn pending_scan_paths_drop_done_failed_and_missing_books() {
         let dir = tempfile::tempdir().expect("tempdir");
         let covers = tempfile::tempdir().expect("covers");
         let (_db, mut conn) = open_temp_db();
@@ -1216,10 +1203,10 @@ mod tests {
         .expect("done");
         mark_scan_failed(&conn, &failed.id).expect("failed");
 
-        let list = list_pending_scans(&conn).expect("pending");
+        let list = pending_scan_paths(&conn).expect("pending");
 
         assert_eq!(
-            list.iter().map(|b| b.id.as_str()).collect::<Vec<_>>(),
+            list.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
             vec![pending.id.as_str()]
         );
         assert_eq!(
