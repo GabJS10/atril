@@ -116,6 +116,32 @@ impl OpenDocument {
     /// Renderiza la página `page` (1-based) a `scale` y la codifica como JPEG. Si `scale` produciría una
     /// imagen demasiado grande (`MAX_PIXELS`, `MAX_SIDE_PIXELS`) se renderiza a la mayor escala permitida.
     pub fn render_jpeg(&self, page: u32, scale: f64) -> Result<Vec<u8>, EngineError> {
+        self.render_rgb(page, scale, |rgb, width, height| {
+            encode_jpeg(rgb, width, height)
+        })
+    }
+
+    /// Como [`render_jpeg`](Self::render_jpeg), pero además calcula el color dominante de los mismos píxeles
+    /// (sin un segundo render). Es lo que usa el indexador para la portada.
+    pub fn render_cover(
+        &self,
+        page: u32,
+        scale: f64,
+    ) -> Result<(Vec<u8>, Option<String>), EngineError> {
+        self.render_rgb(page, scale, |rgb, width, height| {
+            let color = crate::cover_color::dominant_color(rgb);
+            Ok((encode_jpeg(rgb, width, height)?, color))
+        })
+    }
+
+    /// Renderiza la página `page` (1-based) a `scale` (con el mismo tope de tamaño que `render_jpeg`) y llama a
+    /// `use_pixels` con los píxeles RGB empaquetados (3 bytes por píxel, sin relleno entre filas).
+    fn render_rgb<T>(
+        &self,
+        page: u32,
+        scale: f64,
+        use_pixels: impl FnOnce(&[u8], u32, u32) -> Result<T, EngineError>,
+    ) -> Result<T, EngineError> {
         if page == 0 || page > self.page_count {
             return Err(EngineError::PageOutOfRange {
                 page,
@@ -145,13 +171,13 @@ impl OpenDocument {
         }
         let samples = pixmap.samples();
         if stride == width * 3 {
-            encode_jpeg(&samples[..width * height * 3], width as u32, height as u32)
+            use_pixels(&samples[..width * height * 3], width as u32, height as u32)
         } else {
             let mut packed = Vec::with_capacity(width * height * 3);
             for row in samples.chunks(stride).take(height) {
                 packed.extend_from_slice(&row[..width * 3]);
             }
-            encode_jpeg(&packed, width as u32, height as u32)
+            use_pixels(&packed, width as u32, height as u32)
         }
     }
 }

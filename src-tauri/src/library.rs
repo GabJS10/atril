@@ -46,6 +46,8 @@ pub struct Book {
     pub page_count: Option<i64>,
     pub file_url: String,
     pub cover_url: Option<String>,
+    /// `#rrggbb` dominante de la portada; `None` sin portada o mientras no se calcula.
+    pub cover_color: Option<String>,
     pub favorite: bool,
     pub missing: bool,
     pub scan_state: ScanState,
@@ -109,6 +111,8 @@ pub struct ScanInput {
     pub page_count: i64,
     pub title: Option<String>,
     pub author: Option<String>,
+    /// Color dominante de la portada (`#rrggbb`), calculado con los píxeles que se codificaron como portada.
+    pub cover_color: Option<String>,
 }
 
 /// Huella del libro: sha256(tamaño + primer MiB + último MiB), en hex minúsculas.
@@ -493,6 +497,13 @@ pub fn save_book_scan(
     if cover.len() > MAX_COVER_BYTES {
         return Err(AppError::invalid_input("cover is larger than 2 MiB"));
     }
+    if scan
+        .cover_color
+        .as_deref()
+        .is_some_and(|color| !crate::cover_color::is_valid_hex(color))
+    {
+        return Err(AppError::invalid_input("coverColor must be #rrggbb"));
+    }
     if find_visible(conn, id)?.is_none() {
         return Err(not_found(id));
     }
@@ -522,11 +533,45 @@ pub fn save_book_scan(
              title_source = CASE WHEN ?2 IS NOT NULL THEN 'metadata'
                                  WHEN title_source = 'metadata' THEN 'filename'
                                  ELSE title_source END,
-             has_cover = 1
+             has_cover = 1,
+             cover_color = ?6
          WHERE id = ?4",
-        params![scan.page_count, scan.title, scan.author, id, file_title],
+        params![
+            scan.page_count,
+            scan.title,
+            scan.author,
+            id,
+            file_title,
+            scan.cover_color
+        ],
     )?;
     get_book(conn, id)
+}
+
+/// Libros con portada pero sin color calculado (los indexados antes de `Book.coverColor`), por fecha de alta.
+pub fn books_without_cover_color(conn: &Connection) -> Result<Vec<String>, AppError> {
+    let mut stmt = conn.prepare(
+        "SELECT id FROM books
+         WHERE removed_at IS NULL AND has_cover = 1 AND cover_color IS NULL
+         ORDER BY added_at, id",
+    )?;
+    let ids = stmt
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(ids)
+}
+
+/// Guarda el color de la portada de un libro que ya tiene portada. `false` si el libro ya no existe o no tiene
+/// portada (la quitaron mientras se calculaba).
+pub fn set_cover_color(conn: &Connection, id: &str, color: &str) -> Result<bool, AppError> {
+    if !crate::cover_color::is_valid_hex(color) {
+        return Err(AppError::invalid_input("coverColor must be #rrggbb"));
+    }
+    let changed = conn.execute(
+        "UPDATE books SET cover_color = ?1 WHERE id = ?2 AND has_cover = 1",
+        params![color, id],
+    )?;
+    Ok(changed > 0)
 }
 
 pub fn mark_scan_failed(conn: &Connection, id: &str) -> Result<Book, AppError> {
@@ -631,7 +676,7 @@ struct BookRecord {
 
 const BOOK_SELECT: &str = "SELECT b.id, b.path, b.title, b.author, b.page_count, b.scan_state,
         b.favorite, b.missing, b.added_at, b.last_opened_at, r.page,
-        b.removed_at IS NOT NULL, b.has_cover
+        b.removed_at IS NOT NULL, b.has_cover, b.cover_color
     FROM books b
     LEFT JOIN reading_state r ON r.book_id = b.id";
 
@@ -675,6 +720,7 @@ fn record_from_row(row: &Row<'_>) -> rusqlite::Result<BookRecord> {
     let book = Book {
         file_url: book_file_url(&id),
         cover_url: has_cover.then(|| book_cover_url(&id)),
+        cover_color: row.get(13)?,
         id,
         title: row.get(2)?,
         author: row.get(3)?,
@@ -767,6 +813,7 @@ mod tests {
             page_count,
             title: None,
             author: None,
+            cover_color: None,
         }
     }
 
@@ -1022,6 +1069,7 @@ mod tests {
                 page_count: 10,
                 title: Some("Meditaciones".into()),
                 author: None,
+                cover_color: None,
             },
             &webp_bytes(64),
         )
@@ -1053,6 +1101,7 @@ mod tests {
             page_count: 176,
             title: Some("Pedro Páramo".into()),
             author: Some("Juan Rulfo".into()),
+            cover_color: None,
         };
 
         let saved =
@@ -1068,6 +1117,116 @@ mod tests {
         );
         assert!(covers.path().join(format!("{}.webp", book.id)).is_file());
         assert!(!covers.path().join(format!("{}.webp.tmp", book.id)).exists());
+    }
+
+    #[test]
+    fn save_book_scan_stores_the_cover_color_and_book_serializes_it() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let covers = tempfile::tempdir().expect("covers");
+        let (_db, mut conn) = open_temp_db();
+        let book = import(&mut conn, &write_pdf(dir.path(), "a.pdf", 1));
+        assert_eq!(book.cover_color, None);
+        assert_eq!(
+            serde_json::to_value(&book).expect("json")["coverColor"],
+            serde_json::Value::Null
+        );
+
+        let mut scan = scan_input(10);
+        scan.cover_color = Some("#c81e1e".into());
+        let saved =
+            save_book_scan(&conn, covers.path(), &book.id, &scan, &webp_bytes(100)).expect("scan");
+
+        assert_eq!(saved.cover_color.as_deref(), Some("#c81e1e"));
+        assert_eq!(
+            serde_json::to_value(&saved).expect("json")["coverColor"],
+            "#c81e1e"
+        );
+        // Todas las consultas que devuelven `Book` leen la columna.
+        assert_eq!(
+            visible_books(&conn).expect("list")[0]
+                .cover_color
+                .as_deref(),
+            Some("#c81e1e")
+        );
+        assert_eq!(
+            get_book(&conn, &book.id)
+                .expect("get")
+                .cover_color
+                .as_deref(),
+            Some("#c81e1e")
+        );
+    }
+
+    #[test]
+    fn save_book_scan_rejects_a_malformed_cover_color() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let covers = tempfile::tempdir().expect("covers");
+        let (_db, mut conn) = open_temp_db();
+        let book = import(&mut conn, &write_pdf(dir.path(), "a.pdf", 1));
+
+        for bad in ["red", "#FFF", "#C81E1E", "c81e1e", "#c81e1e00"] {
+            let mut scan = scan_input(10);
+            scan.cover_color = Some(bad.into());
+            assert_eq!(
+                error_code(save_book_scan(
+                    &conn,
+                    covers.path(),
+                    &book.id,
+                    &scan,
+                    &webp_bytes(100)
+                )),
+                ErrorCode::InvalidInput,
+                "{bad}"
+            );
+        }
+        assert!(!covers.path().join(format!("{}.webp", book.id)).exists());
+    }
+
+    #[test]
+    fn books_without_color_are_those_with_a_cover_and_no_color() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let covers = tempfile::tempdir().expect("covers");
+        let (_db, mut conn) = open_temp_db();
+        let no_cover = import(&mut conn, &write_pdf(dir.path(), "a.pdf", 1));
+        let plain = import(&mut conn, &write_pdf(dir.path(), "b.pdf", 2));
+        let colored = import(&mut conn, &write_pdf(dir.path(), "c.pdf", 3));
+        save_book_scan(
+            &conn,
+            covers.path(),
+            &plain.id,
+            &scan_input(1),
+            &webp_bytes(64),
+        )
+        .expect("scan");
+        let mut with_color = scan_input(1);
+        with_color.cover_color = Some("#102030".into());
+        save_book_scan(
+            &conn,
+            covers.path(),
+            &colored.id,
+            &with_color,
+            &webp_bytes(64),
+        )
+        .expect("scan");
+
+        assert_eq!(
+            books_without_cover_color(&conn).expect("ids"),
+            vec![plain.id.clone()]
+        );
+        assert!(!set_cover_color(&conn, &no_cover.id, "#ffffff").expect("no cover"));
+        assert!(set_cover_color(&conn, &plain.id, "#ffffff").expect("set"));
+        assert!(books_without_cover_color(&conn).expect("ids").is_empty());
+        assert_eq!(
+            get_book(&conn, &plain.id)
+                .expect("get")
+                .cover_color
+                .as_deref(),
+            Some("#ffffff")
+        );
+        assert_eq!(
+            error_code(set_cover_color(&conn, &plain.id, "nope")),
+            ErrorCode::InvalidInput
+        );
     }
 
     #[test]

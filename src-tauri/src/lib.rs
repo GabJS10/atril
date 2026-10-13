@@ -1,5 +1,6 @@
 pub mod collections;
 pub mod commands;
+pub mod cover_color;
 pub mod db;
 pub mod engine;
 pub mod error;

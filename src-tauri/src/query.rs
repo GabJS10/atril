@@ -266,6 +266,7 @@ mod listing_tests {
                 page_count: 10,
                 title: None,
                 author: Some("Julio Cortázar".into()),
+                cover_color: None,
             },
             &webp_bytes(64),
         )
