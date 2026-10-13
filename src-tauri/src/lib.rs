@@ -1,6 +1,7 @@
 pub mod collections;
 pub mod commands;
 pub mod db;
+pub mod engine;
 pub mod error;
 pub mod folders;
 pub mod highlights;
@@ -36,6 +37,8 @@ pub struct AppState {
     pub worker: Sender<watch::Msg>,
     pub scan: SharedScanStatus,
     pub pending_open: PendingOpen,
+    /// Motor de PDF nativo (MuPDF): render de páginas y acceso a los documentos.
+    pub engine: Arc<engine::Engine>,
 }
 
 impl AppState {
@@ -94,6 +97,7 @@ pub fn run() {
                 worker: tx,
                 scan,
                 pending_open,
+                engine: Arc::new(engine::Engine::new(engine::EngineConfig::default())),
             });
             Ok(())
         })
@@ -103,6 +107,7 @@ pub fn run() {
             commands::update_settings,
             commands::open_path,
             commands::open_book,
+            commands::open_document,
             commands::get_book,
             commands::save_reading_state,
             commands::get_home,

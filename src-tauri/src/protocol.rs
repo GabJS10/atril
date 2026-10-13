@@ -12,6 +12,8 @@ use tauri::http::{Method, Request, Response, StatusCode, header};
 use tauri::{Manager, Runtime, UriSchemeContext, UriSchemeResponder};
 
 use crate::AppState;
+use crate::engine::scheduler::PageResult;
+use crate::engine::{self, Engine, EngineError};
 use crate::error::AppError;
 use crate::jpx;
 use crate::library::CoverFormat;
@@ -50,6 +52,11 @@ pub fn book_file_url(id: &str) -> String {
 /// URL de la portada de un libro (solo si tiene una guardada).
 pub fn book_cover_url(id: &str) -> String {
     format!("{}/cover/{id}", origin())
+}
+
+/// URL base de las páginas de un libro: el front añade `/<n>?scale=<f>` (docs/IPC.md, "Motor de PDF").
+pub fn book_page_base_url(id: &str) -> String {
+    format!("{}/page/{id}", origin())
 }
 
 /// Resultado de interpretar la cabecera `Range` para un archivo de `len` bytes.
@@ -117,11 +124,23 @@ fn span(start: u64, end: u64) -> ByteRange {
 enum Route<'a> {
     Book(&'a str),
     Cover(&'a str),
+    /// `/page/<id>/<n>` con `n` 1-based.
+    Page(&'a str, u32),
 }
 
-/// `/book/<id>` o `/cover/<id>`. El ID debe tener forma de huella (64 hex minúsculas).
+/// `/book/<id>`, `/cover/<id>` o `/page/<id>/<n>`. El ID debe tener forma de huella (64 hex minúsculas).
 fn parse_route(path: &str) -> Option<Route<'_>> {
-    let (kind, id) = path.strip_prefix('/')?.split_once('/')?;
+    let (kind, rest) = path.strip_prefix('/')?.split_once('/')?;
+    if kind == "page" {
+        let (id, page) = rest.split_once('/')?;
+        // Solo dígitos: sin signo, sin espacios y sin ceros a la izquierda raros que cambien la caché.
+        if !is_book_id(id) || page.is_empty() || !page.bytes().all(|byte| byte.is_ascii_digit()) {
+            return None;
+        }
+        let page: u32 = page.parse().ok().filter(|page| *page >= 1)?;
+        return Some(Route::Page(id, page));
+    }
+    let id = rest;
     if !is_book_id(id) {
         return None;
     }
@@ -132,7 +151,7 @@ fn parse_route(path: &str) -> Option<Route<'_>> {
     }
 }
 
-fn is_book_id(id: &str) -> bool {
+pub(crate) fn is_book_id(id: &str) -> bool {
     id.len() == 64
         && id
             .bytes()
@@ -213,7 +232,106 @@ pub fn respond(
     match parse_route(path) {
         Some(Route::Book(id)) => serve_book(db, id, request, origin),
         Some(Route::Cover(id)) => serve_cover(db, covers_dir, id, origin),
-        None => empty(StatusCode::NOT_FOUND, origin),
+        // Las páginas las sirve el pool de render, de forma asíncrona (`serve_page`).
+        Some(Route::Page(..)) | None => empty(StatusCode::NOT_FOUND, origin),
+    }
+}
+
+/// `Cache-Control` de las páginas: la imagen solo depende del libro (su ID es su contenido), la página y la
+/// escala. Una hora basta: el visor las pide una vez y la caché de Rust cubre lo demás.
+const PAGE_CACHE_CONTROL: &str = "private, max-age=3600";
+
+/// `?scale=<f>`: ausente = 1. Fuera de `MIN_SCALE..=MAX_SCALE` o no numérica = error (400).
+fn parse_page_scale(query: Option<&str>) -> Result<f64, String> {
+    let value = query
+        .unwrap_or_default()
+        .split('&')
+        .filter_map(|pair| pair.split_once('='))
+        .find_map(|(name, value)| (name == "scale").then_some(value));
+    let Some(value) = value else {
+        return Ok(1.0);
+    };
+    let scale: f64 = value
+        .parse()
+        .map_err(|_| "scale must be a number".to_owned())?;
+    if !scale.is_finite() || !(engine::MIN_SCALE..=engine::MAX_SCALE).contains(&scale) {
+        return Err(format!(
+            "scale must be between {} and {}",
+            engine::MIN_SCALE,
+            engine::MAX_SCALE
+        ));
+    }
+    Ok(scale)
+}
+
+/// `GET /page/<id>/<n>?scale=<f>`: la página n del libro como `image/jpeg`, renderizada por el motor.
+/// No bloquea al llamante: la respuesta se entrega con `deliver` cuando el pool termina (o ya, si la página
+/// estaba en caché o la petición no es válida).
+pub fn serve_page(
+    engine: &Engine,
+    db: &Mutex<Connection>,
+    request: &Request<Vec<u8>>,
+    deliver: impl FnOnce(Response<Vec<u8>>) + Send + 'static,
+) {
+    let origin = allowed_origin(request);
+    let Some(Route::Page(id, page)) = parse_route(request.uri().path()) else {
+        return deliver(empty(StatusCode::NOT_FOUND, origin.as_deref()));
+    };
+    let scale = match parse_page_scale(request.uri().query()) {
+        Ok(scale) => scale,
+        Err(message) => return deliver(text(StatusCode::BAD_REQUEST, origin.as_deref(), &message)),
+    };
+    let path = match lookup_book_path(db, id) {
+        Ok(Some(path)) => std::path::PathBuf::from(path),
+        Ok(None) => return deliver(empty(StatusCode::NOT_FOUND, origin.as_deref())),
+        Err(error) => {
+            tracing::error!(%error, "could not look up book for page request");
+            return deliver(empty(StatusCode::INTERNAL_SERVER_ERROR, origin.as_deref()));
+        }
+    };
+    if !path.is_file() {
+        mark_missing(db, id);
+        return deliver(empty(StatusCode::NOT_FOUND, origin.as_deref()));
+    }
+
+    engine.request_page(
+        id,
+        &path,
+        page,
+        scale,
+        Box::new(move |result| deliver(page_response(result, origin.as_deref()))),
+    );
+}
+
+fn page_response(result: PageResult, origin: Option<&str>) -> Response<Vec<u8>> {
+    match result {
+        Ok(jpeg) => reply(
+            StatusCode::OK,
+            origin,
+            vec![
+                ("Content-Type", "image/jpeg".to_owned()),
+                ("Content-Length", jpeg.len().to_string()),
+                ("Cache-Control", PAGE_CACHE_CONTROL.to_owned()),
+            ],
+            jpeg.as_ref().clone(),
+        ),
+        // El visor ya pidió otra zona: nadie espera esta imagen.
+        Err(EngineError::Superseded) => empty(StatusCode::GONE, origin),
+        Err(EngineError::PageOutOfRange { .. }) | Err(EngineError::Io(_)) => {
+            empty(StatusCode::NOT_FOUND, origin)
+        }
+        Err(EngineError::InvalidPdf(message)) => {
+            text(StatusCode::UNPROCESSABLE_ENTITY, origin, &message)
+        }
+        Err(EngineError::Shutdown) => empty(StatusCode::SERVICE_UNAVAILABLE, origin),
+        Err(error @ EngineError::Render(_)) => {
+            tracing::warn!(%error, "could not render page");
+            text(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                origin,
+                &error.to_string(),
+            )
+        }
     }
 }
 
@@ -423,7 +541,10 @@ fn serve_cover(
     empty(StatusCode::NOT_FOUND, origin)
 }
 
-fn lookup_book_path(db: &Mutex<Connection>, id: &str) -> Result<Option<String>, AppError> {
+pub(crate) fn lookup_book_path(
+    db: &Mutex<Connection>,
+    id: &str,
+) -> Result<Option<String>, AppError> {
     let conn = db
         .lock()
         .map_err(|_| AppError::internal("database connection lock was poisoned"))?;
@@ -437,7 +558,7 @@ fn lookup_book_path(db: &Mutex<Connection>, id: &str) -> Result<Option<String>, 
     Ok(path)
 }
 
-fn mark_missing(db: &Mutex<Connection>, id: &str) {
+pub(crate) fn mark_missing(db: &Mutex<Connection>, id: &str) {
     let Ok(conn) = db.lock() else {
         return;
     };
@@ -466,6 +587,20 @@ pub fn handle<R: Runtime>(
     let state = context.app_handle().state::<AppState>();
     let db = Arc::clone(&state.db);
     let covers_dir = state.covers_dir.clone();
+
+    if request.method() == Method::GET
+        && matches!(parse_route(request.uri().path()), Some(Route::Page(..)))
+    {
+        // La búsqueda en la base de datos es breve, pero se hace fuera del hilo principal; el render lo
+        // hace el pool y responde cuando termina, sin ocupar ningún hilo de bloqueo mientras espera.
+        let engine = Arc::clone(&state.engine);
+        tauri::async_runtime::spawn_blocking(move || {
+            serve_page(&engine, &db, &request, move |response| {
+                responder.respond(response)
+            });
+        });
+        return;
+    }
 
     tauri::async_runtime::spawn_blocking(move || {
         responder.respond(respond(&db, &covers_dir, &request));
@@ -1082,5 +1217,201 @@ mod tests {
         let response = respond(&fixture.db, &fixture.covers_dir, &get_request);
 
         assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+    }
+
+    #[test]
+    fn parse_route_reads_page_requests() {
+        let id = "a".repeat(64);
+
+        assert_eq!(
+            parse_route(&format!("/page/{id}/7")),
+            Some(Route::Page(&id, 7))
+        );
+        for bad in [
+            format!("/page/{id}"),
+            format!("/page/{id}/"),
+            format!("/page/{id}/0"),
+            format!("/page/{id}/-1"),
+            format!("/page/{id}/1.5"),
+            format!("/page/{id}/abc"),
+            format!("/page/{id}/99999999999"),
+            format!("/page/{id}/1/2"),
+            "/page/not-a-hash/1".to_owned(),
+            format!("/page/{}/1", "A".repeat(64)),
+        ] {
+            assert_eq!(parse_route(&bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn page_scale_defaults_to_one_and_is_bounded() {
+        assert_eq!(parse_page_scale(None), Ok(1.0));
+        assert_eq!(parse_page_scale(Some("other=1")), Ok(1.0));
+        assert_eq!(parse_page_scale(Some("scale=1.5")), Ok(1.5));
+        assert_eq!(parse_page_scale(Some("x=1&scale=0.1")), Ok(0.1));
+        assert_eq!(parse_page_scale(Some("scale=8")), Ok(8.0));
+        for bad in [
+            "scale=",
+            "scale=abc",
+            "scale=0",
+            "scale=0.05",
+            "scale=8.01",
+            "scale=-1",
+            "scale=NaN",
+            "scale=inf",
+            "scale=1e9",
+        ] {
+            assert!(parse_page_scale(Some(bad)).is_err(), "{bad}");
+        }
+    }
+
+    struct PageFixture {
+        _dir: tempfile::TempDir,
+        db: Mutex<Connection>,
+        engine: Engine,
+        pdf_path: std::path::PathBuf,
+        id: String,
+    }
+
+    fn page_fixture() -> PageFixture {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut conn = db::open(&dir.path().join("atril.db")).expect("open db");
+        let pdf_path = dir.path().join("libro.pdf");
+        std::fs::write(&pdf_path, crate::engine::testpdf::text_book(4)).expect("write pdf");
+        let id = library::open_path(&mut conn, &pdf_path)
+            .expect("register")
+            .id;
+        PageFixture {
+            _dir: dir,
+            db: Mutex::new(conn),
+            engine: Engine::new(crate::engine::EngineConfig::default()),
+            pdf_path,
+            id,
+        }
+    }
+
+    fn fetch_page(
+        fixture: &PageFixture,
+        path_and_query: &str,
+        origin: Option<&str>,
+    ) -> Response<Vec<u8>> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        serve_page(
+            &fixture.engine,
+            &fixture.db,
+            &get(path_and_query, None, origin),
+            move |response| {
+                let _ = tx.send(response);
+            },
+        );
+        rx.recv_timeout(std::time::Duration::from_secs(20))
+            .expect("a response")
+    }
+
+    #[test]
+    fn page_route_serves_a_jpeg_with_cache_headers() {
+        let fixture = page_fixture();
+
+        let response = fetch_page(
+            &fixture,
+            &format!("/page/{}/2?scale=1.5", fixture.id),
+            Some("tauri://localhost"),
+        );
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            header_value(&response, header::CONTENT_TYPE).as_deref(),
+            Some("image/jpeg")
+        );
+        assert_eq!(
+            header_value(&response, header::CONTENT_LENGTH).as_deref(),
+            Some(response.body().len().to_string().as_str())
+        );
+        assert_eq!(
+            header_value(&response, header::CACHE_CONTROL).as_deref(),
+            Some(PAGE_CACHE_CONTROL)
+        );
+        assert_eq!(
+            header_value(&response, header::ACCESS_CONTROL_ALLOW_ORIGIN).as_deref(),
+            Some("tauri://localhost")
+        );
+        let image = image::load_from_memory_with_format(response.body(), image::ImageFormat::Jpeg)
+            .expect("a JPEG");
+        assert_eq!(image::GenericImageView::dimensions(&image), (918, 1188));
+    }
+
+    #[test]
+    fn page_route_without_scale_renders_at_scale_one() {
+        let fixture = page_fixture();
+
+        let response = fetch_page(&fixture, &format!("/page/{}/1", fixture.id), None);
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let image = image::load_from_memory_with_format(response.body(), image::ImageFormat::Jpeg)
+            .expect("a JPEG");
+        assert_eq!(image::GenericImageView::dimensions(&image), (612, 792));
+    }
+
+    #[test]
+    fn page_route_rejects_bad_scales_and_unknown_pages() {
+        let fixture = page_fixture();
+        let id = &fixture.id;
+
+        for scale in ["abc", "0", "9", "-2", "NaN"] {
+            let response = fetch_page(&fixture, &format!("/page/{id}/1?scale={scale}"), None);
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST, "scale={scale}");
+        }
+        // Página fuera del libro, formas de ruta inválidas y libros que no existen: 404.
+        for path in [
+            format!("/page/{id}/5"),
+            format!("/page/{id}/0"),
+            format!("/page/{id}/x"),
+            "/page/nothex/1".to_owned(),
+            format!("/page/{}/1", "b".repeat(64)),
+        ] {
+            let response = fetch_page(&fixture, &path, None);
+            assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
+        }
+    }
+
+    #[test]
+    fn page_route_with_a_missing_file_is_404_and_marks_the_book() {
+        let fixture = page_fixture();
+        std::fs::remove_file(&fixture.pdf_path).expect("remove");
+
+        let response = fetch_page(&fixture, &format!("/page/{}/1", fixture.id), None);
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let conn = fixture.db.lock().expect("db");
+        let missing: i64 = conn
+            .query_row(
+                "SELECT missing FROM books WHERE id = ?1",
+                params![fixture.id],
+                |row| row.get(0),
+            )
+            .expect("row");
+        assert_eq!(missing, 1);
+    }
+
+    #[test]
+    fn page_urls_are_built_by_the_backend() {
+        let id = "c".repeat(64);
+
+        assert!(book_page_base_url(&id).ends_with(&format!("/page/{id}")));
+        assert!(book_page_base_url(&id).starts_with("atril://localhost/"));
+    }
+
+    #[test]
+    fn page_requests_are_not_served_by_the_synchronous_responder() {
+        let fixture = fixture();
+        let id = &fixture.id;
+
+        let response = respond(
+            &fixture.db,
+            &fixture.covers_dir,
+            &get(&format!("/page/{id}/1"), None, None),
+        );
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 }

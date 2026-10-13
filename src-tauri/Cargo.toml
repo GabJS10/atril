@@ -40,6 +40,13 @@ tauri-plugin-single-instance = "2"
 # JPEG 2000 de los PDF (src/jpx.rs). Sin features por defecto ni `simd`: sin `unsafe` en ninguna dependencia.
 hayro-jpeg2000 = { version = "0.4.1", default-features = false, features = ["std"] }
 
+# Motor de PDF nativo (fase R, src/engine/). MuPDF se compila desde fuente y se enlaza estático; `mupdf-sys`
+# necesita libclang para bindgen. Sin `system-fonts` (con fuentes no incrustadas tardaba ~20 s por libro) y
+# con `base14-fonts` (sin ellas el texto se extrae mal). Atril pasa a AGPL por esta dependencia.
+mupdf = { version = "0.8.0", default-features = false, features = ["base14-fonts"] }
+# Codificación JPEG de las páginas renderizadas (Rust puro; `simd` = AVX2 con detección en tiempo de ejecución).
+jpeg-encoder = { version = "0.6", features = ["simd"] }
+
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
@@ -52,3 +59,5 @@ strip = true
 
 [dev-dependencies]
 tempfile = "3.27.0"
+# Las pruebas decodifican los JPEG que produce el motor para comprobar tamaño y contenido.
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
