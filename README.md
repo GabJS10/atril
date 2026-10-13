@@ -19,3 +19,7 @@ npm run tauri dev
 ```
 
 System dependencies (Ubuntu/Mint): `libwebkit2gtk-4.1-dev build-essential libssl-dev librsvg2-dev libayatana-appindicator3-dev libxdo-dev`.
+
+## License
+
+Atril is licensed under the GNU Affero General Public License v3.0 (see `LICENSE`). It uses MuPDF, which is AGPL-3.0 too.
