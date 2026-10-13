@@ -4,7 +4,7 @@
 
 **Estado:** fase R en curso.
 - R1 (motor nativo en Rust) está fusionado.
-- R2 (visor nativo en el front) está en marcha. Mientras tanto conviven los dos visores: pdf.js, el predeterminado, y el nativo, que se activa con `VITE_ATRIL_VIEWER=native` o con `localStorage["atril.viewer"]="native"`.
+- R2.1 (visor nativo base) está fusionado. Hasta que termine R2.2 conviven los dos visores: pdf.js, el predeterminado, y el nativo, que se activa con `VITE_ATRIL_VIEWER=native` o con `localStorage["atril.viewer"]="native"` (`reader/viewerKind.ts`; manda localStorage, luego la variable).
 - R3 eliminará pdf.js y el puente JPX.
 
 ## Vista general
@@ -90,12 +90,12 @@ MuPDF (crate `mupdf` 0.8, enlazado estático, `base14-fonts`, sin `system-fonts`
 
 ### Lector
 - **`ReaderScreen.tsx`** elige el visor con `viewerKind.ts` y le habla con una interfaz común (`viewerTypes.ts`). Así el resto de la pantalla no depende del visor: barra, paneles, atajos, posición y subrayados.
-- **Visor nativo (`reader/native/`, R2):**
+- **Visor nativo (`reader/native/`, R2.1):** `NativeViewer.tsx`, con `PageSlot` y `PageImage` por página y lógica pura y testeada en `layout.ts` (offsets y búsqueda binaria), `mapping.ts` (`PageMapping` desde `transform`), `scale.ts`, `anchor.ts` (punto fijo del zoom), `imageReducer.ts` (doble búfer) y `pageFetch.ts` (reintentos ante `410`). Todavía no tiene capa de texto, búsqueda, índice ni enlaces: eso llega en R2.2.
   - **Lista virtualizada.** La altura total sale de `open_document` desde el primer instante. Solo están en el DOM las páginas visibles ±1. La página visible se busca por búsqueda binaria sobre los offsets acumulados, así que nada crece con el número de páginas.
   - **Imágenes.** Cada página es un `<img>` a escala zoom × `devicePixelRatio`. Ante un `410` se reintenta si la página sigue visible.
   - **Zoom en dos pasos.** Primero escala CSS inmediata; tras ~150 ms quieto, se pide la imagen nítida y se cambia cuando ha cargado (doble búfer), conservando el punto de anclaje.
 - **Geometría** (`geometry.ts`): los subrayados se guardan en **espacio de usuario PDF**. Cada visor aporta un `PageMapping`; el nativo lo construye con `transform` × zoom. Por eso los subrayados hechos con pdf.js siguen en su sitio.
-- **Posición:** `useReadingPosition`, `position.ts` y `positionSaver.ts` guardan la página y `offsetInPage` en `reading_state`.
+- **Posición:** `useReadingPosition`, `position.ts` y `positionSaver.ts` guardan la página y `offsetInPage` en `reading_state`. El libro y su posición se leen con `useOpenedBook` (`gcTime: 0`). La consulta no sobrevive al cierre del lector, porque una copia en caché reabría el libro en la posición vieja.
 
 ## Flujos principales
 1. **Abrir un libro:**
