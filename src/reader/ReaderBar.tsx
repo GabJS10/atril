@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useLocaleStore, useT } from "../i18n";
 import { formatPercent } from "./zoom";
 import { Segmented } from "../ui/Segmented";
+import { PageField } from "./PageField";
 import type { ViewMode } from "../api/types";
 
 export type ReaderBarProps = {
@@ -9,6 +10,8 @@ export type ReaderBarProps = {
   page: number;
   pageCount: number;
   scale: number;
+  /** The page typed in the page field. */
+  onGoToPage: (page: number) => void;
   visible: boolean;
   onZoomIn: () => void;
   onZoomOut: () => void;
@@ -38,6 +41,7 @@ export function ReaderBar({
   page,
   pageCount,
   scale,
+  onGoToPage,
   visible,
   onZoomIn,
   onZoomOut,
@@ -71,7 +75,7 @@ export function ReaderBar({
         {t("reader.back")}
       </Link>
       <span className="min-w-0 truncate font-serif text-cartela text-ink">{title}</span>
-      <span>{t("reader.pageOf", { page: String(page), pages: String(pageCount) })}</span>
+      <PageField page={page} pageCount={pageCount} onGoTo={onGoToPage} />
       <span className="flex-1" />
       <Segmented
         compact

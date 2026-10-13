@@ -16,6 +16,7 @@ import type {
   ImportResult,
   LibraryFolder,
   OpenedBook,
+  OpenedDocument,
   ReadingStateInput,
   ScanMetadata,
   ScanStatus,
@@ -40,6 +41,11 @@ export function openPath(path: string): Promise<Book> {
 
 export function openBook(bookId: string): Promise<OpenedBook> {
   return invoke<OpenedBook>("open_book", { bookId });
+}
+
+/** Opens the book in the native engine: page sizes and the base URL of the page images. */
+export function openDocument(bookId: string): Promise<OpenedDocument> {
+  return invoke<OpenedDocument>("open_document", { bookId });
 }
 
 export function getBook(bookId: string): Promise<Book> {

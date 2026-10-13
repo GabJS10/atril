@@ -1,0 +1,47 @@
+/* Native viewer: a scroll box with a sizer of the whole book's height and absolutely placed pages. */
+.atril-native-viewer {
+  overscroll-behavior: contain;
+}
+
+.atril-native-sizer {
+  position: relative;
+}
+
+/* The page is a box of its exact size in the paper colour, so a page without image yet is already the right shape. */
+.atril-native-page {
+  position: absolute;
+  background-color: var(--paper);
+  isolation: isolate;
+  contain: layout paint;
+}
+
+.atril-native-page .atril-page-image {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  user-select: none;
+}
+
+/* The buffer loading the next sharpness waits behind the one on screen. */
+.atril-native-page .atril-page-image[data-front="false"] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.atril-native-page .atril-highlights {
+  z-index: 1;
+}
+
+/*
+ * Reader paper (DESIGN.md, 2.2), as in the pdf.js viewer: the filters go on the page image only, and the highlights
+ * above it keep their own colours. Sepia multiplies the scan onto the sepia paper; night inverts it (hue kept).
+ */
+:root[data-reader-mode="sepia"] .atril-native-page .atril-page-image {
+  mix-blend-mode: multiply;
+}
+
+:root[data-reader-mode="night"] .atril-native-page .atril-page-image {
+  filter: invert(1) hue-rotate(180deg);
+}

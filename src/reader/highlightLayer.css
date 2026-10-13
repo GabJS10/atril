@@ -1,0 +1,27 @@
+/* Highlights: pigment at the highlight opacity over the page (DESIGN.md, pigmentos). Pointer-transparent. */
+.atril-highlights {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.atril-highlight {
+  position: absolute;
+  pointer-events: none;
+}
+
+.atril-highlight[data-color="ochre"] {
+  background-color: color-mix(in srgb, var(--pigment-ocre) var(--highlight-alpha), transparent);
+}
+
+.atril-highlight[data-color="sienna"] {
+  background-color: color-mix(in srgb, var(--pigment-sienna) var(--highlight-alpha), transparent);
+}
+
+.atril-highlight[data-color="sage"] {
+  background-color: color-mix(in srgb, var(--pigment-sage) var(--highlight-alpha), transparent);
+}
+
+.atril-highlight[data-color="slate"] {
+  background-color: color-mix(in srgb, var(--pigment-slate) var(--highlight-alpha), transparent);
+}

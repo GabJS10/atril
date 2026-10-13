@@ -9,15 +9,16 @@ import {
 } from "pdfjs-dist/web/pdf_viewer.mjs";
 import "pdfjs-dist/web/pdf_viewer.css";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import type { Highlight, Zoom } from "../api/types";
 import "./PdfViewer.css";
+import "./highlightLayer.css";
 import { highlightAt, type PageAtScale1, paintHighlightLayer } from "./highlightLayer";
 import { attachDragSelection } from "./dragSelection";
 import { type PageMapping, pdfRectToPercent } from "./geometry";
 import { scrollTopToReveal } from "./highlightList";
-import { positionAtScroll, type PageGeometry, type ReaderPosition, scrollForPosition } from "./position";
-import { readSelection, type SelectionPart } from "./selectionReader";
+import { positionAtScroll, type PageGeometry, scrollForPosition } from "./position";
+import { readSelection } from "./selectionReader";
 import { nextScale, zoomFromViewer, zoomToScaleValue } from "./zoom";
+import type { ViewerHandle, ViewerProps, ViewSnapshot } from "./viewerTypes";
 
 /** A pdf.js page view as far as the reader uses it. */
 type PageView = {
@@ -28,48 +29,12 @@ type PageView = {
 /** Pixels moved by j/k. */
 const LINE_SCROLL_PX = 80;
 
-export type ViewSnapshot = { position: ReaderPosition; zoom: Zoom; scale: number };
+export type { FindOptions, FindResult, ViewSnapshot } from "./viewerTypes";
 
-/** Where the search stands: the match in focus out of all matches, and whether it found none. */
-export type FindResult = { current: number; total: number; notFound: boolean };
-
-export type FindOptions = { again?: boolean; findPrevious?: boolean };
-
-export type PdfViewerProps = {
-  pdf: PDFDocumentProxy;
-  /** Zoom and position to start from. Applied once, before the view is shown. */
-  start: { zoom: Zoom; position: ReaderPosition | null };
-  /** The view moved (scroll or zoom). Only after the start position is on screen. */
-  onChange: (snapshot: ViewSnapshot) => void;
-  /** The start position is on screen. Called once. */
-  onRestored: (snapshot: ViewSnapshot) => void;
-  /** Highlights of the book; drawn over the pages. */
-  highlights: Highlight[];
-  /** The user selected text and let go of the mouse. */
-  onSelectionEnd: (parts: SelectionPart[], anchor: DOMRect) => void;
-  /** The user clicked on the page without selecting text. */
-  onSelectionClear: () => void;
-  /** The user clicked on a highlight. */
-  onHighlightPress: (id: string, anchor: DOMRect) => void;
-  /** The search moved or changed: the match counter for the search bar. */
-  onFindResult: (result: FindResult) => void;
-};
+export type PdfViewerProps = ViewerProps & { pdf: PDFDocumentProxy };
 
 /** Commands the reader's keyboard map sends to the viewer. */
-export type PdfViewerHandle = {
-  goToPage: (page: number) => void;
-  /** Searches the book without case or accents. An empty query clears the matches. */
-  find: (query: string, options?: FindOptions) => void;
-  /** Goes to a destination of the book (an entry of its index): the page and the place on it. */
-  goToDestination: (dest: string | unknown[]) => void;
-  /** Scrolls the highlight into view (the panel's click). */
-  revealHighlight: (highlight: Highlight) => void;
-  /** One page forward or back, from the page pdf.js is on (not from React state, which can lag behind key repeats). */
-  turnPage: (direction: 1 | -1) => void;
-  scrollLines: (direction: 1 | -1) => void;
-  scrollPages: (direction: 1 | -1) => void;
-  stepZoom: (direction: 1 | -1) => void;
-};
+export type PdfViewerHandle = ViewerHandle;
 
 /** Page tops and heights in the scroll content, read from the pdf.js page elements. */
 function pageGeometry(container: HTMLElement, instance: PdfJsViewer): PageGeometry {
