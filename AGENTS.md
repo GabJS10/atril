@@ -42,7 +42,7 @@ Los spikes de medición van en un worktree **sin PR**: solo dejan un informe.
 - **Commits y PRs sin la línea `Co-Authored-By: Claude …`** ni ninguna otra atribución a Claude (pedido del usuario). Mensajes en inglés, Conventional Commits con scope: `feat(frontend): …`, `feat(backend): …`, `docs: …`, `chore(ci): …`.
 - **Límites del equipo** (7 GB de RAM y disco justo):
   - como mucho **2 subagentes a la vez**;
-  - todos los comandos de cargo y tauri llevan delante **`CARGO_TARGET_DIR=$HOME/.cache/atril-target`** (compilación de Rust compartida por todos los worktrees);
+  - todos los comandos de cargo y tauri llevan delante **`CARGO_TARGET_DIR=/home/gabriel/datos/projects/atril-wt/.target`** (compilación de Rust compartida por todos los worktrees);
   - **un solo agente ejecuta la app a la vez** (puerto 1420), y lo indica el encargo.
 - **Contrato IPC en `docs/IPC.md`:** comandos Tauri (nombre, parámetros, retorno y errores), eventos y URLs del protocolo `atril://`. Si un encargo lo cambia, el agente actualiza `IPC.md` en su rama y `plan` lo revisa en el PR. El frontend lo implementa en `src/api/tauri.ts`.
 - **Mientras el backend no esté listo, el frontend trabaja contra `mockIPC`** (`@tauri-apps/api/mocks`) siguiendo `IPC.md` al pie de la letra.

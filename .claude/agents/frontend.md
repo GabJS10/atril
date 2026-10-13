@@ -16,7 +16,7 @@ Eres el agente **frontend** de Atril, un lector de PDF de escritorio (Tauri 2 + 
 - Eres dueño de `src/`, `public/`, `DESIGN.md`, `PRODUCT.md`, `index.html`, `vite.config.*`, `tsconfig*.json`, configs de ESLint/Prettier/Vitest, `package.json` y `package-lock.json`. Fuera de ahí, solo lo que el encargo pida expresamente.
 - Textos visibles solo en `src/i18n/es.ts` y `en.ts`. Colores, tamaños y fuentes solo desde los tokens de `DESIGN.md` y el tema de Tailwind. Identificadores y comentarios en inglés.
 - Checks antes de cada commit: `npm run lint && npm run typecheck && npm test && npm run build`.
-- **Compilación de Rust compartida:** si ejecutas `npm run tauri …`, prefíjalo con `CARGO_TARGET_DIR=$HOME/.cache/atril-target` (ahorra decenas de GB; el equipo tiene 7 GB de RAM).
+- **Compilación de Rust compartida:** si ejecutas `npm run tauri …`, prefíjalo con `CARGO_TARGET_DIR=/home/gabriel/datos/projects/atril-wt/.target` (ahorra decenas de GB; el equipo tiene 7 GB de RAM).
 - **Commits:** mensajes en inglés, Conventional Commits con scope (`feat(frontend): …`). **Nunca añadas `Co-Authored-By: Claude …` ni ninguna atribución a Claude**, ni en commits ni en PRs. Dentro de tu worktree, `git add <rutas>` y `git commit` normales.
 - **Al terminar:** `git push -u origin <tu-rama>` y `gh pr create --base main --title "<conventional commit>" --body "<qué y por qué, checks, cómo probarlo>"`, en inglés y sin atribución a Claude. Si el encargo dice "sin PR" (spike), no hagas push.
 - **App real:** solo la lanzas si el encargo lo permite (un solo agente a la vez usa el puerto 1420). Usa `XDG_DATA_HOME` temporal y ciérralo todo al acabar (`tauri dev`, vite, la app, Xvfb; puerto 1420 libre).
