@@ -2,10 +2,10 @@
 
 **Dueño:** `plan`. Se actualiza cuando cambia la estructura: módulos nuevos, hilos, flujos de datos o decisiones de fondo. El contrato exacto de comandos, eventos y URLs está en [`IPC.md`](IPC.md); las decisiones y su porqué, en [`PLAN.md`](PLAN.md).
 
-**Estado:** fase R casi cerrada.
-- R1 (motor nativo en Rust) y R2 (visor nativo, con texto, subrayados, búsqueda, índice y enlaces) están fusionados.
-- R2.3 quitó pdf.js del frontend: el visor nativo es el único. `pdfjs-dist` queda como `devDependency` solo porque el build copia de él el decodificador JPX; R3 lo quita.
-- R3 queda pendiente (ver al final).
+**Estado:** fase R cerrada (tag `fase-R`).
+- R1 (motor nativo en Rust) y R2 (visor nativo, con texto, subrayados, búsqueda, índice y enlaces) están hechos.
+- R2.3 quitó pdf.js del frontend: el visor nativo es el único.
+- R3 quitó el puente JPX (`jpx.rs`, `POST /jpx`, `jpxBridge.js`, `pdfjs-dist`), los comandos del indexador viejo y corrigió los títulos con nombre de archivo. La licencia es AGPL-3.0.
 
 ## Vista general
 ```
@@ -127,5 +127,5 @@ Los libros se quedan donde están; la DB guarda su ruta y su huella.
   - `cargo run --release --example engine_bench -- <pdf>` (render y memoria);
   - `--example text_bench -- <pdf> [consulta]` (texto, búsqueda, índice e impacto en el render).
 
-## Pendiente de la fase R
-- **R3 · Limpieza:** quitar `jpx.rs`, `POST /jpx`, `hayro-jpeg2000`, `jpxBridge.js`, la copia de `/pdfjs/` y `pdfjs-dist`; quitar los comandos del indexador viejo (`list_pending_scans`, `save_book_scan`, `mark_scan_failed`); corregir el título de los libros con un nombre de archivo como metadato; licencia AGPL-3.0 en `LICENSE`; `IPC.md` v1.0.
+## Siguiente
+- **Fase 5:** sistema y release para Linux (ver `ROADMAP.md`).

@@ -78,7 +78,7 @@ Comparado con Okular, el lector con pdf.js en WebKitGTK no es fluido: scroll, zo
   - Resultado: los informes de R0.1 y R0.2 quedan en los tags `spike-r0-engines` y `spike-r0-display` (las ramas se borraron).
 - [x] **R1 · Motor en Rust (`backend`):** `src-tauri/src/engine/` (documentos abiertos, pool de render con cancelación, caché LRU por bytes, precarga), comandos `open_document`, `get_page_text`, `search_document`, `get_outline` y `get_page_links`, protocolo `atril://page/<id>/<n>?scale=`, y metadatos y portadas en Rust. `IPC.md` pasa a v1.0.
 - [x] **R2 · Visor nuevo (`frontend`):** visor propio virtualizado con imagen, capa de texto, subrayados y enlaces por página, y zoom en dos pasos (CSS al instante y render nítido después). Los subrayados guardados siguen valiendo (`PageMapping` desde la matriz de Rust). Búsqueda, índice y posición pasan a los comandos nuevos. Sale `pdfjs-dist`.
-- **R3 · Limpieza:** quitar `jpx.rs`, `POST /jpx`, `hayro-jpeg2000`, `jpxBridge.js` y el indexador del front. Actualizar los docs.
+- [x] **R3 · Limpieza:** quitar `jpx.rs`, `POST /jpx`, `hayro-jpeg2000`, `jpxBridge.js` y el indexador del front. Actualizar los docs.
 - **Objetivos (release, equipo del usuario):** primera página en menos de 300 ms; página de texto en menos de 100 ms y escaneo en menos de 400 ms; scroll sin páginas en blanco ni tirones de más de 50 ms; zoom nítido en menos de 300 ms; memoria comparable a la de Okular.
 - **Cierre:** QA comparada con Okular, visto bueno del usuario y tag `fase-R`.
 
