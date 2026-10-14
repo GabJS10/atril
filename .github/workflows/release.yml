@@ -1,0 +1,73 @@
+name: Release
+
+# A tag `vX.Y.Z` on main builds the .deb and the AppImage and attaches them to a draft GitHub release.
+# A push to dev that touches the packaging, or a manual run (workflow_dispatch), tests it instead: the bundles are
+# uploaded as workflow artifacts and nothing is published.
+on:
+  push:
+    tags: ["v*"]
+    branches: [dev]
+    paths:
+      - .github/workflows/release.yml
+      - src-tauri/tauri.conf.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    name: Linux bundles (.deb, AppImage)
+    # 22.04 keeps the AppImage working on older glibc versions (Mint 21, Ubuntu 22.04 and later).
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev librsvg2-dev libayatana-appindicator3-dev libxdo-dev libssl-dev libclang-dev patchelf file
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      - name: Build and attach to a draft release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # linuxdeploy is itself an AppImage; the runner has no FUSE.
+          APPIMAGE_EXTRACT_AND_RUN: 1
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Atril ${{ github.ref_name }}
+          releaseBody: See CHANGELOG.md for the changes in this version.
+          releaseDraft: true
+          prerelease: false
+          args: --bundles deb,appimage
+
+      - name: Build (manual run)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+        run: npx tauri build --bundles deb,appimage
+
+      - name: Upload bundles (manual run)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: atril-linux
+          path: |
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/appimage/*.AppImage
+          if-no-files-found: error

@@ -10,7 +10,7 @@ A minimalist, lightweight desktop PDF reader for books, with a library at its he
 
 Built with Tauri 2, React, TypeScript, Rust and MuPDF. Linux first; Windows later.
 
-> Status: early development (phase 0). See `docs/ROADMAP.md`.
+> Status: preparing 1.0.0 for Linux. See `CHANGELOG.md` and `docs/ROADMAP.md`.
 
 ## Development
 
