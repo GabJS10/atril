@@ -12,7 +12,7 @@
 ┌──────────────────────── WebView (WebKitGTK) ───────────────────────┐
 │ React 19 + TanStack Router/Query + Zustand                          │
 │                                                                     │
-│  Biblioteca (routes/index, collection.$id)   Ajustes (settings)     │
+│  _shell (barra lateral): Inicio, libros, Salas, Ajustes             │
 │  Lector (routes/read.$bookId → reader/ReaderScreen)                 │
 │    └ NativeViewer (reader/native): <img> por página, texto,         │
 │      subrayados, búsqueda, índice y enlaces                         │
@@ -82,7 +82,7 @@ MuPDF (crate `mupdf` 0.8, enlazado estático, `base14-fonts`, sin `system-fonts`
 | Carpeta | Qué hay |
 |---|---|
 | `api/` | `tauri.ts` (wrappers tipados de `invoke`), `types.ts` (tipos de `IPC.md`) y `queries.ts` (TanStack Query) |
-| `routes/` | Rutas por archivos: `index` (biblioteca), `collection.$collectionId`, `read.$bookId` y `settings` |
+| `routes/` | Rutas por archivos. `_shell` es el layout con la barra lateral (navegación, contadores, Salas) y envuelve `index` (Inicio), `books.$scope` (`all`, `favorites`, `reading`), `collection.$collectionId` y `settings`. `read.$bookId` va fuera del layout y admite `?panel=highlights\|outline` |
 | `library/` | Pantalla de biblioteca, Salas, ajustes, eventos de biblioteca y soltar archivos. El indexador de pdf.js (`indexer.ts`) salió en R2.3; el de Rust es `indexer.rs` |
 | `reader/` | Pantalla de lectura, barra, atajos, posición, subrayados, índice y búsqueda. Detalle abajo |
 | `i18n/` | Textos en `es.ts` y `en.ts` |
@@ -127,5 +127,6 @@ Los libros se quedan donde están; la DB guarda su ruta y su huella.
   - `cargo run --release --example engine_bench -- <pdf>` (render y memoria);
   - `--example text_bench -- <pdf> [consulta]` (texto, búsqueda, índice e impacto en el render).
 
-## Siguiente
-- **Fase 5:** sistema y release para Linux (ver `ROADMAP.md`).
+## Releases
+- **v1.0.0** (2026-10-13): Linux, `.deb` y AppImage (paquete y binario `atril-libros`). Se construyen con `.github/workflows/release.yml` al empujar un tag `v*` sobre `main`, que deja un borrador de release en GitHub.
+- **Backlog:** `open_document` debería devolver `invalid_pdf` para un PDF sin páginas (hoy lo detecta el front); Windows.

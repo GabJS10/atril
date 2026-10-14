@@ -22,7 +22,7 @@ export function PageField({ page, pageCount, onGoTo }: PageFieldProps) {
   };
 
   return (
-    <span className="flex items-center gap-1.5">
+    <span className="flex items-center gap-1.5 px-1 text-ui text-ink-2">
       <input
         type="text"
         inputMode="numeric"
@@ -42,7 +42,7 @@ export function PageField({ page, pageCount, onGoTo }: PageFieldProps) {
             event.currentTarget.blur();
           }
         }}
-        className="w-12 border-b border-line bg-transparent text-center text-ink focus:border-ink focus:outline-none"
+        className="w-11 rounded-tab bg-surface-3 px-1.5 py-2 text-center text-ui font-semibold text-ink"
       />
       <span>{t("reader.pagesTotal", { pages: String(pageCount) })}</span>
     </span>

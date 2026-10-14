@@ -3,7 +3,7 @@
 Guía para agentes de IA (y personas) que trabajen en este repositorio.
 
 ## Proyecto
-**Atril**: lector de PDF de escritorio, minimalista y ligero, pensado para leer libros. Tiene una biblioteca como pantalla de inicio (seguir leyendo, favoritos y colecciones, llamadas "Salas"), recuerda la posición exacta de cada libro y guarda los subrayados solos al crearlos (en SQLite: **el PDF original nunca se modifica**). Además: modo noche/sepia, índice, búsqueda, notas exportables a Markdown y abrir los PDF desde el sistema.
+**Atril**: lector de PDF de escritorio, minimalista y ligero, pensado para leer libros. Tiene una biblioteca como pantalla de inicio (seguir leyendo, favoritos y colecciones, llamadas "Salas"), recuerda la posición exacta de cada libro y guarda los subrayados solos al crearlos (en SQLite: **el PDF original nunca se modifica**). Además: modo noche/sepia, índice, búsqueda y notas exportables a Markdown. No es un visor de PDF genérico: no se registra como lector de PDF del sistema; los libros se abren desde la app.
 
 - Plan completo y decisiones de arquitectura: [`docs/PLAN.md`](docs/PLAN.md)
 - Roadmap por fases (qué hace cada agente, con qué esfuerzo y criterios de cierre): [`docs/ROADMAP.md`](docs/ROADMAP.md)
@@ -12,7 +12,7 @@ Guía para agentes de IA (y personas) que trabajen en este repositorio.
 - Brief de diseño ("museo de arte de noche"): [`docs/DESIGN-BRIEF.md`](docs/DESIGN-BRIEF.md). El sistema de diseño definitivo irá en `DESIGN.md` y el contexto de producto en `PRODUCT.md` (los escribe `frontend` cuando el usuario elija una propuesta)
 - QA manual por fase: [`docs/QA.md`](docs/QA.md)
 
-**Estado actual:** fases 0 a 4 cerradas (tags `fase-0` a `fase-4`). Tras la pausa de pruebas, el usuario pidió replantear el lector porque pdf.js en WebKitGTK no es lo bastante fluido: **fase R** (motor de PDF nativo en Rust): cerrada (tag `fase-R`). Lo siguiente es la fase 5 (ver `docs/ROADMAP.md`). La fase 5 viene después.
+**Estado actual:** **v1.0.0 para Linux** (tags `v1.0.0` y `fase-5`). Fases 0 a 5 y fase R cerradas (tags `fase-0` a `fase-5` y `fase-R`): la fase R sustituyó pdf.js por un motor de PDF nativo en Rust (MuPDF). Lo siguiente sale del backlog (ver `docs/ROADMAP.md`).
 
 ## Forma de trabajo: subagentes + worktrees + pull requests
 `plan` (la sesión principal de Claude Code) orquesta. Cada tarea la hace un **subagente** que trabaja en su propio **worktree de git** (una carpeta aparte con su propia rama) y la entrega como **pull request**. **Este `AGENTS.md` es la fuente de verdad**; `CLAUDE.md` solo lo importa, y los roles de los subagentes están en `.claude/agents/`.
@@ -65,7 +65,7 @@ Los spikes de medición van en un worktree **sin PR**: solo dejan un informe.
 ```
 src/                       # Frontend React
   api/tauri.ts             # wrappers tipados de invoke(); único punto de contacto con Rust
-  routes/                  # __root, index (biblioteca), collection.$id, read.$bookId, settings
+  routes/                  # __root, _shell (barra lateral) con index, books.$scope, collection.$id y settings; read.$bookId
   reader/                  # native/ (NativeViewer), HighlightLayer, SelectionToolbar, OutlinePanel, SearchBar, HighlightsPanel, geometry.ts
   library/                 # BookCard, Shelf, CollectionList
   i18n/                    # es.ts, en.ts

@@ -5,8 +5,14 @@ import type { SelectionPart } from "./native/textSelection";
 /** What the reader screen needs to know of the view: where it is, how it is zoomed. */
 export type ViewSnapshot = { position: ReaderPosition; zoom: Zoom; scale: number };
 
-/** Where the search stands: the match in focus out of all matches, and whether it found none. */
-export type FindResult = { current: number; total: number; notFound: boolean };
+/** Where the search stands: the match in focus out of all matches, whether it found none, and whether it failed. */
+export type FindResult = {
+  current: number;
+  total: number;
+  notFound: boolean;
+  /** The search could not run (the book cannot be read, the query was refused): not the same as no matches. */
+  failed?: boolean;
+};
 
 export type FindOptions = { again?: boolean; findPrevious?: boolean };
 

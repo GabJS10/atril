@@ -30,6 +30,8 @@ export type Book = {
   pageCount: number | null;
   fileUrl: string;
   coverUrl: string | null;
+  /** "#rrggbb": dominant colour of the cover (IPC v1.1). Null without a cover or while it is not computed yet. */
+  coverColor: string | null;
   favorite: boolean;
   missing: boolean;
   scanState: "pending" | "done" | "failed";

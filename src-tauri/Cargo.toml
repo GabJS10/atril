@@ -1,6 +1,6 @@
 [package]
-name = "atril"
-version = "0.1.0"
+name = "atril-libros"
+version = "1.0.0"
 description = "Minimalist PDF reader with a library"
 authors = ["GabJS10"]
 license = "AGPL-3.0-only"
@@ -48,6 +48,9 @@ mupdf-sys = { version = "0.8.0", default-features = false, features = ["zerocopy
 jpeg-encoder = { version = "0.6", features = ["simd"] }
 # Indexador nativo (src/indexer.rs): limpieza de título y autor.
 regex = "1"
+# Color dominante de las portadas que ya existen (src/cover_color.rs): decodifica `covers/<id>.jpg` (o .webp) sin
+# MuPDF. Rust puro (zune-jpeg, image-webp), sin dependencias del sistema.
+image = { version = "0.25", default-features = false, features = ["jpeg", "webp"] }
 # Indexador nativo: `setpriority` sobre el hilo de indexado (Linux) para que el render del visor gane la CPU.
 libc = "0.2"
 
@@ -64,5 +67,3 @@ strip = true
 
 [dev-dependencies]
 tempfile = "3.27.0"
-# Las pruebas decodifican los JPEG que produce el motor para comprobar tamaño y contenido.
-image = { version = "0.25", default-features = false, features = ["jpeg"] }

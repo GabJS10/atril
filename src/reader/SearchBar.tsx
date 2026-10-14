@@ -20,11 +20,13 @@ export function SearchBar({
 
   const counter = !query
     ? ""
-    : result?.notFound
-      ? t("search.none")
-      : result && result.total > 0
-        ? t("search.count", { current: String(result.current), total: String(result.total) })
-        : "";
+    : result?.failed
+      ? t("search.failed")
+      : result?.notFound
+        ? t("search.none")
+        : result && result.total > 0
+          ? t("search.count", { current: String(result.current), total: String(result.total) })
+          : "";
 
   const step = (findPrevious: boolean) => {
     if (query) onFind(query, { again: true, findPrevious });
@@ -33,7 +35,7 @@ export function SearchBar({
   return (
     <div
       role="search"
-      className="absolute inset-x-0 top-0 z-30 flex h-14 items-center gap-6 border-b border-line bg-surface px-8 text-ui text-ink-2"
+      className="absolute top-6 left-1/2 z-30 flex w-[min(40rem,calc(100%-2rem))] -translate-x-1/2 items-center gap-3 rounded-bar bg-pill px-4 py-2.5 text-ui text-ink-2 shadow-pill focus-within:ring-2 focus-within:ring-accent-text"
     >
       <input
         type="search"
@@ -54,7 +56,7 @@ export function SearchBar({
             onClose();
           }
         }}
-        className="min-w-0 flex-1 border-b border-line bg-transparent py-2 text-base text-ink outline-none placeholder:text-ink-3 focus-visible:border-ink"
+        className="min-w-0 flex-1 rounded-tab bg-transparent px-2 py-2 text-base text-ink outline-none placeholder:text-ink-3"
       />
       <span aria-live="polite" className="shrink-0 tabular-nums">
         {counter}
@@ -63,7 +65,7 @@ export function SearchBar({
         type="button"
         aria-label={t("search.previous")}
         onClick={() => step(true)}
-        className="shrink-0 text-ink hover:text-ink-2"
+        className="flex size-9 shrink-0 items-center justify-center rounded-field text-ink hover:bg-surface-3"
       >
         ↑
       </button>
@@ -71,14 +73,14 @@ export function SearchBar({
         type="button"
         aria-label={t("search.next")}
         onClick={() => step(false)}
-        className="shrink-0 text-ink hover:text-ink-2"
+        className="flex size-9 shrink-0 items-center justify-center rounded-field text-ink hover:bg-surface-3"
       >
         ↓
       </button>
       <button
         type="button"
         onClick={onClose}
-        className="shrink-0 text-ui text-ink-2 underline underline-offset-4"
+        className="shrink-0 rounded-tab px-2.5 py-2 text-ui font-medium text-ink-2 hover:text-ink"
       >
         {t("search.close")}
       </button>

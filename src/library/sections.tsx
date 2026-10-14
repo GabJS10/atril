@@ -1,197 +1,353 @@
 import { Link } from "@tanstack/react-router";
-import type { Book, Collection } from "../api/types";
-import { useT } from "../i18n";
 import { useState } from "react";
-import { BOOK_DRAG_TYPE, BookCard, Cover, ProgressLine } from "./Cover";
+import type { Book, Collection, Highlight } from "../api/types";
+import { useT } from "../i18n";
+import { useHighlights } from "../reader/highlights";
+import { PIGMENT_COLOR, PIGMENT_KEY } from "../reader/highlightPresentation";
+import { ArrowRightIcon, BookOpenIcon, PlusIcon } from "../ui/icons";
+import { primaryButton, secondaryButton, textLink } from "../ui/buttons";
+import { BOOK_DRAG_TYPE, BookCard, Cover, ProgressBar, type CoverSize } from "./Cover";
 import { useCollectionMutations } from "./collectionActions";
 import { BookMenu } from "./BookMenu";
-import { countLabel, useProgressLabel } from "./format";
+import { countLabel, pagesLeftLabel, useProgressLabel } from "./format";
+import { roomColorOf, tintOf } from "./identity";
+import { NewRoom } from "./NewRoom";
 
-/** Section label in the DESIGN.md style: numbered, versalitas, with a hairline above. */
-export function SectionLabel({
-  number,
-  children,
+/** Title of a section: serif, with its count and, to the right, an optional action. */
+export function SectionHeader({
+  id,
+  title,
+  count,
   action,
 }: {
-  number: string;
-  children: string;
+  id: string;
+  title: string;
+  count?: number;
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-baseline justify-between gap-4 border-t border-line-strong pt-3 text-label font-semibold tracking-label uppercase">
-      <span className="flex items-baseline gap-4">
-        <span className="font-medium text-ink-3">{number}</span>
-        {children}
-      </span>
-      {action}
+    <div className="flex items-baseline gap-3.5">
+      <h2 id={id} className="font-serif text-sala leading-none font-semibold">
+        {title}
+      </h2>
+      {count === undefined ? null : <span className="text-ui text-ink-3">{count}</span>}
+      {action ? <div className="ml-auto">{action}</div> : null}
     </div>
   );
 }
 
-/** Seguir leyendo: the last book opened as the large piece, the other started books as a discreet row. */
-export function ContinueSection({ books }: { books: Book[] }) {
-  const t = useT();
-  const [first, ...rest] = books;
-  const percent = useProgressLabel(first?.progress ?? null);
-  if (!first) return null;
+/** The most recent highlight of a book, or null when it has none. */
+function latestHighlight(highlights: Highlight[]): Highlight | null {
+  let latest: Highlight | null = null;
+  for (const highlight of highlights) {
+    if (!latest || highlight.createdAt > latest.createdAt) latest = highlight;
+  }
+  return latest;
+}
 
+/** Size of the title in "Seguir leyendo": long titles step down so they stay a few lines. */
+function heroTitleClass(title: string): string {
+  if (title.length <= 22) return "text-feature leading-[0.98]";
+  if (title.length <= 40) return "text-page leading-none";
+  return "text-sala leading-[1.05]";
+}
+
+/**
+ * Seguir leyendo (DESIGN.md, tarjeta "Seguir leyendo"): the last book opened as a large card tinted with the colour
+ * of its cover, with its progress and, when it has one, its latest highlight.
+ */
+export function ContinueCard({ book }: { book: Book }) {
+  const t = useT();
+  const percent = useProgressLabel(book.progress);
+  const highlights = useHighlights(book.id);
+  const all = highlights.data ?? [];
+  const last = latestHighlight(all);
   const pageLine =
-    first.currentPage !== null && first.pageCount !== null
-      ? t("library.pageOf", { page: String(first.currentPage), pages: String(first.pageCount) })
+    book.currentPage !== null && book.pageCount !== null
+      ? t("library.pageOf", { page: String(book.currentPage), pages: String(book.pageCount) })
       : null;
+  const color = tintOf(book.coverColor);
+  const tint = color ? ({ "--tint": color } as React.CSSProperties) : undefined;
 
   return (
-    <section className="flex flex-col gap-8">
-      <SectionLabel number="01">{t("library.continue")}</SectionLabel>
-      <div className="flex flex-wrap items-end gap-16">
-        <div
-          className="group relative"
-          draggable
-          onDragStart={(event) => {
-            event.dataTransfer.setData(BOOK_DRAG_TYPE, first.id);
-            event.dataTransfer.effectAllowed = "copy";
-          }}
-        >
-          <Link to="/read/$bookId" params={{ bookId: first.id }} className="block" draggable={false}>
-            <Cover book={first} size="lg" />
-          </Link>
-          <BookMenu book={first} />
+    <section
+      aria-labelledby="continue-title"
+      style={tint}
+      className={`flex flex-wrap gap-8 rounded-card p-10 ${color ? "bg-cover-tint" : "bg-card"}`}
+    >
+      <div
+        className="group relative self-center"
+        draggable
+        onDragStart={(event) => {
+          event.dataTransfer.setData(BOOK_DRAG_TYPE, book.id);
+          event.dataTransfer.effectAllowed = "copy";
+        }}
+      >
+        <Link to="/read/$bookId" params={{ bookId: book.id }} className="block rounded-tab" draggable={false}>
+          <Cover book={book} size="xl" />
+        </Link>
+        <BookMenu book={book} />
+      </div>
+
+      <div className="flex min-w-0 flex-1 basis-72 flex-col justify-center gap-3.5">
+        <div className="text-label font-semibold tracking-kicker text-accent-text uppercase">
+          {t("library.continue")}
         </div>
-        <div className="flex min-w-0 max-w-[460px] flex-col justify-end">
-          <div className="font-serif text-display leading-none break-words">{first.title}</div>
-          {first.author ? <div className="mt-4 text-base text-ink-2">{first.author}</div> : null}
-          <ProgressLine progress={first.progress} className="mt-14" />
-          <div className="mt-3 flex justify-between text-ui text-ink-2">
+        <h2
+          id="continue-title"
+          className={`line-clamp-3 font-serif font-semibold break-words ${heroTitleClass(book.title)}`}
+        >
+          {book.title}
+        </h2>
+        {book.author ? <div className="text-body text-ink-2">{book.author}</div> : null}
+        <div className="mt-4 flex max-w-115 flex-col gap-2.5">
+          <ProgressBar progress={book.progress} thick />
+          <div className="flex justify-between text-ui text-ink-2">
             <span>{percent}</span>
             <span>{pageLine}</span>
           </div>
         </div>
-      </div>
-      {rest.length > 0 ? (
-        <div className="flex flex-wrap gap-6">
-          {rest.map((book) => (
-            <BookCard key={book.id} book={book} size="sm" />
-          ))}
+        <div className="mt-4 flex flex-wrap gap-3">
+          <Link to="/read/$bookId" params={{ bookId: book.id }} className={primaryButton}>
+            <BookOpenIcon />
+            {t("home.resume")}
+          </Link>
+          {all.length > 0 ? (
+            <Link
+              to="/read/$bookId"
+              params={{ bookId: book.id }}
+              search={{ panel: "highlights" }}
+              className={secondaryButton}
+            >
+              {t("highlightPanel.toggle")} · {all.length}
+            </Link>
+          ) : null}
         </div>
+      </div>
+
+      {last ? (
+        <aside
+          aria-label={t("home.lastHighlight.label")}
+          className="flex max-w-85 min-w-60 flex-1 basis-60 flex-col gap-4 rounded-tile bg-veil p-6"
+        >
+          <div className="flex items-center gap-2.5 text-label font-semibold tracking-label text-ink-2 uppercase">
+            <span
+              aria-hidden="true"
+              className="size-2.5 rounded-dot"
+              style={{ background: PIGMENT_COLOR[last.color] }}
+            />
+            {t("home.lastHighlight", { page: String(last.page) })}
+          </div>
+          <p className="line-clamp-6 font-serif text-quote leading-[1.4] font-medium italic">
+            <span
+              className="highlight-mark px-0.5"
+              style={{ "--mark": PIGMENT_COLOR[last.color] } as React.CSSProperties}
+            >
+              <span className="sr-only">{t(PIGMENT_KEY[last.color])}: </span>
+              {last.text}
+            </span>
+          </p>
+          {last.note ? (
+            <div className="line-clamp-3 text-ui text-ink-2">
+              {t("home.lastHighlight.note", { note: last.note })}
+            </div>
+          ) : null}
+          <Link
+            to="/read/$bookId"
+            params={{ bookId: book.id }}
+            search={{ panel: "highlights" }}
+            className="mt-auto inline-flex items-center gap-2 text-ui font-semibold text-ink hover:text-ink-2"
+          >
+            {all.length === 1
+              ? t("home.viewHighlightsOne")
+              : t("home.viewHighlights", { count: String(all.length) })}
+            <ArrowRightIcon size={16} />
+          </Link>
+        </aside>
       ) : null}
     </section>
   );
 }
 
-export function FavoritesSection({
-  books,
-  total,
-  onViewAll,
-}: {
-  books: Book[];
-  total: number;
-  onViewAll: () => void;
-}) {
+/** También en curso: the other started books, as cards with their progress. */
+export function AlsoReading({ books }: { books: Book[] }) {
   const t = useT();
   if (books.length === 0) return null;
   return (
-    <section className="flex flex-col gap-8">
-      <SectionLabel
-        number="02"
-        action={
-          total > books.length ? (
-            <button
-              type="button"
-              onClick={onViewAll}
-              className="text-base font-medium tracking-normal normal-case text-ink"
-            >
-              {t("library.viewAll")} →
-            </button>
-          ) : null
-        }
-      >
-        {t("library.favorites")}
-      </SectionLabel>
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-8">
+    <section aria-labelledby="also-title" className="flex flex-col gap-5">
+      <SectionHeader id="also-title" title={t("home.alsoReading")} count={books.length} />
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
         {books.map((book) => (
-          <BookCard key={book.id} book={book} />
+          <ReadingTile key={book.id} book={book} />
         ))}
       </div>
     </section>
   );
 }
 
-/** Salas: the collections with their sample covers. Drop a book on one to add it; create one from here. */
-export function CollectionsSection({ collections }: { collections: Collection[] }) {
+function ReadingTile({ book }: { book: Book }) {
   const t = useT();
-  const { create, add } = useCollectionMutations();
-  const [name, setName] = useState("");
+  const percent = useProgressLabel(book.progress);
+  const left = pagesLeftLabel(book, t);
+  return (
+    <Link
+      to="/read/$bookId"
+      params={{ bookId: book.id }}
+      draggable
+      onDragStart={(event) => {
+        event.dataTransfer.setData(BOOK_DRAG_TYPE, book.id);
+        event.dataTransfer.effectAllowed = "copy";
+      }}
+      className="flex items-center gap-4 rounded-tile bg-card p-4 transition-colors duration-fast ease-atril hover:bg-raised"
+    >
+      <Cover book={book} size="sm" />
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        <div className="line-clamp-2 font-serif text-title-md leading-[1.05] font-semibold">{book.title}</div>
+        {book.author ? <div className="truncate text-ui text-ink-2">{book.author}</div> : null}
+        <ProgressBar progress={book.progress} className="mt-1.5" />
+        <div className="text-caption text-ink-3">{[percent, left].filter(Boolean).join(" · ")}</div>
+      </div>
+    </Link>
+  );
+}
+
+/** Favoritos: a band of tone with the covers in a row. */
+export function FavoritesBand({ books, total }: { books: Book[]; total: number }) {
+  const t = useT();
+  if (books.length === 0) return null;
+  return (
+    <section aria-labelledby="fav-title" className="flex flex-col gap-5">
+      <SectionHeader
+        id="fav-title"
+        title={t("library.favorites")}
+        count={total}
+        action={
+          <Link to="/books/$scope" params={{ scope: "favorites" }} className={textLink}>
+            {t("library.viewAll")} →
+          </Link>
+        }
+      />
+      <div className="rounded-card bg-card px-9 pt-9 pb-7">
+        <div className="flex gap-8 overflow-x-auto pb-2">
+          {books.map((book) => (
+            <BookCard key={book.id} book={book} size="md" />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** Up to three covers in a fan: the preview of a Sala. */
+export function CoverFan({
+  books,
+  size,
+  className,
+}: {
+  books: Book[];
+  size: Extract<CoverSize, "xs" | "lg">;
+  className: string;
+}) {
+  const shown = books.slice(0, 3);
+  const positions =
+    size === "xs"
+      ? {
+          1: ["left-14 top-1 z-20"],
+          2: ["left-6 top-0 -rotate-6 z-10", "left-22 top-1 rotate-6 z-20"],
+          3: ["left-0 top-0 -rotate-9 z-10", "left-14 top-1 z-20", "left-28 top-0 rotate-9 z-10"],
+        }
+      : {
+          1: ["left-27.5 top-0 z-20"],
+          2: ["left-14 top-4.5 -rotate-10 z-10", "left-41 top-4.5 rotate-10 z-10"],
+          3: ["left-0 top-4.5 -rotate-10 z-10", "left-27.5 top-0 z-20", "left-52.5 top-4.5 rotate-10 z-10"],
+        };
+  const slots = positions[shown.length as 1 | 2 | 3];
+  if (!slots) return null;
+  return (
+    <div aria-hidden="true" className={`relative flex-none ${className}`}>
+      {shown.map((book, index) => (
+        <div key={book.id} className={`absolute ${slots[index]}`}>
+          <Cover book={book} size={size} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Salas: a card per Sala, tinted with its colour, with its covers in a fan. Drop a book on one to add it. */
+export function RoomsSection({ collections }: { collections: Collection[] }) {
+  const t = useT();
+  const { add } = useCollectionMutations();
   const [dropTarget, setDropTarget] = useState<string | null>(null);
 
   return (
-    <section className="flex flex-col gap-8">
-      <SectionLabel number="03">{t("library.collections")}</SectionLabel>
-      <form
-        className="flex flex-wrap items-center gap-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const trimmed = name.trim();
-          if (!trimmed) return;
-          create.mutate(trimmed, { onSuccess: () => setName("") });
-        }}
-      >
-        <input
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          maxLength={100}
-          placeholder={t("collections.placeholder")}
-          aria-label={t("collections.placeholder")}
-          className="min-w-[220px] border-0 border-b border-line bg-transparent py-2 text-base text-ink placeholder:text-ink-3"
-        />
-        <button
-          type="submit"
-          disabled={!name.trim()}
-          className="border border-line-strong px-4 py-2 text-base font-medium disabled:opacity-40"
+    <section aria-labelledby="rooms-title" className="flex flex-col gap-5">
+      <SectionHeader id="rooms-title" title={t("library.collections")} count={collections.length} />
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-5">
+        {collections.map((collection) => (
+          <Link
+            key={collection.id}
+            to="/collection/$collectionId"
+            params={{ collectionId: collection.id }}
+            data-room={roomColorOf(collection.id)}
+            onDragOver={(event) => {
+              if (!event.dataTransfer.types.includes(BOOK_DRAG_TYPE)) return;
+              event.preventDefault();
+              setDropTarget(collection.id);
+            }}
+            onDragLeave={() => setDropTarget(null)}
+            onDrop={(event) => {
+              const bookId = event.dataTransfer.getData(BOOK_DRAG_TYPE);
+              setDropTarget(null);
+              if (!bookId) return;
+              event.preventDefault();
+              add.mutate({ bookIds: [bookId], collectionId: collection.id });
+            }}
+            className={`group flex min-h-50 flex-wrap items-center gap-6 rounded-card bg-room-tint p-8 transition-shadow duration-fast ease-atril ${
+              dropTarget === collection.id ? "ring-2 ring-accent" : ""
+            }`}
+          >
+            <div className="flex min-w-35 flex-1 flex-col gap-2">
+              <div className="font-serif text-room-name leading-none font-semibold group-hover:text-ink-2">
+                {collection.name}
+              </div>
+              <div className="text-ui text-ink-2">{countLabel(collection.bookCount, t)}</div>
+            </div>
+            <CoverFan books={collection.sampleBooks} size="xs" className="h-40 w-52.5" />
+          </Link>
+        ))}
+        <NewRoom
+          className="flex min-h-50 flex-col items-center justify-center gap-2.5 rounded-card border-[1.5px] border-dashed border-line text-base text-ink-2 transition-colors duration-fast ease-atril hover:text-ink"
+          inputClassName="min-h-50 w-full rounded-card bg-field px-8 text-center text-base text-ink placeholder:text-ink-3"
         >
-          {t("collections.createAction")}
-        </button>
-      </form>
-      {collections.length === 0 ? (
-        <p className="text-ink-2">{t("collections.noneYet")}</p>
-      ) : (
-        <div className="flex flex-col">
-          {collections.map((collection) => (
-            <Link
-              key={collection.id}
-              to="/collection/$collectionId"
-              params={{ collectionId: collection.id }}
-              onDragOver={(event) => {
-                if (!event.dataTransfer.types.includes(BOOK_DRAG_TYPE)) return;
-                event.preventDefault();
-                setDropTarget(collection.id);
-              }}
-              onDragLeave={() => setDropTarget(null)}
-              onDrop={(event) => {
-                const bookId = event.dataTransfer.getData(BOOK_DRAG_TYPE);
-                setDropTarget(null);
-                if (!bookId) return;
-                event.preventDefault();
-                add.mutate({ bookIds: [bookId], collectionId: collection.id });
-              }}
-              className={`group flex flex-wrap items-end gap-10 border-t py-6 ${
-                dropTarget === collection.id ? "border-ink bg-surface" : "border-line"
-              }`}
-            >
-              <div className="min-w-[220px] flex-1">
-                <div className="font-serif text-sala leading-tight group-hover:text-ink-2">
-                  {collection.name}
-                </div>
-                <div className="mt-2 text-ui text-ink-3">{countLabel(collection.bookCount, t)}</div>
-              </div>
-              <div className="flex gap-4">
-                {collection.sampleBooks.map((book) => (
-                  <Cover key={book.id} book={book} size="sm" />
-                ))}
-              </div>
-            </Link>
-          ))}
-        </div>
-      )}
+          <PlusIcon size={26} />
+          {t("collections.create")}
+        </NewRoom>
+      </div>
+    </section>
+  );
+}
+
+/** Añadidos hace poco: the newest books of the library. */
+export function RecentlyAdded({ books }: { books: Book[] }) {
+  const t = useT();
+  if (books.length === 0) return null;
+  return (
+    <section aria-labelledby="recent-title" className="flex flex-col gap-5">
+      <SectionHeader
+        id="recent-title"
+        title={t("home.recent")}
+        action={
+          <Link to="/books/$scope" params={{ scope: "all" }} className={textLink}>
+            {t("nav.all")} →
+          </Link>
+        }
+      />
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-x-6 gap-y-8">
+        {books.map((book) => (
+          <BookCard key={book.id} book={book} />
+        ))}
+      </div>
     </section>
   );
 }

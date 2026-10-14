@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Atril app icon: an open book on a lectern, in the gallery accent over the night canvas. Source for `tauri icon`. -->
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="#171512"/>
+  <rect x="66" y="66" width="892" height="892" rx="198" fill="none" stroke="#2A2621" stroke-width="4"/>
+  <!-- open book -->
+  <path d="M228 372 C 328 330, 432 338, 504 392 L 504 640 C 432 588, 328 578, 228 618 Z" fill="#C9A05A"/>
+  <path d="M520 392 C 592 338, 696 330, 796 372 L 796 618 C 696 578, 592 588, 520 640 Z" fill="#C9A05A"/>
+  <!-- lines of text -->
+  <g stroke="#8F6E36" stroke-width="14" stroke-linecap="round" fill="none">
+    <path d="M286 430 C 340 412, 400 414, 452 436"/>
+    <path d="M286 486 C 340 468, 400 470, 452 492"/>
+    <path d="M286 542 C 340 524, 400 526, 452 548"/>
+    <path d="M572 436 C 624 414, 684 412, 738 430"/>
+    <path d="M572 492 C 624 470, 684 468, 738 486"/>
+    <path d="M572 548 C 624 526, 684 524, 738 542"/>
+  </g>
+  <!-- lectern: ledge, post and foot -->
+  <path d="M206 672 L 818 672" stroke="#C9A05A" stroke-width="30" stroke-linecap="round"/>
+  <rect x="494" y="688" width="36" height="140" rx="8" fill="#C9A05A"/>
+  <rect x="372" y="824" width="280" height="34" rx="17" fill="#C9A05A"/>
+</svg>

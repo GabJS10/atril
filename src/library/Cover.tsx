@@ -1,46 +1,91 @@
 import { Link } from "@tanstack/react-router";
 import type { Book } from "../api/types";
 import { useT } from "../i18n";
+import { StarIcon } from "../ui/icons";
 import { useToggleFavorite } from "./actions";
 import { BookMenu } from "./BookMenu";
+import { useProgressLabel } from "./format";
+import { coverToneOf } from "./identity";
 
-export type CoverSize = "lg" | "md" | "sm";
+export type CoverSize = "xl" | "lg" | "md" | "sm" | "xs" | "fluid";
 
-const WIDTH: Record<CoverSize, string> = { lg: "w-[240px]", md: "w-full", sm: "w-[110px]" };
-const TITLE: Record<CoverSize, string> = { lg: "text-sala", md: "text-cartela", sm: "text-ui" };
+/** Width of each cover size (DESIGN.md, portadas): the height follows the 2 : 3 proportion. */
+const WIDTH: Record<CoverSize, string> = {
+  xl: "w-55",
+  lg: "w-40",
+  md: "w-37.5",
+  sm: "w-16",
+  xs: "w-25",
+  fluid: "w-full",
+};
 
 /**
- * A cover in greyscale; it recovers its colour on hover or keyboard focus (DESIGN.md, portadas).
- * Without a cover yet, the book's title stands in for it.
+ * A book cover, always in colour (DESIGN.md, portadas): the real one with its spine and shadow or, while there is
+ * none (still indexing, or it failed), a typographic cover whose colours come from the book's id. The typographic
+ * one is decoration: the title is always written next to it.
  */
-export function Cover({ book, size = "md" }: { book: Book; size?: CoverSize }) {
-  const t = useT();
+export function Cover({
+  book,
+  size = "fluid",
+  className = "",
+}: {
+  book: Book;
+  size?: CoverSize;
+  className?: string;
+}) {
+  const compact = size === "sm";
   return (
     <div
-      className={`aspect-[2/3] ${WIDTH[size]} overflow-hidden bg-surface grayscale transition-[filter] duration-slow ease-atril group-hover:grayscale-0 group-focus-visible:grayscale-0 ${
+      className={`cover-box relative aspect-[2/3] shrink-0 overflow-hidden rounded-cover shadow-cover ${WIDTH[size]} ${
         book.missing ? "opacity-50" : ""
-      }`}
+      } ${className}`}
     >
       {book.coverUrl ? (
         <img src={book.coverUrl} alt="" className="h-full w-full object-cover" />
       ) : (
-        <div className="flex h-full w-full flex-col justify-between border border-line p-3">
-          <span className="text-label tracking-label text-ink-3 uppercase">
-            {book.scanState === "pending" ? t("library.pending") : ""}
-          </span>
-          <span className={`font-serif leading-tight text-ink-2 ${TITLE[size]}`}>{book.title}</span>
+        <div
+          aria-hidden="true"
+          data-tone={coverToneOf(book.id)}
+          className="cover-face absolute inset-0 flex flex-col justify-between overflow-hidden pt-[12cqw] pr-[7cqw] pb-[10cqw] pl-[13cqw]"
+        >
+          <div className="min-h-0">
+            <div className="mb-[4.5cqw] h-px bg-current opacity-50" />
+            <div className="cover-title line-clamp-5 font-serif leading-[1.02] font-semibold">
+              {book.title}
+            </div>
+          </div>
+          <div
+            className={`cover-mark size-[8cqw] rounded-full ${book.scanState === "pending" ? "motion-safe:animate-pulse" : ""}`}
+          />
+          {compact ? null : (
+            <div className="cover-author font-semibold tracking-[0.12em] uppercase leading-[1.3]">
+              {book.author ?? ""}
+            </div>
+          )}
         </div>
       )}
+      <span aria-hidden="true" className="cover-spine pointer-events-none absolute inset-y-0 left-0 w-1.5" />
     </div>
   );
 }
 
-/** Reading progress as a hairline with its fill (DESIGN.md, cartela). */
-export function ProgressLine({ progress, className = "" }: { progress: number | null; className?: string }) {
+/** Reading progress as a thin rounded bar with the accent fill (DESIGN.md, progreso). */
+export function ProgressBar({
+  progress,
+  thick = false,
+  className = "",
+}: {
+  progress: number | null;
+  thick?: boolean;
+  className?: string;
+}) {
   const fill = Math.min(1, Math.max(0, progress ?? 0));
   return (
-    <div className={`relative h-px bg-line ${className}`}>
-      <span className="absolute inset-y-0 left-0 bg-ink" style={{ width: `${fill * 100}%` }} />
+    <div
+      aria-hidden="true"
+      className={`overflow-hidden rounded-pill bg-track ${thick ? "h-1.5" : "h-1"} ${className}`}
+    >
+      <div className="h-full bg-accent" style={{ width: `${fill * 100}%` }} />
     </div>
   );
 }
@@ -53,7 +98,7 @@ export const BOOK_DRAG_TYPE = "application/x-atril-book";
  */
 export function BookCard({
   book,
-  size = "md",
+  size = "fluid",
   collectionId,
 }: {
   book: Book;
@@ -62,16 +107,38 @@ export function BookCard({
 }) {
   const t = useT();
   const toggleFavorite = useToggleFavorite();
+  const percent = useProgressLabel(book.progress);
+  const finished = book.progress !== null && book.progress >= 1;
+  const reading = book.progress !== null && book.progress > 0 && !finished;
   const body = (
     <>
-      <Cover book={book} size={size} />
-      <div className={`${WIDTH[size]} mt-4 min-w-0`}>
-        <div className={`truncate font-serif leading-tight ${TITLE[size]}`}>{book.title}</div>
-        {book.author ? <div className="mt-1 truncate text-ui text-ink-2">{book.author}</div> : null}
-        {book.missing ? (
-          <div className="mt-1 text-label tracking-label text-ink-3 uppercase">
-            {t("library.missing.label")}
+      <div className="relative">
+        <Cover
+          book={book}
+          size={size}
+          className="transition-transform duration-base ease-atril group-hover:-translate-y-1"
+        />
+        {finished ? (
+          <span className="absolute right-2.5 bottom-2.5 rounded-pill bg-scrim px-2.5 py-1 text-label font-semibold text-ink">
+            {t("library.finished")}
+          </span>
+        ) : null}
+      </div>
+      <div className={`${WIDTH[size]} mt-3 flex min-w-0 flex-col gap-1`}>
+        <div className="line-clamp-2 font-serif text-title-sm leading-[1.1] font-semibold">{book.title}</div>
+        {book.author ? <div className="truncate text-caption text-ink-2">{book.author}</div> : null}
+        {reading ? (
+          <div className="mt-1.5 flex items-center gap-2.5">
+            <ProgressBar progress={book.progress} className="flex-1" />
+            <span className="text-label text-ink-3">{percent}</span>
           </div>
+        ) : null}
+        {book.missing ? (
+          <div className="text-label tracking-label text-ink-3 uppercase">{t("library.missing.label")}</div>
+        ) : book.scanState === "pending" ? (
+          <div className="text-label tracking-label text-ink-3 uppercase">{t("library.pending")}</div>
+        ) : book.scanState === "failed" ? (
+          <div className="text-label tracking-label text-ink-3 uppercase">{t("library.failed.label")}</div>
         ) : null}
       </div>
     </>
@@ -79,7 +146,7 @@ export function BookCard({
 
   return (
     <div
-      className="group relative min-w-0"
+      className="group relative min-w-0 shrink-0"
       draggable={!book.missing}
       onDragStart={(event) => {
         event.dataTransfer.setData(BOOK_DRAG_TYPE, book.id);
@@ -89,7 +156,7 @@ export function BookCard({
       {book.missing ? (
         <div className="block">{body}</div>
       ) : (
-        <Link to="/read/$bookId" params={{ bookId: book.id }} className="block" draggable={false}>
+        <Link to="/read/$bookId" params={{ bookId: book.id }} className="block rounded-tab" draggable={false}>
           {body}
         </Link>
       )}
@@ -100,21 +167,13 @@ export function BookCard({
           aria-pressed={book.favorite}
           aria-label={book.favorite ? t("library.unfavorite") : t("library.favorite")}
           onClick={() => toggleFavorite.mutate({ bookId: book.id, favorite: !book.favorite })}
-          className={`absolute top-2 right-2 flex h-8 w-8 items-center justify-center bg-canvas/80 text-ink transition-opacity duration-base ${
-            book.favorite ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+          className={`absolute top-2 right-2 flex size-8 items-center justify-center rounded-pill bg-scrim transition-opacity duration-base ${
+            book.favorite
+              ? "text-accent-text opacity-100"
+              : "text-ink opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
           }`}
         >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill={book.favorite ? "currentColor" : "none"}
-            stroke="currentColor"
-            strokeWidth="1.25"
-            aria-hidden="true"
-          >
-            <path d="M12 3.5l2.6 5.6 6.1.7-4.5 4.2 1.2 6-5.4-3.1-5.4 3.1 1.2-6-4.5-4.2 6.1-.7z" />
-          </svg>
+          <StarIcon size={16} filled={book.favorite} />
         </button>
       )}
     </div>

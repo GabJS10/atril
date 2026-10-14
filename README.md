@@ -5,11 +5,12 @@ A minimalist, lightweight desktop PDF reader for books, with a library at its he
 - **Library first:** continue reading, favorites and collections ("rooms").
 - **Remembers where you left off** in every book, down to the scroll position.
 - **Highlights save themselves** the moment you make them. Your PDF files are never modified.
-- Night and sepia page modes, outline, search, notes exportable to Markdown, and open PDFs straight from your file manager.
+- Night and sepia page modes, outline, search, and notes exportable to Markdown.
+- A reader for your books, not a generic PDF viewer: add folders or open a PDF from inside the app.
 
 Built with Tauri 2, React, TypeScript, Rust and MuPDF. Linux first; Windows later.
 
-> Status: early development (phase 0). See `docs/ROADMAP.md`.
+> Status: preparing 1.0.0 for Linux. See `CHANGELOG.md` and `docs/ROADMAP.md`.
 
 ## Development
 

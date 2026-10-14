@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSettings } from "../api/queries";
-import { exportHighlights, isAppError, openExternalUrl, pickExportPath } from "../api/tauri";
+import { exportHighlights, openExternalUrl, pickExportPath } from "../api/tauri";
 import type { Book, ReadingStateInput, Zoom, ViewMode } from "../api/types";
 import { useLocaleStore, useT } from "../i18n";
 import { NativeViewer } from "./native/NativeViewer";
@@ -22,31 +22,116 @@ import { followOutlineItem } from "./outline";
 import { useNativeOutline } from "./useNativeOutline";
 import { exportBookHighlights } from "./highlightExport";
 import { SelectionToolbar } from "./SelectionToolbar";
+import { primaryButton, secondaryButton } from "../ui/buttons";
+import { StateCard } from "../ui/StateCard";
+import { useRelinkBook } from "../library/actions";
+import { classifyOpenError, type OpenFailure } from "./openError";
 
-export function ReaderScreen({ bookId }: { bookId: string }) {
+/** The side panel a book can open with (the "Subrayados" link of the library). */
+export type ReaderPanel = "highlights" | "outline";
+
+export function ReaderScreen({ bookId, panel = null }: { bookId: string; panel?: ReaderPanel | null }) {
   const t = useT();
   const opened = useOpenedBook(bookId);
   const settings = useSettings();
 
   if (opened.isPending || settings.isPending) return <ReaderMessage>{t("reader.loading")}</ReaderMessage>;
   if (opened.isError) {
-    const missing = isAppError(opened.error) && opened.error.code === "file_missing";
-    return <ReaderMessage>{missing ? t("reader.errorMissing") : t("reader.error")}</ReaderMessage>;
+    return (
+      <ReaderFailure
+        failure={classifyOpenError(opened.error)}
+        busy={opened.isFetching}
+        onRetry={() => void opened.refetch()}
+      />
+    );
   }
-  if (settings.isError) return <ReaderMessage>{t("reader.error")}</ReaderMessage>;
+  if (settings.isError) {
+    return (
+      <ReaderFailure failure="other" busy={settings.isFetching} onRetry={() => void settings.refetch()} />
+    );
+  }
 
   const start = initialReadingStart(opened.data.readingState, settings.data);
-  return <ReaderView key={bookId} book={opened.data.book} start={start} />;
+  return <ReaderView key={bookId} book={opened.data.book} start={start} initialPanel={panel} />;
 }
 
+/** The reader while it waits: a line of text and the way back. */
 function ReaderMessage({ children }: { children: string }) {
   const t = useT();
   return (
-    <main className="flex h-screen flex-col items-center justify-center gap-6 p-8 text-ink-2">
+    <main
+      role="status"
+      className="flex h-screen flex-col items-center justify-center gap-6 bg-canvas p-8 text-ink-2"
+    >
       <p>{children}</p>
-      <Link to="/" className="text-ink underline underline-offset-4">
-        {t("reader.back")}
+      <Link to="/" className={secondaryButton}>
+        {t("reader.backToLibrary")}
       </Link>
+    </main>
+  );
+}
+
+/**
+ * The book could not be opened: what happened in plain words and the way out. A missing file can be pointed at its
+ * new place; an unreadable one only leads back; anything else can be tried again.
+ */
+function ReaderFailure({
+  failure,
+  busy,
+  onRetry,
+}: {
+  failure: OpenFailure;
+  busy: boolean;
+  onRetry: () => void;
+}) {
+  const t = useT();
+  const relink = useRelinkBook();
+  const back = (
+    <Link to="/" className={failure === "unreadable" ? primaryButton : secondaryButton}>
+      {t("reader.backToLibrary")}
+    </Link>
+  );
+  return (
+    <main className="flex h-screen items-center justify-center bg-canvas p-8">
+      <StateCard
+        heading={1}
+        role="alert"
+        className="w-full max-w-[640px]"
+        title={
+          failure === "missing"
+            ? t("reader.errorMissing")
+            : failure === "unreadable"
+              ? t("reader.invalid.title")
+              : t("reader.error")
+        }
+        body={
+          failure === "missing"
+            ? t("library.missing.body")
+            : failure === "unreadable"
+              ? t("reader.invalid.body")
+              : t("reader.error.body")
+        }
+        actions={
+          <>
+            {failure === "missing" ? (
+              <button
+                type="button"
+                disabled={busy || relink.isPending}
+                onClick={() => relink.mutate(undefined, { onSuccess: (book) => book && onRetry() })}
+                className={primaryButton}
+              >
+                {t("library.missing.find")}
+              </button>
+            ) : null}
+            {failure === "other" ? (
+              <button type="button" disabled={busy} onClick={onRetry} className={primaryButton}>
+                {t("common.retry")}
+              </button>
+            ) : null}
+            {back}
+          </>
+        }
+      />
     </main>
   );
 }
@@ -68,9 +153,17 @@ function toSaveState(
   return { page: position.page, offsetInPage: position.offsetInPage, zoom, viewMode, pageCount };
 }
 
-function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
+function ReaderView({
+  book,
+  start,
+  initialPanel,
+}: {
+  book: Book;
+  start: ReadingStart;
+  initialPanel: ReaderPanel | null;
+}) {
   const t = useT();
-  const documentState = useNativeDocument(book.id);
+  const { state: documentState, reload } = useNativeDocument(book.id);
   const viewer = useRef<ViewerHandle>(null);
   const chrome = useChromeVisibility();
   const saver = useReadingPosition(book.id);
@@ -90,7 +183,7 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
   const highlightSession = useHighlightSession(book.id);
   const { toggleHighlightMode } = highlightSession;
   const locale = useLocaleStore((state) => state.locale);
-  const [sidePanel, setSidePanel] = useState<"highlights" | "outline" | null>(null);
+  const [sidePanel, setSidePanel] = useState<ReaderPanel | null>(initialPanel);
   const [exporting, setExporting] = useState(false);
   const outline = useNativeOutline(book.id);
   // Focus mode hides the bar and the panels; only the page stays. F or Escape leaves it.
@@ -222,7 +315,13 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
   useReaderShortcuts(onAction);
 
   if (documentState.status === "loading") return <ReaderMessage>{t("reader.loading")}</ReaderMessage>;
-  if (documentState.status === "error") return <ReaderMessage>{t("reader.error")}</ReaderMessage>;
+  if (documentState.status === "error") {
+    return <ReaderFailure failure={classifyOpenError(documentState.error)} busy={false} onRetry={reload} />;
+  }
+  // The engine opened it but found no pages (a file whose header is a PDF's and nothing else): same as unreadable.
+  if (documentState.document.pageCount === 0) {
+    return <ReaderFailure failure="unreadable" busy={false} onRetry={reload} />;
+  }
 
   const viewerProps = {
     start: { zoom: start.zoom, position: start.position },
@@ -240,10 +339,12 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
       className="relative h-screen w-full overflow-hidden bg-canvas"
       onMouseMove={focusMode ? undefined : chrome.wake}
     >
+      <ReadingProgress page={page} pageCount={pageCount} />
       <NativeViewer ref={viewer} bookId={book.id} document={documentState.document} {...viewerProps} />
       {highlightSession.selection && !highlightSession.editing ? (
         <SelectionToolbar
           anchor={highlightSession.selection.anchor}
+          lastColor={highlightSession.lastColor}
           onPick={highlightSession.toolbar.pick}
           onNote={highlightSession.toolbar.note}
           onCopy={highlightSession.toolbar.copy}
@@ -267,13 +368,14 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
         <div
           role="status"
           onClick={highlightSession.dismissNotice}
-          className="fixed bottom-20 left-1/2 z-30 -translate-x-1/2 border border-line bg-surface px-5 py-3 text-ui text-ink-2"
+          className="fixed bottom-24 left-1/2 z-30 -translate-x-1/2 rounded-pill bg-pill px-5 py-3 text-ui text-ink-2 shadow-float"
         >
           {highlightSession.notice}
         </div>
       ) : null}
       <ReaderBar
         title={book.title}
+        author={book.author}
         page={page}
         pageCount={pageCount}
         scale={view.scale}
@@ -283,12 +385,14 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
         onZoomOut={() => viewer.current?.stepZoom(-1)}
         onFocusWithin={chrome.pin}
         highlightMode={highlightSession.highlightMode}
+        lastColor={highlightSession.lastColor}
         onToggleHighlightMode={toggleHighlightMode}
         highlightCount={highlightSession.highlights.length}
         highlightsOpen={sidePanel === "highlights"}
         onToggleHighlights={() => setSidePanel((open) => (open === "highlights" ? null : "highlights"))}
         outlineOpen={sidePanel === "outline"}
         onToggleOutline={() => setSidePanel((open) => (open === "outline" ? null : "outline"))}
+        panelOpen={sidePanel !== null}
         onOpenSearch={openSearch}
         viewMode={viewMode}
         onViewMode={changeViewMode}
@@ -322,6 +426,16 @@ function ReaderView({ book, start }: { book: Book; start: ReadingStart }) {
           onClose={() => setSidePanel(null)}
         />
       ) : null}
+    </div>
+  );
+}
+
+/** The thin line at the top of the reader: how far into the book the page is (DESIGN.md, línea de progreso). */
+function ReadingProgress({ page, pageCount }: { page: number; pageCount: number }) {
+  const fill = pageCount > 0 ? Math.min(1, Math.max(0, page / pageCount)) : 0;
+  return (
+    <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[3px] bg-track">
+      <div className="h-full bg-accent" style={{ width: `${fill * 100}%` }} />
     </div>
   );
 }

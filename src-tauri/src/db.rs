@@ -14,6 +14,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0003_title_source.sql"),
     include_str!("migrations/0004_regenerate_covers.sql"),
     include_str!("migrations/0005_reindex_filename_titles.sql"),
+    include_str!("migrations/0006_cover_color.sql"),
 ];
 
 /// Versión que obliga a borrar las portadas de `covers/` al aplicarse (ver `0004_regenerate_covers.sql`).
@@ -229,7 +230,7 @@ mod tests {
             .expect("insert");
         }
 
-        assert_eq!(migrate(&mut conn).expect("migrate"), vec![5]);
+        assert_eq!(migrate(&mut conn).expect("migrate"), vec![5, 6]);
 
         let states = |conn: &Connection| -> Vec<(String, String, i64)> {
             conn.prepare("SELECT id, scan_state, has_cover FROM books ORDER BY id")
@@ -256,6 +257,39 @@ mod tests {
         assert!(migrate(&mut conn).expect("second migrate").is_empty());
         conn.execute_batch(MIGRATIONS[4]).expect("rerun");
         assert_eq!(states(&conn), after);
+    }
+
+    #[test]
+    fn version_6_adds_cover_color_without_touching_existing_books() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut conn = Connection::open(dir.path().join("atril.db")).expect("open");
+        for sql in &MIGRATIONS[..5] {
+            conn.execute_batch(sql).expect("old migration");
+        }
+        conn.pragma_update(None, "user_version", 5)
+            .expect("version");
+        conn.execute(
+            "INSERT INTO books (id, path, file_size, title, added_at, scan_state, has_cover)
+             VALUES ('a', '/a.pdf', 1, 'Libro', 'now', 'done', 1)",
+            [],
+        )
+        .expect("insert");
+
+        assert_eq!(migrate(&mut conn).expect("migrate"), vec![6]);
+
+        let (title, state, has_cover, color): (String, String, i64, Option<String>) = conn
+            .query_row(
+                "SELECT title, scan_state, has_cover, cover_color FROM books WHERE id = 'a'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .expect("book");
+        assert_eq!(
+            (title.as_str(), state.as_str(), has_cover, color),
+            ("Libro", "done", 1, None),
+            "the book is untouched and has no color yet"
+        );
+        assert!(migrate(&mut conn).expect("second migrate").is_empty());
     }
 
     #[test]
