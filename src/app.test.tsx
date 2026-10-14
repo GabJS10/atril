@@ -131,6 +131,17 @@ describe("app shell", () => {
     expect(screen.getByRole("link", { name: "Volver a la biblioteca" })).toBeInTheDocument();
   });
 
+  it("does not leave a blank reader when the engine finds no pages in the file", async () => {
+    mockCommands({
+      open_book: () => ({ book, readingState: null }),
+      open_document: () => ({ pageCount: 0, pageBaseUrl: "atril://localhost/page/abc123", pages: [] }),
+    });
+    renderAt("/read/abc123");
+
+    expect(await screen.findByRole("heading", { name: "Este PDF no se puede leer" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Volver a la biblioteca" })).toBeInTheDocument();
+  });
+
   it("offers to try again when the book fails to open for another reason", async () => {
     let calls = 0;
     mockCommands({

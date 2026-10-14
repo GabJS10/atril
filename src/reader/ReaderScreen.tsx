@@ -318,6 +318,10 @@ function ReaderView({
   if (documentState.status === "error") {
     return <ReaderFailure failure={classifyOpenError(documentState.error)} busy={false} onRetry={reload} />;
   }
+  // The engine opened it but found no pages (a file whose header is a PDF's and nothing else): same as unreadable.
+  if (documentState.document.pageCount === 0) {
+    return <ReaderFailure failure="unreadable" busy={false} onRetry={reload} />;
+  }
 
   const viewerProps = {
     start: { zoom: start.zoom, position: start.position },

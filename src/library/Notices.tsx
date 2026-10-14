@@ -32,14 +32,14 @@ export function ScanningLibrary({ found }: { found: number }) {
   );
 }
 
-/** Books whose file is gone: the reader cannot open them, but nothing is lost (DESIGN.md, aviso). */
+/** Books whose file is gone: the reader cannot open them, but nothing is lost (DESIGN.md, aviso). One card each; the caller spaces them. */
 export function MissingBanner({ books }: { books: Book[] }) {
   const t = useT();
   const relink = useRelinkBook();
   const remove = useRemoveBook();
   if (books.length === 0) return null;
   return (
-    <div className="flex flex-col gap-4">
+    <>
       {books.map((book) => (
         <StateCard
           key={book.id}
@@ -68,7 +68,7 @@ export function MissingBanner({ books }: { books: Book[] }) {
           }
         />
       ))}
-    </div>
+    </>
   );
 }
 
@@ -79,7 +79,7 @@ export function UnreadableBanner({ books }: { books: Book[] }) {
   const remove = useRemoveBook();
   if (books.length === 0) return null;
   return (
-    <div className="flex flex-col gap-4">
+    <>
       {books.map((book) => (
         <StateCard
           key={book.id}
@@ -108,7 +108,7 @@ export function UnreadableBanner({ books }: { books: Book[] }) {
           }
         />
       ))}
-    </div>
+    </>
   );
 }
 

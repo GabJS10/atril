@@ -121,8 +121,12 @@ export function LibraryScreen() {
 
       {data && data.bookCount > 0 ? (
         <>
-          <MissingBanner books={missing} />
-          <UnreadableBanner books={unreadable} />
+          {!search && missing.length + unreadable.length > 0 ? (
+            <div className="flex flex-col gap-4">
+              <MissingBanner books={missing} />
+              <UnreadableBanner books={unreadable} />
+            </div>
+          ) : null}
           {search ? (
             <section aria-labelledby="results-title" className="flex flex-col gap-5">
               <SectionHeader

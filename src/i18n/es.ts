@@ -34,7 +34,7 @@ export const es = {
   "library.scanning": "Escaneando la biblioteca…",
   "library.scanningFound": "{found} encontrados",
   "library.pageOf": "p. {page} de {pages}",
-  "library.missing.title": "No encontramos el archivo de «{title}».",
+  "library.missing.title": "No encontramos el archivo de «{title}»",
   "library.missing.body":
     "Su progreso, subrayados y Salas se conservan. Si lo mueves o renombras, Atril lo reconoce por su contenido.",
   "library.missing.find": "Buscar archivo…",

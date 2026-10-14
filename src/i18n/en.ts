@@ -37,7 +37,7 @@ export const en: Record<TranslationKey, string> = {
   "library.scanning": "Scanning the library…",
   "library.scanningFound": "{found} found",
   "library.pageOf": "p. {page} of {pages}",
-  "library.missing.title": "We could not find the file of “{title}”.",
+  "library.missing.title": "We could not find the file of “{title}”",
   "library.missing.body":
     "Its progress, highlights and collections are kept. If you move or rename it, Atril recognises it by its content.",
   "library.missing.find": "Find file…",
