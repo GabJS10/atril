@@ -3,6 +3,8 @@ import { useT } from "../i18n";
 import { BookFilterBar } from "./BookFilters";
 import { DEFAULT_FILTERS, filtersToQuery, type BookFilters } from "./filters";
 import { BookGrid } from "./BookGrid";
+import { EmptyScope, NoFilterResults } from "./EmptyStates";
+import { LoadError } from "./Notices";
 import { countLabel } from "./format";
 import { useBooks } from "./queries";
 import type { BooksScope } from "./booksScope";
@@ -23,14 +25,13 @@ export function BooksScreen({ scope }: { scope: BooksScope }) {
       : scope === "reading"
         ? t("library.filter.reading")
         : t("nav.all");
-  const empty =
-    scope === "all" && filters.status === undefined
-      ? t("books.empty.all")
-      : scope === "favorites" && filters.status === undefined
-        ? t("books.empty.favorites")
-        : scope === "reading"
-          ? t("books.empty.reading")
-          : t("library.noResults");
+  // A status filter that leaves nothing is not the same as an empty list: it can be lifted.
+  const filtered = scope !== "reading" && filters.status !== undefined;
+  const empty = filtered ? (
+    <NoFilterResults onClear={() => setFilters({ ...filters, status: undefined })} />
+  ) : (
+    <EmptyScope scope={scope} />
+  );
 
   return (
     <main className="flex min-h-screen flex-col gap-8 px-14 pt-9 pb-18">
@@ -39,6 +40,13 @@ export function BooksScreen({ scope }: { scope: BooksScope }) {
         <p className="text-base text-ink-2">{books.data ? countLabel(books.data.length, t) : ""}</p>
       </header>
       <BookFilterBar filters={filters} onChange={setFilters} showStatus={scope !== "reading"} />
+      {books.isError ? (
+        <LoadError
+          title={t("library.error")}
+          body={t("library.error.body")}
+          onRetry={() => void books.refetch()}
+        />
+      ) : null}
       {books.data ? <BookGrid books={books.data} empty={empty} /> : null}
     </main>
   );

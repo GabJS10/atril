@@ -33,7 +33,6 @@ export function Cover({
   size?: CoverSize;
   className?: string;
 }) {
-  const t = useT();
   const compact = size === "sm";
   return (
     <div
@@ -55,10 +54,12 @@ export function Cover({
               {book.title}
             </div>
           </div>
-          <div className="cover-mark size-[8cqw] rounded-full" />
+          <div
+            className={`cover-mark size-[8cqw] rounded-full ${book.scanState === "pending" ? "motion-safe:animate-pulse" : ""}`}
+          />
           {compact ? null : (
             <div className="cover-author font-semibold tracking-[0.12em] uppercase leading-[1.3]">
-              {book.author ?? (book.scanState === "pending" ? t("library.pending") : "")}
+              {book.author ?? ""}
             </div>
           )}
         </div>
@@ -134,6 +135,10 @@ export function BookCard({
         ) : null}
         {book.missing ? (
           <div className="text-label tracking-label text-ink-3 uppercase">{t("library.missing.label")}</div>
+        ) : book.scanState === "pending" ? (
+          <div className="text-label tracking-label text-ink-3 uppercase">{t("library.pending")}</div>
+        ) : book.scanState === "failed" ? (
+          <div className="text-label tracking-label text-ink-3 uppercase">{t("library.failed.label")}</div>
         ) : null}
       </div>
     </>

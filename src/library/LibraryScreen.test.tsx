@@ -129,7 +129,7 @@ describe("library screen", () => {
     renderLibrary();
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("No encontramos el archivo de «Rayuela».");
+    expect(alert).toHaveTextContent("No encontramos el archivo de «Rayuela»");
     expect(screen.getByRole("button", { name: "Buscar archivo…" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Quitar de la biblioteca" })).toBeEnabled();
   });

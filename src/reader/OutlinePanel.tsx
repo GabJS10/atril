@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useT } from "../i18n";
 import { activeOutlineItem, hasOutline, type OutlineItem } from "./outline";
+import { StateCard } from "../ui/StateCard";
 import { SidePanel } from "./SidePanel";
 
 /** Indentation of each level of the index (Tailwind's spacing scale). */
@@ -91,7 +92,7 @@ export function OutlinePanel({
         ) : hasOutline(items) ? (
           renderList(items, 0, "")
         ) : (
-          <p className="text-ui text-ink-2">{t("outline.empty")}</p>
+          <StateCard size="sm" tone="raised" title={t("outline.empty")} body={t("outline.empty.body")} />
         )}
       </nav>
     </SidePanel>

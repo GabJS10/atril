@@ -6,6 +6,8 @@ import { useFullscreenKey } from "../useFullscreenKey";
 import { useFileDrop } from "../library/useFileDrop";
 import { useLibraryEvents } from "../library/useLibraryEvents";
 import { applyTheme } from "../theme";
+import { primaryButton } from "../ui/buttons";
+import { StateCard } from "../ui/StateCard";
 
 function RootLayout() {
   const { data: settings } = useSettings();
@@ -39,11 +41,18 @@ function RootLayout() {
 function NotFound() {
   const t = useT();
   return (
-    <main className="flex flex-1 flex-col items-center justify-center gap-4 p-8">
-      <h1 className="text-2xl">{t("notFound.title")}</h1>
-      <Link to="/" className="underline underline-offset-4">
-        {t("notFound.back")}
-      </Link>
+    <main className="flex flex-1 items-center justify-center p-8">
+      <StateCard
+        heading={1}
+        className="w-full max-w-[640px]"
+        title={t("notFound.title")}
+        body={t("notFound.body")}
+        actions={
+          <Link to="/" className={primaryButton}>
+            {t("notFound.back")}
+          </Link>
+        }
+      />
     </main>
   );
 }

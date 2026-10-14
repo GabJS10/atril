@@ -83,7 +83,19 @@ describe("HighlightsPanel", () => {
   it("shows the empty state when there are no highlights", () => {
     renderPanel([]);
 
-    expect(screen.getByText(/Todavía no hay subrayados/)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Todavía no hay subrayados" })).toBeTruthy();
+    // It says how to make one: select text, or press H.
+    expect(screen.getByText(/Selecciona un texto/)).toBeTruthy();
+    expect(screen.getByText(/pulsa H/)).toBeTruthy();
+  });
+
+  it("says no highlight has a note when the filter leaves nothing", () => {
+    renderPanel([highlight("a", 1, "Primer texto")]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Con nota" }));
+
+    expect(screen.getByRole("heading", { name: "Ningún subrayado tiene nota" })).toBeTruthy();
+    expect(screen.getByText(/para escribir una/)).toBeTruthy();
   });
 
   it("closes with Escape", () => {

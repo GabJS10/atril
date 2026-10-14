@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSettings } from "../api/queries";
-import { exportHighlights, isAppError, openExternalUrl, pickExportPath } from "../api/tauri";
+import { exportHighlights, openExternalUrl, pickExportPath } from "../api/tauri";
 import type { Book, ReadingStateInput, Zoom, ViewMode } from "../api/types";
 import { useLocaleStore, useT } from "../i18n";
 import { NativeViewer } from "./native/NativeViewer";
@@ -22,7 +22,10 @@ import { followOutlineItem } from "./outline";
 import { useNativeOutline } from "./useNativeOutline";
 import { exportBookHighlights } from "./highlightExport";
 import { SelectionToolbar } from "./SelectionToolbar";
-import { secondaryButton } from "../ui/buttons";
+import { primaryButton, secondaryButton } from "../ui/buttons";
+import { StateCard } from "../ui/StateCard";
+import { useRelinkBook } from "../library/actions";
+import { classifyOpenError, type OpenFailure } from "./openError";
 
 /** The side panel a book can open with (the "Subrayados" link of the library). */
 export type ReaderPanel = "highlights" | "outline";
@@ -34,23 +37,101 @@ export function ReaderScreen({ bookId, panel = null }: { bookId: string; panel?:
 
   if (opened.isPending || settings.isPending) return <ReaderMessage>{t("reader.loading")}</ReaderMessage>;
   if (opened.isError) {
-    const missing = isAppError(opened.error) && opened.error.code === "file_missing";
-    return <ReaderMessage>{missing ? t("reader.errorMissing") : t("reader.error")}</ReaderMessage>;
+    return (
+      <ReaderFailure
+        failure={classifyOpenError(opened.error)}
+        busy={opened.isFetching}
+        onRetry={() => void opened.refetch()}
+      />
+    );
   }
-  if (settings.isError) return <ReaderMessage>{t("reader.error")}</ReaderMessage>;
+  if (settings.isError) {
+    return (
+      <ReaderFailure failure="other" busy={settings.isFetching} onRetry={() => void settings.refetch()} />
+    );
+  }
 
   const start = initialReadingStart(opened.data.readingState, settings.data);
   return <ReaderView key={bookId} book={opened.data.book} start={start} initialPanel={panel} />;
 }
 
+/** The reader while it waits: a line of text and the way back. */
 function ReaderMessage({ children }: { children: string }) {
   const t = useT();
   return (
-    <main className="flex h-screen flex-col items-center justify-center gap-6 p-8 text-ink-2">
+    <main
+      role="status"
+      className="flex h-screen flex-col items-center justify-center gap-6 bg-canvas p-8 text-ink-2"
+    >
       <p>{children}</p>
       <Link to="/" className={secondaryButton}>
-        {t("reader.back")}
+        {t("reader.backToLibrary")}
       </Link>
+    </main>
+  );
+}
+
+/**
+ * The book could not be opened: what happened in plain words and the way out. A missing file can be pointed at its
+ * new place; an unreadable one only leads back; anything else can be tried again.
+ */
+function ReaderFailure({
+  failure,
+  busy,
+  onRetry,
+}: {
+  failure: OpenFailure;
+  busy: boolean;
+  onRetry: () => void;
+}) {
+  const t = useT();
+  const relink = useRelinkBook();
+  const back = (
+    <Link to="/" className={failure === "unreadable" ? primaryButton : secondaryButton}>
+      {t("reader.backToLibrary")}
+    </Link>
+  );
+  return (
+    <main className="flex h-screen items-center justify-center bg-canvas p-8">
+      <StateCard
+        heading={1}
+        role="alert"
+        className="w-full max-w-[640px]"
+        title={
+          failure === "missing"
+            ? t("reader.errorMissing")
+            : failure === "unreadable"
+              ? t("reader.invalid.title")
+              : t("reader.error")
+        }
+        body={
+          failure === "missing"
+            ? t("library.missing.body")
+            : failure === "unreadable"
+              ? t("reader.invalid.body")
+              : t("reader.error.body")
+        }
+        actions={
+          <>
+            {failure === "missing" ? (
+              <button
+                type="button"
+                disabled={busy || relink.isPending}
+                onClick={() => relink.mutate(undefined, { onSuccess: (book) => book && onRetry() })}
+                className={primaryButton}
+              >
+                {t("library.missing.find")}
+              </button>
+            ) : null}
+            {failure === "other" ? (
+              <button type="button" disabled={busy} onClick={onRetry} className={primaryButton}>
+                {t("common.retry")}
+              </button>
+            ) : null}
+            {back}
+          </>
+        }
+      />
     </main>
   );
 }
@@ -82,7 +163,7 @@ function ReaderView({
   initialPanel: ReaderPanel | null;
 }) {
   const t = useT();
-  const documentState = useNativeDocument(book.id);
+  const { state: documentState, reload } = useNativeDocument(book.id);
   const viewer = useRef<ViewerHandle>(null);
   const chrome = useChromeVisibility();
   const saver = useReadingPosition(book.id);
@@ -234,7 +315,13 @@ function ReaderView({
   useReaderShortcuts(onAction);
 
   if (documentState.status === "loading") return <ReaderMessage>{t("reader.loading")}</ReaderMessage>;
-  if (documentState.status === "error") return <ReaderMessage>{t("reader.error")}</ReaderMessage>;
+  if (documentState.status === "error") {
+    return <ReaderFailure failure={classifyOpenError(documentState.error)} busy={false} onRetry={reload} />;
+  }
+  // The engine opened it but found no pages (a file whose header is a PDF's and nothing else): same as unreadable.
+  if (documentState.document.pageCount === 0) {
+    return <ReaderFailure failure="unreadable" busy={false} onRetry={reload} />;
+  }
 
   const viewerProps = {
     start: { zoom: start.zoom, position: start.position },

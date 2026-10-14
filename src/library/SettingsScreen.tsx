@@ -1,13 +1,12 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useSettings, useUpdateSettings } from "../api/queries";
-import { isDefaultPdfReader, setDefaultPdfReader } from "../api/tauri";
 import type { LibraryFolder, Settings } from "../api/types";
 import { useLocaleStore, useT } from "../i18n";
 import { ghostButton, primaryButton, secondaryButton, smallButton } from "../ui/buttons";
 import { FolderIcon } from "../ui/icons";
 import { Segmented } from "../ui/Segmented";
 import { useAddFolder } from "./actions";
+import { LoadError } from "./Notices";
 import { useFolderMutations } from "./collectionActions";
 import { roomColorOf } from "./identity";
 import { useFolders } from "./queries";
@@ -48,6 +47,14 @@ export function SettingsScreen() {
       <h1 className="font-serif text-obra leading-none font-semibold">{t("settings.title")}</h1>
 
       <FoldersCard />
+
+      {settings.isError ? (
+        <LoadError
+          title={t("settings.error")}
+          body={t("settings.error.body")}
+          onRetry={() => void settings.refetch()}
+        />
+      ) : null}
 
       {settings.data ? (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(420px,1fr))] gap-6">
@@ -131,8 +138,6 @@ export function SettingsScreen() {
           </section>
         </div>
       ) : null}
-
-      <DefaultReaderCard />
     </main>
   );
 }
@@ -215,58 +220,24 @@ function FoldersCard() {
           </li>
         ))}
         {folders.data && folders.data.length === 0 ? (
-          <li className="py-2 text-ink-2">{t("settings.folders.empty")}</li>
+          <li className="flex flex-col gap-1.5 rounded-tile bg-raised px-6 py-5">
+            <b className="font-serif text-title-sm leading-[1.15] font-semibold">
+              {t("settings.folders.empty")}
+            </b>
+            <span className="max-w-[560px] text-ui leading-relaxed text-ink-2">
+              {t("settings.folders.empty.body")}
+            </span>
+          </li>
+        ) : null}
+        {folders.isError ? (
+          <li role="alert" className="flex flex-wrap items-center gap-4 rounded-tile bg-raised px-6 py-5">
+            <span className="flex-1 text-ui text-ink-2">{t("library.error")}</span>
+            <button type="button" className={smallButton} onClick={() => void folders.refetch()}>
+              {t("common.retry")}
+            </button>
+          </li>
         ) : null}
       </ul>
-    </section>
-  );
-}
-
-const defaultReaderKey = ["system", "default-reader"] as const;
-
-/** Lector predeterminado: hidden when the system cannot tell (no `xdg-mime`). */
-function DefaultReaderCard() {
-  const t = useT();
-  const status = useQuery({ queryKey: defaultReaderKey, queryFn: isDefaultPdfReader, retry: false });
-  const [failed, setFailed] = useState(false);
-  const makeDefault = useMutation({
-    mutationFn: setDefaultPdfReader,
-    onSuccess: () => {
-      setFailed(false);
-      void status.refetch();
-    },
-    onError: () => setFailed(true),
-  });
-
-  if (status.isError || status.data === undefined) return null;
-  return (
-    <section
-      className="flex flex-wrap items-center gap-6 rounded-card bg-card p-8"
-      aria-labelledby="default-title"
-    >
-      <div className="flex min-w-60 flex-1 basis-90 flex-col gap-1.5">
-        <h2 id="default-title" className={CARD_TITLE}>
-          {t("settings.defaultReader")}
-        </h2>
-        <span className="text-ui text-ink-2">
-          {status.data ? t("settings.defaultReader.yes") : t("settings.defaultReader.body")}
-        </span>
-        {failed ? (
-          <span role="alert" className="text-ui text-ink">
-            {t("settings.defaultReader.failed")}
-          </span>
-        ) : null}
-      </div>
-      {status.data ? null : (
-        <button
-          type="button"
-          onClick={() => makeDefault.mutate()}
-          disabled={makeDefault.isPending}
-          className={secondaryButton}
-        >
-          {t("settings.defaultReader.action")}
-        </button>
-      )}
     </section>
   );
 }
