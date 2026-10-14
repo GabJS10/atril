@@ -2,6 +2,11 @@
 
 All notable changes to Atril are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [1.0.1] - 2026-10-14
+
+### Fixed
+- The .deb package now has a description, homepage and maintainer (the installer showed "(none)"). The launcher entry gets a tooltip comment too.
+
 ## [1.0.0] - 2026-10-13
 
 First public version, for Linux (.deb and AppImage).

@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "atril-libros",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "identifier": "io.github.gabjs10.atril",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -27,6 +27,11 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "category": "Productivity",
+    "publisher": "GabJS10",
+    "homepage": "https://github.com/GabJS10/atril",
+    "shortDescription": "A quiet desktop reader for your PDF books",
+    "longDescription": "Atril is a minimalist, lightweight PDF reader for books, with a library at its heart. It remembers the exact position in every book, keeps favorites and collections, and saves highlights and notes instantly (exportable to Markdown) without ever modifying the original PDF. Includes night and sepia modes, table of contents and search.",
     "linux": {
       "deb": {
         "desktopTemplate": "linux/atril.desktop.hbs"

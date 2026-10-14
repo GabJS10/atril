@@ -1,7 +1,7 @@
 [package]
 name = "atril-libros"
-version = "1.0.0"
-description = "Minimalist PDF reader with a library"
+version = "1.0.1"
+description = "A quiet desktop reader for your PDF books"
 authors = ["GabJS10"]
 license = "AGPL-3.0-only"
 edition = "2024"
