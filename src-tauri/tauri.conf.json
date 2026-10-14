@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Atril",
+  "productName": "atril-libros",
   "version": "1.0.0",
   "identifier": "io.github.gabjs10.atril",
   "build": {

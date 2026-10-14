@@ -1,5 +1,5 @@
 [package]
-name = "atril"
+name = "atril-libros"
 version = "1.0.0"
 description = "Minimalist PDF reader with a library"
 authors = ["GabJS10"]
