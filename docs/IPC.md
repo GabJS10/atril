@@ -1,6 +1,6 @@
 # Contrato IPC (frontend ⇄ backend)
 
-**Versión:** v1.1 (`Book.coverColor`, para el rediseño de la biblioteca). v1.0 (cierre de la fase R: se quitan la ruta `POST /jpx` y los comandos del indexador de pdf.js `list_pending_scans`, `save_book_scan` y `mark_scan_failed`; texto con cajas, búsqueda por eventos, índice y enlaces son de la v0.8; el motor nativo, `open_document` y `GET /page/…`, es de la v0.7). **Dueño:** `plan`. `backend` propone los cambios y `frontend` los implementa en `src/api/tauri.ts`. Un cambio que rompa el contrato se coordina antes con `plan` (ver `AGENTS.md`).
+**Versión:** v1.2 (fase 5 sin integración con el sistema: se quitan los comandos y el evento de apertura de PDF desde el sistema; ver la sección de fase 5). v1.1 (`Book.coverColor`, para el rediseño de la biblioteca). v1.0 (cierre de la fase R: se quitan la ruta `POST /jpx` y los comandos del indexador de pdf.js `list_pending_scans`, `save_book_scan` y `mark_scan_failed`; texto con cajas, búsqueda por eventos, índice y enlaces son de la v0.8; el motor nativo, `open_document` y `GET /page/…`, es de la v0.7). **Dueño:** `plan`. `backend` propone los cambios y `frontend` los implementa en `src/api/tauri.ts`. Un cambio que rompa el contrato se coordina antes con `plan` (ver `AGENTS.md`).
 
 Este documento es la única fuente de verdad sobre los comandos Tauri, los eventos, las URLs del protocolo `atril://` y los tipos compartidos. Si el código y este archivo no coinciden, se corrige uno de los dos en el mismo cambio.
 
@@ -368,29 +368,14 @@ Reglas exactas:
 
 ### Fase 5 (integración con el sistema, v0.5)
 
-Linux primero. Un PDF llega a Atril de tres formas: doble clic con la app cerrada (argumentos de arranque), doble clic con la app abierta (segunda instancia) o desde el menú "Abrir con". En los tres casos el libro queda registrado como en una importación (`open_path`).
+Atril no se registra como lector de PDF del sistema (ver `docs/PLAN.md`): no hay comandos ni eventos de integración con el sistema. La instancia única enfoca la ventana ya abierta cuando se lanza la app otra vez, y sus argumentos se ignoran.
 
-**Comandos (5.B1)**
-| Comando | Argumentos | Devuelve | Errores |
-|---|---|---|---|
-| `take_pending_open_file` | — | `string \| null`: `bookId` de un PDF pendiente de abrir (primer lanzamiento con PDF). Cada id se devuelve una sola vez, en orden | — |
-| `set_default_pdf_reader` | — | `null`. Ejecuta `xdg-mime default Atril.desktop application/pdf`. Falla si el `.desktop` no está instalado (no se puede hacer lector predeterminado desde un ejecutable suelto) | `io` |
-| `is_default_pdf_reader` | — | `boolean`: si `xdg-mime query default application/pdf` devuelve `Atril.desktop` | `io` (`xdg-mime` no disponible) |
-
-**Eventos**
-- `app://open-file` `{ bookId }`: llega cuando una segunda instancia recibe un PDF. La instancia que ya está abierta importa el archivo, se enfoca y emite el evento. El primer lanzamiento no emite este evento: el front llama a `take_pending_open_file` al arrancar.
-
-**Reglas**
-1. Argumentos: el primero es el ejecutable y se ignora. Se aceptan rutas relativas (se resuelven con el directorio actual de la segunda instancia) y URI `file://` (con `%` decodificado). Las opciones (`-…`), lo que no es `.pdf` y los duplicados se ignoran. Un PDF inválido no impide abrir los demás.
-2. `bundle.fileAssociations` declara `pdf` como `application/pdf` con rol `Viewer`: el `.deb` y el AppImage registran Atril como lector.
-3. Con la instancia única, un segundo lanzamiento no arranca una ventana nueva.
-4. Iconos: la app usa todavía los iconos de la plantilla. Los propios los define el diseño; no se añaden hasta que `frontend` los apruebe.
+**Iconos:** la app usa todavía los iconos de la plantilla. Los propios los define el diseño; no se añaden hasta que `frontend` los apruebe.
 
 ## Eventos (borrador)
 | Evento | Payload | Cuándo |
 |---|---|---|
 | `library://changed` | `{ reason: "scan" \| "watch" \| "import" \| "index" }` | Cambió la biblioteca por algo que no pidió el front (escaneo de una carpeta, vigilancia, importación en segundo plano, o un libro indexado por el indexador nativo con `reason: "index"`): el front invalida sus consultas. Los comandos que pide el propio front no emiten el evento; el front invalida lo suyo |
 | `library://scan` | `ScanStatus` | Empieza, avanza (como mucho una vez por segundo) o termina un escaneo |
-| `app://open-file` | `{ bookId: string }` | El sistema pidió abrir un PDF (segundo doble clic con la app abierta) |
 | `search://progress` | `{ searchId, page, matches }` | Coincidencias de una página durante una búsqueda (ver "Texto, búsqueda, índice y enlaces (v0.8)") |
 | `search://done` | `{ searchId, total, pagesSearched, cancelled, error }` | Fin de una búsqueda: terminada, cancelada o con error |
