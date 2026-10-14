@@ -24,14 +24,15 @@ Lista de comprobación que se pasa sobre la app real (`npm run tauri dev`, y en 
 - ~~"Abrir con Atril" desde el gestor de archivos~~: descartado el 2026-10-13. Atril no se registra como lector de PDF (ver `PLAN.md`).
 
 ## v1.0.0 (release, sobre los paquetes instalados)
-Se pasa con el `.deb` instalado (`sudo apt install ./Atril_1.0.0_amd64.deb`) y otra vez con el AppImage (`chmod +x` y ejecutar). Primero con `~/.local/share/atril/` vacío (mover la carpeta a un lado) y después con la biblioteca real.
+Se pasa con el `.deb` instalado (`sudo apt install ./atril-libros_1.0.0_amd64.deb`) y otra vez con el AppImage (`chmod +x atril-libros_1.0.0_amd64.AppImage` y ejecutar). El paquete y el binario se llaman `atril-libros` para no chocar con el lector Atril de MATE (paquete `atril`); la app se sigue llamando «Atril». Primero con `~/.local/share/atril/` vacío (mover la carpeta a un lado) y después con la biblioteca real.
 
 **Instalación**
 - [ ] El `.deb` se instala sin errores ni dependencias rotas, y Atril aparece en el menú de aplicaciones con su icono.
 - [ ] El AppImage arranca sin instalar nada más.
 - [ ] Atril **no** aparece en "Abrir con" para un PDF, ni cambia el lector predeterminado (`xdg-mime query default application/pdf` sigue igual).
 - [ ] Lanzar Atril con la app ya abierta enfoca la ventana existente; no se abre otra.
-- [ ] `sudo apt remove atril` lo desinstala; los datos de `~/.local/share/atril/` se conservan.
+- [ ] `sudo apt remove atril-libros` lo desinstala; los datos de `~/.local/share/atril/` se conservan.
+- [ ] `apt list --upgradable` no ofrece el `atril` de MATE como actualización de Atril.
 
 **Primer arranque (datos vacíos)**
 - [ ] Biblioteca vacía con "Añadir carpeta…" y "Abrir un PDF…".

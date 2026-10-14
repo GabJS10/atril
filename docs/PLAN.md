@@ -12,7 +12,7 @@ Estética: "museo de arte de noche", monocroma (ver [`DESIGN-BRIEF.md`](DESIGN-B
 ## Decisiones tomadas
 | Tema | Decisión |
 |---|---|
-| Nombre | **Atril**, con identificador `io.github.gabjs10.atril` |
+| Nombre | **Atril**, con identificador `io.github.gabjs10.atril`. El paquete y el binario se llaman **`atril-libros`** (2026-10-13) porque Ubuntu/Mint ya tienen el paquete `atril` (lector de MATE): con el mismo nombre, apt lo ofrecería como actualización. El nombre visible sigue siendo «Atril» y los datos siguen en `~/.local/share/atril/` |
 | Stack | Tauri 2 + React 19 + TS + Vite + Tailwind 4 + TanStack Router/Query + Zustand; Rust con rusqlite |
 | Render | **pdf.js 6.x** (el motor de Firefox) con sus componentes de visor; la UI es propia. **Se sustituye en la fase R** (ver la fila siguiente) |
 | Motor (fase R) | **MuPDF** (crate `mupdf`, features `base14` sin `system-fonts`) en Rust, con un pool de 2 hilos. Las páginas llegan al visor como **JPEG q85** por `atril://page/…`. Licencia de Atril: **AGPL-3.0**. Decidido el 2026-10-12 tras los spikes R0 (MuPDF frente a PDFium en los 23 libros: 0 errores en ambos; MuPDF gana en escaneos repetidos, texto, búsqueda, hilos y libros enormes) |
