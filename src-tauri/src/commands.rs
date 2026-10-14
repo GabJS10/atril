@@ -19,7 +19,6 @@ use crate::library::{self, Book, ImportResult, OpenedBook, ReadingStateInput};
 use crate::query::{self, BookQuery, HomeData};
 use crate::scan::ScanStatus;
 use crate::settings::{self, Settings, SettingsPatch};
-use crate::system;
 use crate::watch;
 
 #[tauri::command]
@@ -374,20 +373,4 @@ pub fn export_highlights(
     let date = Utc::now().format("%Y-%m-%d").to_string();
     let conn = app.db()?;
     highlights::export(&conn, &book_id, Path::new(&dest_path), language, &date)
-}
-
-/// Libro que abrir al arrancar (primer lanzamiento con PDF). `null` si no hay ninguno.
-#[tauri::command]
-pub fn take_pending_open_file(app: State<'_, AppState>) -> Option<String> {
-    app.pending_open.take()
-}
-
-#[tauri::command]
-pub fn set_default_pdf_reader() -> Result<(), AppError> {
-    system::set_default_pdf_reader()
-}
-
-#[tauri::command]
-pub fn is_default_pdf_reader() -> Result<bool, AppError> {
-    system::is_default_pdf_reader()
 }
