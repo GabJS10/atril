@@ -129,4 +129,8 @@ Los libros se quedan donde están; la DB guarda su ruta y su huella.
 
 ## Releases
 - **v1.0.0** (2026-10-13): Linux, `.deb` y AppImage (paquete y binario `atril-libros`). Se construyen con `.github/workflows/release.yml` al empujar un tag `v*` sobre `main`, que deja un borrador de release en GitHub.
-- **Backlog:** `open_document` debería devolver `invalid_pdf` para un PDF sin páginas (hoy lo detecta el front); Windows.
+- **Backlog:**
+  - `open_document` debería devolver `invalid_pdf` para un PDF sin páginas (hoy lo detecta el front).
+  - El texto de un subrayado conserva el guion de partición de línea («enter- ing»): unir las palabras partidas al final de línea.
+  - El papel noche sobre escaneos amarillentos queda verdoso u oliva.
+  - Windows.
