@@ -2,7 +2,7 @@
 
 All notable changes to Atril are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
-## [1.0.0] - Unreleased
+## [1.0.0] - 2026-10-13
 
 First public version, for Linux (.deb and AppImage).
 

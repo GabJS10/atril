@@ -88,7 +88,7 @@ Comparado con Okular, el lector con pdf.js en WebKitGTK no es fluido: scroll, zo
 - [x] **5.B1** (`high`): `fileAssociations`, `tauri-plugin-single-instance`, `app://open-file`, `set_default_pdf_reader` (`xdg-mime`), iconos. **Revertido en parte** (2026-10-13): el usuario decidió que Atril no sea lector de PDF del sistema (ver `PLAN.md`, "Sin integración como lector del sistema").
 - [x] **5.B2** (`backend`): quitar `fileAssociations`, `set_default_pdf_reader`, `is_default_pdf_reader`, `take_pending_open_file`, la apertura por argumentos y `app://open-file`. La instancia única se queda (enfoca la ventana). `IPC.md` al día.
 - [x] **5.F1** (`frontend`): quitar la tarjeta de lector predeterminado de Ajustes y pulir los estados vacíos y de error con el diseño nuevo.
-- [ ] **5.P1** (plan): workflow de release (.deb + AppImage), `QA.md` completo, README y CHANGELOG, **v1.0.0**.
+- [x] **5.P1** (plan): workflow de release (.deb + AppImage), `QA.md` completo, README y CHANGELOG, **v1.0.0**.
 
 **Cierre:** el .deb y el AppImage se instalan y arrancan limpios; Atril no aparece como lector de PDF en el sistema; QA de `QA.md` pasada y visto bueno del usuario.
 

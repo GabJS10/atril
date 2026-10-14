@@ -127,5 +127,6 @@ Los libros se quedan donde están; la DB guarda su ruta y su huella.
   - `cargo run --release --example engine_bench -- <pdf>` (render y memoria);
   - `--example text_bench -- <pdf> [consulta]` (texto, búsqueda, índice e impacto en el render).
 
-## Siguiente
-- **Fase 5:** sistema y release para Linux (ver `ROADMAP.md`).
+## Releases
+- **v1.0.0** (2026-10-13): Linux, `.deb` y AppImage (paquete y binario `atril-libros`). Se construyen con `.github/workflows/release.yml` al empujar un tag `v*` sobre `main`, que deja un borrador de release en GitHub.
+- **Backlog:** `open_document` debería devolver `invalid_pdf` para un PDF sin páginas (hoy lo detecta el front); Windows.
