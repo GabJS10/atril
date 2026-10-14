@@ -11,11 +11,15 @@
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-c9a05a)](LICENSE)
 ![Platform: Linux](https://img.shields.io/badge/platform-Linux-171512)
 
-[Download](#install) · [Features](#features) · [Build from source](#build-from-source) · [Changelog](CHANGELOG.md)
+[Download](#install) · [Features](#features) · [Screenshots](#screenshots) · [Build from source](#build-from-source) · [Changelog](CHANGELOG.md)
 
 </div>
 
 ---
+
+<p align="center">
+  <img src="docs/screenshots/library.png" alt="Atril's library: a large 'continue reading' card for Pride and Prejudice with its last highlight, and the other books in progress below" width="100%">
+</p>
 
 *Atril* is Spanish for *lectern*: the stand that holds a book open while you read. The app does the same for the PDFs you read as books. It opens straight into your library, remembers the exact spot where you stopped in every book, and saves your highlights the moment you make them, without ever touching the original files.
 
@@ -41,6 +45,25 @@ It is a reader for your books, not a generic PDF viewer: you add a folder (or a 
 - A "gallery at night" design, in **dark** and **light** themes.
 - Interface in **English and Spanish**, following your system language.
 - Everything stays on your machine: no accounts, no network, no telemetry.
+
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/reader.png" alt="The reader: an illustrated page of Pride and Prejudice with highlights in four colors, the floating toolbar and the highlights panel"><br><sub><b>Reading.</b> Highlights in four pigments, with notes, and a toolbar that hides while you read.</sub></td>
+    <td width="50%"><img src="docs/screenshots/reader-night.png" alt="The reader in night mode on Alice's Adventures in Wonderland, with the selection toolbar"><br><sub><b>Night paper.</b> Also sepia. Select text to highlight, add a note or copy it.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/library-shelves.png" alt="Favorites with color covers and two rooms, Clásicos and Filosofía, with fanned covers"><br><sub><b>Favorites and rooms.</b> Your own collections, each with its color.</sub></td>
+    <td width="50%"><img src="docs/screenshots/room.png" alt="A room with its header, filters by reading status and its books"><br><sub><b>A room.</b> Filter by status and sort as you like.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/light.png" alt="The library in the light theme"><br><sub><b>Light theme.</b> "White cube", for daytime.</sub></td>
+    <td width="50%"><img src="docs/screenshots/settings.png" alt="Settings: library folders, appearance and reading defaults"><br><sub><b>Settings.</b> Folders, theme, language and reading defaults.</sub></td>
+  </tr>
+</table>
+
+<sub>The books in the screenshots are public-domain editions from the Internet Archive (sources in <a href="docs/screenshots/README.md">docs/screenshots</a>).</sub>
 
 ## Install
 
