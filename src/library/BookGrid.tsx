@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { Book } from "../api/types";
 import { BookCard } from "./Cover";
 
@@ -8,10 +9,11 @@ export function BookGrid({
   collectionId,
 }: {
   books: Book[];
-  empty?: string;
+  /** What to show when there are no books (a StateCard). */
+  empty?: ReactNode;
   collectionId?: string;
 }) {
-  if (books.length === 0) return empty ? <p className="text-ink-2">{empty}</p> : null;
+  if (books.length === 0) return empty ? <>{empty}</> : null;
   return (
     <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-x-7 gap-y-10">
       {books.map((book) => (

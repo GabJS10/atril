@@ -56,7 +56,8 @@ describe("OutlinePanel", () => {
   it("says so when the book has no index", () => {
     render(<OutlinePanel items={[]} currentPage={1} onGo={vi.fn()} onClose={vi.fn()} />);
 
-    expect(screen.getByText("Este libro no tiene índice.")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Este libro no tiene índice" })).toBeTruthy();
+    expect(screen.getByText(/escribe una página en el campo/)).toBeTruthy();
   });
 
   it("shows a loading message while the index is read", () => {

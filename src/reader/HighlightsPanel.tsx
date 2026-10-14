@@ -4,6 +4,7 @@ import type { Highlight } from "../api/types";
 import { chipButton } from "../ui/buttons";
 import { PIGMENT_COLOR, PIGMENT_KEY } from "./highlightPresentation";
 import { groupByPage } from "./highlightList";
+import { StateCard } from "../ui/StateCard";
 import { SidePanel } from "./SidePanel";
 
 /**
@@ -64,9 +65,19 @@ export function HighlightsPanel({
 
       <div className="flex flex-1 flex-col gap-2.5 overflow-y-auto">
         {highlights.length === 0 ? (
-          <p className="text-ui text-ink-2">{t("highlightPanel.empty")}</p>
+          <StateCard
+            size="sm"
+            tone="raised"
+            title={t("highlightPanel.empty")}
+            body={t("highlightPanel.empty.body")}
+          />
         ) : shown.length === 0 ? (
-          <p className="text-ui text-ink-2">{t("highlightPanel.noNotes")}</p>
+          <StateCard
+            size="sm"
+            tone="raised"
+            title={t("highlightPanel.noNotes")}
+            body={t("highlightPanel.noNotes.body")}
+          />
         ) : (
           shown.map((highlight) => (
             <button

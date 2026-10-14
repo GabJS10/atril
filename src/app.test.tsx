@@ -110,7 +110,42 @@ describe("app shell", () => {
     });
     renderAt("/read/abc123");
 
-    expect(await screen.findByText("El archivo ya no está en su ruta.")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "No encontramos el archivo de este libro" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Buscar archivo…" })).toBeEnabled();
+    expect(screen.getByRole("link", { name: "Volver a la biblioteca" })).toBeInTheDocument();
+  });
+
+  it("explains an unreadable PDF without offering to try again", async () => {
+    mockCommands({
+      open_book: () => {
+        throw { code: "invalid_pdf", message: "xref table broken" };
+      },
+    });
+    renderAt("/read/abc123");
+
+    expect(await screen.findByRole("heading", { name: "Este PDF no se puede leer" })).toBeInTheDocument();
+    expect(screen.queryByText(/xref/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reintentar" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Volver a la biblioteca" })).toBeInTheDocument();
+  });
+
+  it("offers to try again when the book fails to open for another reason", async () => {
+    let calls = 0;
+    mockCommands({
+      open_book: () => {
+        calls += 1;
+        throw { code: "db", message: "database is locked" };
+      },
+    });
+    renderAt("/read/abc123");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Reintentar" }));
+
+    await waitFor(() => expect(calls).toBe(2));
+    expect(screen.getByRole("heading", { name: "No se pudo abrir este libro" })).toBeInTheDocument();
+    expect(screen.queryByText(/locked/)).toBeNull();
   });
 
   it("opens a PDF chosen in the dialog and goes to the reader", async () => {
@@ -125,9 +160,11 @@ describe("app shell", () => {
     });
     renderAt("/");
 
-    await userEvent.click(await screen.findByRole("button", { name: "Abrir un PDF suelto" }));
+    await userEvent.click((await screen.findAllByRole("button", { name: "Abrir un PDF…" }))[0]!);
 
-    expect(await screen.findByText("El archivo ya no está en su ruta.")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "No encontramos el archivo de este libro" }),
+    ).toBeInTheDocument();
     expect(calls).toEqual([JSON.stringify({ bookId: "abc123" })]);
   });
 
@@ -135,9 +172,9 @@ describe("app shell", () => {
     mockCommands({ "plugin:dialog|open": () => null });
     renderAt("/");
 
-    await userEvent.click(await screen.findByRole("button", { name: "Abrir un PDF suelto" }));
+    await userEvent.click((await screen.findAllByRole("button", { name: "Abrir un PDF…" }))[0]!);
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "Abrir un PDF suelto" })).toBeEnabled());
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Abrir un PDF…" })[0]).toBeEnabled());
     expect(screen.getByText("Tu biblioteca está vacía")).toBeInTheDocument();
   });
 

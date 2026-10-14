@@ -3,7 +3,15 @@ import { useT } from "../i18n";
 import { SearchIcon } from "../ui/icons";
 import { useAddFolder, useOpenPdfFile } from "./actions";
 import { BookGrid } from "./BookGrid";
-import { EmptyLibrary, ImportNotice, MissingBanner, ScanBar } from "./Notices";
+import { NoSearchResults } from "./EmptyStates";
+import {
+  EmptyLibrary,
+  LoadError,
+  MissingBanner,
+  ScanBar,
+  ScanningLibrary,
+  UnreadableBanner,
+} from "./Notices";
 import {
   AlsoReading,
   ContinueCard,
@@ -48,6 +56,8 @@ export function LibraryScreen() {
 
   const data = home.data;
   const missing = (everything.data ?? []).filter((book) => book.missing);
+  const unreadable = (everything.data ?? []).filter((book) => book.scanState === "failed" && !book.missing);
+  const scanning = scan.data?.running === true;
   const busy = addFolder.isPending || openFile.isPending;
   const [first, ...others] = data?.continueReading ?? [];
   const summary = data
@@ -89,16 +99,19 @@ export function LibraryScreen() {
         </label>
       </header>
 
-      {scan.data?.running ? <ScanBar found={scan.data.found} /> : null}
-      <ImportNotice />
+      {scanning && data && data.bookCount > 0 ? <ScanBar found={scan.data?.found ?? 0} /> : null}
 
       {home.isError ? (
-        <p role="alert" className="text-ink-2">
-          {t("library.error")}
-        </p>
+        <LoadError
+          title={t("library.error")}
+          body={t("library.error.body")}
+          onRetry={() => void home.refetch()}
+        />
       ) : null}
 
-      {data && data.bookCount === 0 && !scan.data?.running ? (
+      {data && data.bookCount === 0 && scanning ? <ScanningLibrary found={scan.data?.found ?? 0} /> : null}
+
+      {data && data.bookCount === 0 && !scanning && !scan.isPending ? (
         <EmptyLibrary
           busy={busy}
           onAddFolder={() => addFolder.mutate()}
@@ -109,6 +122,7 @@ export function LibraryScreen() {
       {data && data.bookCount > 0 ? (
         <>
           <MissingBanner books={missing} />
+          <UnreadableBanner books={unreadable} />
           {search ? (
             <section aria-labelledby="results-title" className="flex flex-col gap-5">
               <SectionHeader
@@ -116,7 +130,20 @@ export function LibraryScreen() {
                 title={t("library.results")}
                 count={results.data?.length ?? 0}
               />
-              <BookGrid books={results.data ?? []} empty={t("library.noResults")} />
+              {results.isError ? (
+                <LoadError
+                  title={t("library.error")}
+                  body={t("library.error.body")}
+                  onRetry={() => void results.refetch()}
+                />
+              ) : (
+                <BookGrid
+                  books={results.data ?? []}
+                  empty={
+                    results.data ? <NoSearchResults query={search} onClear={() => setText("")} /> : undefined
+                  }
+                />
+              )}
             </section>
           ) : (
             <>

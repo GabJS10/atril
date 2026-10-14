@@ -267,18 +267,6 @@ export function deleteHighlight(highlightId: string): Promise<null> {
   return invoke<null>("delete_highlight", { highlightId });
 }
 
-// System integration (docs/IPC.md, fase 5)
-
-/** Makes Atril the default PDF reader (`xdg-mime`). Rejects with `io` when the app is not installed. */
-export function setDefaultPdfReader(): Promise<null> {
-  return invoke<null>("set_default_pdf_reader");
-}
-
-/** Whether Atril is the default PDF reader. Rejects with `io` when `xdg-mime` is not available. */
-export function isDefaultPdfReader(): Promise<boolean> {
-  return invoke<boolean>("is_default_pdf_reader");
-}
-
 export function isAppError(error: unknown): error is AppError {
   return (
     typeof error === "object" &&

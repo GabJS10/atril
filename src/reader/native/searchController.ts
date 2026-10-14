@@ -49,6 +49,7 @@ export class SearchController {
   private awaitingId = false;
   private early: Event[] = [];
   private done = false;
+  private failed = false;
   private startPage = 1;
   private debounce: ReturnType<typeof setTimeout> | undefined;
   private flushTimer: ReturnType<typeof setTimeout> | undefined;
@@ -121,6 +122,7 @@ export class SearchController {
     this.awaitingId = false;
     this.early = [];
     this.done = false;
+    this.failed = false;
     this.active = null;
     this.results = new SearchResults();
     window.clearTimeout(this.flushTimer);
@@ -166,9 +168,10 @@ export class SearchController {
       },
       () => {
         if (generation !== this.generation) return;
-        // The backend refused the query (too long, unreadable book): nothing to find.
+        // The backend refused the query (too long, unreadable book): nothing to find, and the bar says so.
         this.awaitingId = false;
         this.done = true;
+        this.failed = true;
         this.flush();
       },
     );
@@ -199,6 +202,7 @@ export class SearchController {
 
   private onDone(event: SearchDone): void {
     this.done = true;
+    this.failed = event.error !== null && event.error !== undefined;
     if (this.active === null && this.results.total > 0 && !event.cancelled) this.focus(0);
     window.clearTimeout(this.flushTimer);
     this.flushTimer = undefined;
@@ -231,7 +235,8 @@ export class SearchController {
     this.hooks.onResult({
       current: this.active === null ? 0 : this.active + 1,
       total: this.results.total,
-      notFound: this.done && this.results.total === 0,
+      notFound: this.done && !this.failed && this.results.total === 0,
+      ...(this.failed ? { failed: true } : {}),
     });
     this.hooks.onChange();
   }

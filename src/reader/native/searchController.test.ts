@@ -256,11 +256,26 @@ describe("SearchController", () => {
     expect(h.api.search).toHaveBeenCalledTimes(1);
   });
 
-  it("tells the bar nothing was found when the backend refuses the query", async () => {
+  it("tells the bar the search failed when the backend refuses the query", async () => {
     const h = harness();
     h.api.search.mockImplementationOnce(() => Promise.reject({ code: "invalid_input", message: "x" }));
     await begin(h);
-    expect(h.results.at(-1)).toEqual({ current: 0, total: 0, notFound: true });
+    expect(h.results.at(-1)).toEqual({ current: 0, total: 0, notFound: false, failed: true });
+  });
+
+  it("tells the bar the search failed when it ends with an error, not that nothing was found", async () => {
+    const h = harness();
+    await begin(h);
+    h.done(done("s1", 0, { error: { code: "invalid_pdf", message: "x" } }));
+    expect(h.results.at(-1)).toEqual({ current: 0, total: 0, notFound: false, failed: true });
+  });
+
+  it("clears the failure when a new query starts", async () => {
+    const h = harness();
+    h.api.search.mockImplementationOnce(() => Promise.reject({ code: "invalid_input", message: "x" }));
+    await begin(h);
+    h.controller.find("otra");
+    expect(h.results.at(-1)).toEqual({ current: 0, total: 0, notFound: false });
   });
 
   it("refreshes the counter at most every flush interval while matches stream in", async () => {

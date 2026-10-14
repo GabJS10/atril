@@ -20,11 +20,13 @@ export function SearchBar({
 
   const counter = !query
     ? ""
-    : result?.notFound
-      ? t("search.none")
-      : result && result.total > 0
-        ? t("search.count", { current: String(result.current), total: String(result.total) })
-        : "";
+    : result?.failed
+      ? t("search.failed")
+      : result?.notFound
+        ? t("search.none")
+        : result && result.total > 0
+          ? t("search.count", { current: String(result.current), total: String(result.total) })
+          : "";
 
   const step = (findPrevious: boolean) => {
     if (query) onFind(query, { again: true, findPrevious });

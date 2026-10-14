@@ -1,7 +1,7 @@
 # Producto: Atril
 
 ## Qué es
-Atril es un lector de PDF de escritorio para leer libros. Es minimalista, ligero y silencioso. Abre los PDF desde el sistema, recuerda la posición exacta de cada libro y guarda los subrayados en cuanto se crean. El PDF original nunca se modifica: subrayados, notas, progreso y Salas viven en una base de datos local (SQLite).
+Atril es un lector de PDF de escritorio para leer libros. Es minimalista, ligero y silencioso. Los libros entran desde la propia app (las carpetas de la biblioteca, «Abrir un PDF…» o soltando el archivo en la ventana); recuerda la posición exacta de cada libro y guarda los subrayados en cuanto se crean. El PDF original nunca se modifica: subrayados, notas, progreso y Salas viven en una base de datos local (SQLite).
 
 ## Para quién
 Una sola persona que lee en su equipo con su propia biblioteca de PDF: decenas o cientos de libros, algunos sin terminar, otros releídos. Lee en Linux primero (Windows en el backlog). Quiere abrir un libro y seguir donde lo dejó, sin configurar nada.
@@ -22,6 +22,7 @@ Una sola persona que lee en su equipo con su propia biblioteca de PDF: decenas o
 
 ## Qué no es
 - No es un gestor de bibliografía ni un editor de PDF.
+- No es el lector de PDF del sistema: no se registra como manejador de PDF ni se ofrece como lector predeterminado.
 - No sincroniza con servicios externos ni tiene cuentas.
 - No es una tienda ni un catálogo: solo muestra lo que el usuario añade.
 

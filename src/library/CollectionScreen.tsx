@@ -2,9 +2,12 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useT } from "../i18n";
 import { ghostButton, primaryButton, secondaryButton } from "../ui/buttons";
+import { StateCard } from "../ui/StateCard";
 import { BookFilterBar } from "./BookFilters";
 import { DEFAULT_FILTERS, filtersToQuery, type BookFilters } from "./filters";
 import { BookGrid } from "./BookGrid";
+import { EmptyRoom, NoFilterResults } from "./EmptyStates";
+import { LoadError } from "./Notices";
 import { useCollectionMutations } from "./collectionActions";
 import { countLabel } from "./format";
 import { roomColorOf } from "./identity";
@@ -54,6 +57,24 @@ export function CollectionScreen({ collectionId }: { collectionId: string }) {
   ]
     .filter(Boolean)
     .join(" · ");
+
+  // A link to a Sala that was deleted (or never existed).
+  if (home.data && !collection) {
+    return (
+      <main className="flex min-h-screen flex-col gap-11 px-14 pt-9 pb-18">
+        <StateCard
+          heading={1}
+          title={t("collection.gone")}
+          body={t("collection.gone.body")}
+          actions={
+            <Link to="/" className={primaryButton}>
+              {t("notFound.back")}
+            </Link>
+          }
+        />
+      </main>
+    );
+  }
 
   return (
     <main className="flex min-h-screen flex-col gap-11 px-14 pt-9 pb-18">
@@ -144,12 +165,26 @@ export function CollectionScreen({ collectionId }: { collectionId: string }) {
       ) : null}
 
       {all.length > 0 ? <BookFilterBar filters={filters} onChange={setFilters} /> : null}
-      {everything.data && all.length === 0 ? <p className="text-ink-2">{t("collection.empty")}</p> : null}
+      {everything.isError || books.isError ? (
+        <LoadError
+          title={t("library.error")}
+          body={t("library.error.body")}
+          onRetry={() => {
+            void everything.refetch();
+            void books.refetch();
+          }}
+        />
+      ) : null}
+      {everything.data && all.length === 0 ? <EmptyRoom room={roomColorOf(collectionId)} /> : null}
       {books.data ? (
         <BookGrid
           books={books.data}
           collectionId={collectionId}
-          empty={all.length > 0 ? t("library.noResults") : undefined}
+          empty={
+            all.length > 0 ? (
+              <NoFilterResults onClear={() => setFilters({ ...filters, status: undefined })} />
+            ) : undefined
+          }
         />
       ) : null}
     </main>
