@@ -10,6 +10,7 @@ on:
     paths:
       - .github/workflows/release.yml
       - src-tauri/tauri.conf.json
+      - src-tauri/icons/**
   workflow_dispatch:
 
 permissions:
