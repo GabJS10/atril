@@ -72,14 +72,14 @@ Atril 1.0 is for **Linux** (x86-64). Get the files from the [latest release](htt
 **Debian, Ubuntu, Linux Mint** (`.deb`):
 
 ```bash
-sudo apt install ./atril-libros_1.0.0_amd64.deb
+sudo apt install ./atril-libros_1.0.1_amd64.deb
 ```
 
 **Any distribution** (AppImage):
 
 ```bash
-chmod +x atril-libros_1.0.0_amd64.AppImage
-./atril-libros_1.0.0_amd64.AppImage
+chmod +x atril-libros_1.0.1_amd64.AppImage
+./atril-libros_1.0.1_amd64.AppImage
 ```
 
 > The package and the command are called `atril-libros`, so they never clash with the unrelated *Atril* document viewer of the MATE desktop (package `atril`). In your menu the app is simply called **Atril**.
