@@ -1,28 +1,110 @@
+<div align="center">
+
+<img src="src-tauri/icons/128x128@2x.png" width="128" height="128" alt="Atril icon: an open book on a lectern">
+
 # Atril
 
-A minimalist, lightweight desktop PDF reader for books, with a library at its heart.
+**A quiet desktop reader for your PDF books, with a library at its heart.**
 
-- **Library first:** continue reading, favorites and collections ("rooms").
-- **Remembers where you left off** in every book, down to the scroll position.
-- **Highlights save themselves** the moment you make them. Your PDF files are never modified.
-- Night and sepia page modes, outline, search, and notes exportable to Markdown.
-- A reader for your books, not a generic PDF viewer: add folders or open a PDF from inside the app.
+[![CI](https://github.com/GabJS10/atril/actions/workflows/ci.yml/badge.svg)](https://github.com/GabJS10/atril/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/GabJS10/atril?label=release)](https://github.com/GabJS10/atril/releases/latest)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-c9a05a)](LICENSE)
+![Platform: Linux](https://img.shields.io/badge/platform-Linux-171512)
 
-Built with Tauri 2, React, TypeScript, Rust and MuPDF. Linux first; Windows later.
+[Download](#install) · [Features](#features) · [Build from source](#build-from-source) · [Changelog](CHANGELOG.md)
 
-> Status: preparing 1.0.0 for Linux. See `CHANGELOG.md` and `docs/ROADMAP.md`.
+</div>
 
-## Development
+---
+
+*Atril* is Spanish for *lectern*: the stand that holds a book open while you read. The app does the same for the PDFs you read as books. It opens straight into your library, remembers the exact spot where you stopped in every book, and saves your highlights the moment you make them, without ever touching the original files.
+
+It is a reader for your books, not a generic PDF viewer: you add a folder (or a single PDF) from inside the app, and Atril takes care of the rest.
+
+## Features
+
+### A library first
+- **Continue reading** right where you left off, with the card tinted by the book's own cover.
+- **Favorites** and **rooms**: your own collections, each with its color.
+- **Watched folders**: new PDFs in them appear on their own. You can also open a single PDF or drop it on the window.
+- **Search** by title or author (<kbd>Ctrl</kbd>+<kbd>K</kbd>), with filters by reading status and several sort orders.
+- Books are recognized **by their content**, so moving or renaming a file keeps its progress, highlights and rooms.
+
+### A reader that stays out of the way
+- **Native PDF engine** (MuPDF): fast first page, smooth scrolling and crisp zoom, scanned books included.
+- **Remembers the exact position** in every book, down to the scroll offset.
+- **Highlights in four pigments**, with notes, saved instantly and **exportable to Markdown**. Your PDF files are never modified.
+- **Search** with highlighted matches (<kbd>Ctrl</kbd>+<kbd>F</kbd>), **outline**, and working **links**.
+- **Normal, sepia and night** paper, focus mode (<kbd>F</kbd>) and full screen (<kbd>F11</kbd>).
+
+### Made to feel calm
+- A "gallery at night" design, in **dark** and **light** themes.
+- Interface in **English and Spanish**, following your system language.
+- Everything stays on your machine: no accounts, no network, no telemetry.
+
+## Install
+
+Atril 1.0 is for **Linux** (x86-64). Get the files from the [latest release](https://github.com/GabJS10/atril/releases/latest).
+
+**Debian, Ubuntu, Linux Mint** (`.deb`):
+
+```bash
+sudo apt install ./atril-libros_1.0.0_amd64.deb
+```
+
+**Any distribution** (AppImage):
+
+```bash
+chmod +x atril-libros_1.0.0_amd64.AppImage
+./atril-libros_1.0.0_amd64.AppImage
+```
+
+> The package and the command are called `atril-libros`, so they never clash with the unrelated *Atril* document viewer of the MATE desktop (package `atril`). In your menu the app is simply called **Atril**.
+
+To uninstall the `.deb`: `sudo apt remove atril-libros`. Your library is kept.
+
+### Where your data lives
+Atril never modifies or moves your PDFs. Your library, reading positions, highlights and covers are stored in `~/.local/share/atril/` (`atril.db` and `covers/`).
+
+## Build from source
+
+You need Node.js 24, Rust (stable) and the Tauri system dependencies. On Ubuntu or Linux Mint:
+
+```bash
+sudo apt install libwebkit2gtk-4.1-dev build-essential libssl-dev librsvg2-dev \
+  libayatana-appindicator3-dev libxdo-dev libclang-dev
+```
+
+Then:
 
 ```bash
 npm install
-npm run tauri dev
+npm run tauri dev                              # run in development
+npm run tauri build -- --bundles deb,appimage  # build the packages
 ```
 
-System dependencies (Ubuntu/Mint): `libwebkit2gtk-4.1-dev build-essential libssl-dev librsvg2-dev libayatana-appindicator3-dev libxdo-dev`.
+MuPDF is compiled from source on the first build, which takes a few minutes. Without `libclang-dev` (no sudo), run `. src-tauri/scripts/libclang-env.sh` in the same shell first.
+
+Checks:
+
+```bash
+npm run lint && npm run typecheck && npm test
+cd src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
+```
+
+## How it is built
+
+| | |
+|---|---|
+| **App shell** | [Tauri 2](https://tauri.app) |
+| **Interface** | React 19, TypeScript, Vite, Tailwind 4, TanStack Router and Query |
+| **Core** | Rust: SQLite (`rusqlite`), folder watching (`notify`), the `atril://` protocol |
+| **PDF engine** | [MuPDF](https://mupdf.com), rendering pages to images in a background pool |
+
+Architecture notes, the frontend ⇄ backend contract and the design system live in [`docs/`](docs/) and [`DESIGN.md`](DESIGN.md). The project documentation is in Spanish.
 
 ## License
 
 Copyright (C) 2026 GabJS10.
 
-Atril is licensed under the GNU Affero General Public License v3.0 (see `LICENSE`). It uses MuPDF, which is AGPL-3.0 too.
+Atril is free software, licensed under the [GNU Affero General Public License v3.0](LICENSE). It links [MuPDF](https://mupdf.com), which is AGPL-3.0 too.
