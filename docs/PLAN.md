@@ -5,7 +5,7 @@ El usuario lee sus libros en PDF con el visor de Firefox, que no termina de conv
 - Una **biblioteca** como pantalla de inicio: seguir leyendo, favoritos y colecciones ("Salas").
 - **Recordar la posición** exacta de cada libro.
 - **Subrayados que se guardan solos** al crearlos.
-- Modo noche/sepia, índice y búsqueda, notas exportables, y abrir los PDF desde el sistema.
+- Modo noche/sepia, índice y búsqueda y notas exportables.
 
 Estética: "museo de arte de noche", monocroma (ver [`DESIGN-BRIEF.md`](DESIGN-BRIEF.md)). Forma de trabajo: subagentes con worktrees y PRs (ver [`AGENTS.md`](../AGENTS.md)) y fases en [`ROADMAP.md`](ROADMAP.md).
 
@@ -18,7 +18,8 @@ Estética: "museo de arte de noche", monocroma (ver [`DESIGN-BRIEF.md`](DESIGN-B
 | Motor (fase R) | **MuPDF** (crate `mupdf`, features `base14` sin `system-fonts`) en Rust, con un pool de 2 hilos. Las páginas llegan al visor como **JPEG q85** por `atril://page/…`. Licencia de Atril: **AGPL-3.0**. Decidido el 2026-10-12 tras los spikes R0 (MuPDF frente a PDFium en los 23 libros: 0 errores en ambos; MuPDF gana en escaneos repetidos, texto, búsqueda, hilos y libros enormes) |
 | Subrayados | En la SQLite de la app. **El PDF original nunca se modifica** |
 | Importar | Carpetas vigiladas + archivos sueltos. Los archivos se quedan donde están y se reconocen por su contenido |
-| MVP extra | Modo noche/sepia, índice + búsqueda, notas + exportar a Markdown, abrir los PDF desde el sistema |
+| MVP extra | Modo noche/sepia, índice + búsqueda, notas + exportar a Markdown |
+| Integración con el sistema | **Ninguna como lector de PDF** (2026-10-13): Atril es un lector de libros, no un visor genérico. Ver "Sin integración como lector del sistema" |
 | Plataformas | Linux primero (.deb + AppImage; WebKitGTK 2.52). Windows queda en el backlog |
 | Idioma de la UI | Español e inglés (`src/i18n/es.ts` y `en.ts`); por defecto sigue al sistema |
 | Agentes | Subagentes `frontend` y `backend` (`.claude/agents/`), uno por tarea, cada uno en su worktree de git y con entrega por PR. `plan` elige el modelo (Haiku 5.5 por defecto, Sonnet 5.5 para lo difícil) y el esfuerzo |
@@ -44,7 +45,7 @@ React UI (WebView)                      Rust core (Tauri)
 - **Subrayados:** al seleccionar texto aparece una barra flotante con 4 pigmentos; elegir uno llama a `create_highlight` al momento (UI optimista). "Modo subrayador" (tecla H): cualquier selección se subraya directamente. Los rectángulos se guardan en **coordenadas PDF** (independientes del zoom) y se dibujan en una capa propia por página con `viewport.convertToViewportRectangle`. No se usa el editor de anotaciones de pdf.js, porque escribe en el PDF.
 - **Posición de lectura:** `{page, offsetInPage 0–1, zoom, scrollMode, viewMode}` se guarda 800 ms después de dejar de moverse y también al cerrar o perder el foco. Se restaura al abrir. El % de progreso aparece en la biblioteca.
 - **Noche/sepia:** filtros CSS solo sobre el canvas de las páginas (`invert + hue-rotate` / `sepia`), así funcionan también con PDF escaneados. La capa de subrayados queda fuera del filtro. El tema de la UI (oscuro / cubo blanco) es independiente.
-- **Abrir desde el sistema:** `bundle.fileAssociations` (pdf, `application/pdf`) en `tauri.conf.json` + `tauri-plugin-single-instance`: un segundo doble clic manda el archivo a la ventana abierta (evento `app://open-file`). Ajustes tiene un botón "Usar Atril como lector predeterminado" (`xdg-mime default`).
+- **Sin integración como lector del sistema** (decidido por el usuario el 2026-10-13; sustituye a "Abrir desde el sistema" de 5.B1): Atril es un lector de libros, no un visor de PDF genérico. No se registra como manejador de PDF: sin `bundle.fileAssociations`, sin "lector predeterminado" (`xdg-mime`) y sin abrir archivos pasados por argumentos ni el evento `app://open-file`. Los libros entran desde la app: carpetas de la biblioteca, "Abrir un PDF…" o soltando el archivo en la ventana. Se mantiene `tauri-plugin-single-instance`: lanzar la app otra vez enfoca la ventana abierta.
 
 ### Modelo de datos (SQLite)
 - `books`: id, path, file_size, file_mtime, title, author, page_count, scan_state (`pending|done|failed`), favorite, missing, added_at, last_opened_at

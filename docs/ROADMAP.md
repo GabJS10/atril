@@ -85,11 +85,12 @@ Comparado con Okular, el lector con pdf.js en WebKitGTK no es fluido: scroll, zo
 ## Fase 5. Sistema y release para Linux
 > **Pausa antes de empezar:** al cerrar la fase 4, el usuario prueba la app a fondo. No se reparte ninguna tarea de la fase 5 (salvo 5.B1, ya hecha) hasta que el usuario dé el visto bueno o pase sus observaciones.
 
-- [x] **5.B1** (`high`): `fileAssociations`, `tauri-plugin-single-instance`, `app://open-file`, `set_default_pdf_reader` (`xdg-mime`), iconos.
-- [ ] **5.F1** (`medium`): abrir el libro recibido por `app://open-file`, botón de lector predeterminado, pulido de estados vacíos y de error.
+- [x] **5.B1** (`high`): `fileAssociations`, `tauri-plugin-single-instance`, `app://open-file`, `set_default_pdf_reader` (`xdg-mime`), iconos. **Revertido en parte** (2026-10-13): el usuario decidió que Atril no sea lector de PDF del sistema (ver `PLAN.md`, "Sin integración como lector del sistema").
+- [ ] **5.B2** (`backend`): quitar `fileAssociations`, `set_default_pdf_reader`, `is_default_pdf_reader`, `take_pending_open_file`, la apertura por argumentos y `app://open-file`. La instancia única se queda (enfoca la ventana). `IPC.md` al día.
+- [ ] **5.F1** (`frontend`): quitar la tarjeta de lector predeterminado de Ajustes y pulir los estados vacíos y de error con el diseño nuevo.
 - [ ] **5.P1** (plan): workflow de release (.deb + AppImage), `QA.md` completo, README y CHANGELOG, **v1.0.0**.
 
-**Cierre:** hacer doble clic en un PDF desde Nemo abre Atril; el .deb se instala limpio.
+**Cierre:** el .deb y el AppImage se instalan y arrancan limpios; Atril no aparece como lector de PDF en el sistema; QA de `QA.md` pasada y visto bueno del usuario.
 
 ## Flujo de cada fase
 1. `plan` fija el IPC de la fase en `IPC.md` (o lo encarga en la primera tarea del backend).

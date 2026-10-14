@@ -3,7 +3,7 @@
 Guía para agentes de IA (y personas) que trabajen en este repositorio.
 
 ## Proyecto
-**Atril**: lector de PDF de escritorio, minimalista y ligero, pensado para leer libros. Tiene una biblioteca como pantalla de inicio (seguir leyendo, favoritos y colecciones, llamadas "Salas"), recuerda la posición exacta de cada libro y guarda los subrayados solos al crearlos (en SQLite: **el PDF original nunca se modifica**). Además: modo noche/sepia, índice, búsqueda, notas exportables a Markdown y abrir los PDF desde el sistema.
+**Atril**: lector de PDF de escritorio, minimalista y ligero, pensado para leer libros. Tiene una biblioteca como pantalla de inicio (seguir leyendo, favoritos y colecciones, llamadas "Salas"), recuerda la posición exacta de cada libro y guarda los subrayados solos al crearlos (en SQLite: **el PDF original nunca se modifica**). Además: modo noche/sepia, índice, búsqueda y notas exportables a Markdown. No es un visor de PDF genérico: no se registra como lector de PDF del sistema; los libros se abren desde la app.
 
 - Plan completo y decisiones de arquitectura: [`docs/PLAN.md`](docs/PLAN.md)
 - Roadmap por fases (qué hace cada agente, con qué esfuerzo y criterios de cierre): [`docs/ROADMAP.md`](docs/ROADMAP.md)
