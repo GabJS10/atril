@@ -76,5 +76,12 @@ opt-level = 3
 panic = "unwind"
 strip = true
 
+# MuPDF siempre en su variante "release", también en desarrollo y en las pruebas. En Windows es obligatorio: con
+# `opt-level` 0, `mupdf-sys` compila MuPDF con la CRT de depuración (`/MDd`) y enlaza `ucrtd`, `vcruntimed` y
+# `msvcrtd`, que chocan con el runtime de VC++ estático que fuerza `tauri-build` (LNK2005 de `__CxxFrameHandler3`
+# al enlazar `cargo test` y la `cdylib`). En Linux, además, las pruebas de render corren más rápido.
+[profile.dev.package.mupdf-sys]
+opt-level = 3
+
 [dev-dependencies]
 tempfile = "3.27.0"
