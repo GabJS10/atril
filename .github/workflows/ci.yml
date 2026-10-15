@@ -24,7 +24,7 @@ jobs:
         run: |
           dupes=$(git ls-files | sort -f | uniq -di)
           if [ -n "$dupes" ]; then echo "Paths that differ only in case:"; echo "$dupes"; exit 1; fi
-          dupes=$(git ls-files 'src/*.ts' 'src/*.tsx' | sed -E 's/\.(tsx?)$//' | sort -f | uniq -i | sort -f | uniq -di)
+          dupes=$(git ls-files 'src/*.ts' 'src/*.tsx' | sed -E 's/\.(tsx?)$//' | sort -u | sort -f | uniq -di)
           if [ -n "$dupes" ]; then echo "Modules that differ only in case:"; echo "$dupes"; exit 1; fi
       - run: npm ci
       - run: npm run lint
