@@ -954,4 +954,24 @@ mod tests {
         assert!(Language::parse("fr").is_err());
         assert_eq!(Language::parse("en").expect("en"), Language::En);
     }
+    #[test]
+    fn exporting_twice_to_the_same_file_replaces_it() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (_db, mut conn) = open_temp_db();
+        let book = import(&mut conn, &write_pdf(dir.path(), "a.pdf", 1));
+        let out = dir.path().join("salida.md");
+        create(&conn, input(&book.id, 1, 600.0, "uno")).expect("create");
+        export(&conn, &book.id, &out, Language::Es, "2026-01-02").expect("first export");
+        create(&conn, input(&book.id, 2, 600.0, "dos")).expect("create");
+
+        let result = export(&conn, &book.id, &out, Language::Es, "2026-01-03").expect("second");
+
+        assert_eq!(result.count, 2);
+        let written = std::fs::read_to_string(&out).expect("read");
+        assert!(
+            written.contains("> uno") && written.contains("> dos"),
+            "{written}"
+        );
+        assert!(written.contains("2026-01-03"));
+    }
 }

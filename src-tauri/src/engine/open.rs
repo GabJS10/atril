@@ -250,7 +250,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let folder = dir.path().join("Economía y política");
         std::fs::create_dir_all(&folder).expect("mkdir");
-        let path = write_book(&folder, "¿Qué es el dinero? ñandú 日本語.pdf");
+        let path = write_book(&folder, "¿Qué es el dinero ñandú 日本語.pdf");
 
         assert_eq!(
             open_by_path(&path)
@@ -266,6 +266,56 @@ mod tests {
                 .expect("pages"),
             2
         );
+    }
+
+    /// Rutas de más de 259 caracteres: `std` añade solo el prefijo `\\?\` en Windows, pero MuPDF abre con
+    /// `_wfopen` y hay que dárselo (`windows_path`).
+    #[test]
+    fn a_book_in_a_very_long_path_opens_by_path_and_from_memory() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut folder = dir.path().to_path_buf();
+        while folder.as_os_str().len() < 330 {
+            folder.push("una carpeta con un nombre bastante largo");
+        }
+        std::fs::create_dir_all(&folder).expect("a long folder");
+        let path = write_book(&folder, "libro.pdf");
+        assert!(path.as_os_str().len() > 330);
+
+        assert_eq!(
+            open_by_path(&path)
+                .expect("by path")
+                .page_count()
+                .expect("pages"),
+            2
+        );
+        assert_eq!(
+            open_from_memory(&path)
+                .expect("from memory")
+                .page_count()
+                .expect("pages"),
+            2
+        );
+        assert_eq!(OpenDocument::open(&path).expect("open").page_count(), 2);
+    }
+
+    /// Documenta el límite de los libros grandes (que se abren por ruta): MuPDF mantiene el archivo abierto con
+    /// `fopen` y Windows no deja renombrarlo hasta que se cierra el documento. Si esta prueba dejara de cumplirse,
+    /// MuPDF ya no bloquea y `Strategy::Memory` sobraría.
+    #[cfg(windows)]
+    #[test]
+    fn a_book_open_by_path_cannot_be_renamed_on_windows_until_it_is_closed() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = write_book(dir.path(), "libro.pdf");
+        let renamed = dir.path().join("renombrado.pdf");
+        let document = open_by_path(&path).expect("by path");
+
+        assert!(
+            std::fs::rename(&path, &renamed).is_err(),
+            "open files are locked"
+        );
+
+        drop(document);
+        std::fs::rename(&path, &renamed).expect("free once the document is closed");
     }
 
     #[test]
