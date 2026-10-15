@@ -11,6 +11,7 @@ pub mod library;
 #[cfg(test)]
 mod packaging_tests;
 pub mod path_rules;
+pub mod platform;
 pub mod protocol;
 pub mod query;
 pub mod scan;
@@ -103,6 +104,7 @@ pub fn run() {
                 engine,
                 indexer,
             });
+            platform::tune_main_window(app.handle());
             Ok(())
         })
         .register_asynchronous_uri_scheme_protocol(protocol::SCHEME, protocol::handle)

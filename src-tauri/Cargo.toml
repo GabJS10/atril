@@ -61,6 +61,10 @@ libc = "0.2"
 # Features mínimas; 0.61 es la versión que ya trae Tauri.
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_System_Threading"] }
+# Aceleradores del navegador de WebView2 (`platform.rs`). Mismas versiones que usan Tauri y wry, para que los tipos de
+# `PlatformWebview::controller()` sean los mismos.
+webview2-com = "0.39"
+windows-core = "0.62"
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
