@@ -8,6 +8,8 @@ pub mod folders;
 pub mod highlights;
 pub mod indexer;
 pub mod library;
+#[cfg(test)]
+mod packaging_tests;
 pub mod path_rules;
 pub mod protocol;
 pub mod query;
