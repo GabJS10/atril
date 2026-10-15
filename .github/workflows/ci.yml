@@ -47,3 +47,25 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
+
+  backend-windows:
+    name: Backend on Windows (clippy, test)
+    runs-on: windows-2022
+    defaults:
+      run:
+        working-directory: src-tauri
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      # bindgen (mupdf-sys) needs libclang; the runner ships LLVM here.
+      - run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> "$GITHUB_ENV"
+      # tauri::generate_context! needs frontendDist to exist at compile time
+      - run: mkdir -p ../dist
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
