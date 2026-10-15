@@ -11,8 +11,8 @@ use tauri::{AppHandle, Runtime};
 /// imprimir la interfaz no tiene sentido en un lector. `AreBrowserAcceleratorKeysEnabled = false` los entrega a la
 /// página como teclas normales. No afecta a copiar, pegar ni a las teclas de movimiento.
 ///
-/// Tauri 2.12 y su `wry` (`with_browser_accelerator_keys`) permiten fijarlo al crear el webview, pero Tauri no lo
-/// expone en `WebviewWindowBuilder` ni en `tauri.conf.json`; por eso se hace después, con `with_webview`.
+/// `wry` permite fijarlo al crear el webview (`with_browser_accelerator_keys`), pero Tauri 2.12 no lo expone en
+/// `WebviewWindowBuilder` ni en `tauri.conf.json`; por eso se hace después, con `with_webview`.
 ///
 /// No se aplica en las compilaciones de desarrollo (`tauri dev`): ahí F5, Ctrl+R y F12 son útiles.
 pub fn tune_main_window<R: Runtime>(app: &AppHandle<R>) {

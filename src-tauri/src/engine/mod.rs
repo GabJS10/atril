@@ -3,6 +3,8 @@
 //! Piezas:
 //! - [`geometry`]: tamaño y matriz de cada página, idénticos a `page.getViewport({ scale: 1 })` de pdf.js.
 //! - [`document`]: un PDF abierto en MuPDF (geometría de todas las páginas y render a JPEG).
+//! - [`open`]: cómo se abre el archivo en MuPDF: por ruta o, en Windows, los PDF pequeños desde memoria para no
+//!   dejarlos bloqueados.
 //! - [`scheduler`]: cola priorizada con cancelación y precarga (estructura pura, sin hilos).
 //! - [`cache`]: caché LRU de JPEG limitada por bytes.
 //! - [`pool`]: el [`Engine`], que une todo con un pool de hilos de render y un hilo de lectura.
