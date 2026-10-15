@@ -1,6 +1,7 @@
 //! Escaneo de las carpetas de la biblioteca. Lee el disco sin lock y toma el lock
 //! de la base solo un momento por archivo, así que los comandos no esperan al recorrido.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -10,6 +11,7 @@ use walkdir::WalkDir;
 
 use crate::error::AppError;
 use crate::library::{self, Origin};
+use crate::path_rules;
 
 /// Estado del escaneo (`docs/IPC.md`, `ScanStatus`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
@@ -30,15 +32,7 @@ pub fn scan_folders(
     folders: &[PathBuf],
     mut on_found: impl FnMut(u64),
 ) -> Result<u64, AppError> {
-    let mut pdfs = Vec::new();
-    for folder in folders {
-        for entry in WalkDir::new(folder).follow_links(false) {
-            let Ok(entry) = entry else { continue };
-            if entry.file_type().is_file() && is_pdf_name(entry.path()) {
-                pdfs.push(entry.into_path());
-            }
-        }
-    }
+    let pdfs = collect_pdfs(folders);
 
     let mut found = 0;
     for path in &pdfs {
@@ -56,6 +50,25 @@ pub fn scan_folders(
 
     mark_missing(db)?;
     Ok(found)
+}
+
+/// Los PDF de las carpetas (recursivo, sin seguir enlaces), cada archivo una sola vez: carpetas repetidas, anidadas
+/// o escritas distinto (en Windows, otras mayúsculas o separadores) encuentran el mismo archivo más de una vez.
+fn collect_pdfs(folders: &[PathBuf]) -> Vec<PathBuf> {
+    let mut pdfs = Vec::new();
+    let mut seen = HashSet::new();
+    for folder in folders {
+        for entry in WalkDir::new(folder).follow_links(false) {
+            let Ok(entry) = entry else { continue };
+            if entry.file_type().is_file()
+                && is_pdf_name(entry.path())
+                && seen.insert(path_rules::native_key(entry.path()))
+            {
+                pdfs.push(entry.into_path());
+            }
+        }
+    }
+    pdfs
 }
 
 fn is_pdf_name(path: &Path) -> bool {
@@ -247,5 +260,56 @@ mod tests {
         let conn = db.lock().expect("lock");
         assert_eq!(get_book(&conn, &book.id).expect("get").file_name, "a.pdf");
         assert_eq!(visible_books(&conn).expect("list").len(), 1);
+    }
+    #[test]
+    fn overlapping_and_repeated_folders_list_each_pdf_once() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let sub = dir.path().join("sub");
+        std::fs::create_dir_all(&sub).expect("mkdir");
+        write_pdf(dir.path(), "a.pdf", 1);
+        write_pdf(&sub, "b.pdf", 2);
+
+        let pdfs = collect_pdfs(&[
+            dir.path().to_path_buf(),
+            sub.clone(),
+            dir.path().join(""),
+            dir.path().to_path_buf(),
+        ]);
+
+        let mut names: Vec<String> = pdfs
+            .iter()
+            .map(|path| {
+                path.file_name()
+                    .expect("name")
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect();
+        names.sort();
+        assert_eq!(names, ["a.pdf", "b.pdf"]);
+    }
+
+    #[test]
+    fn overlapping_folders_register_each_book_once() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let sub = dir.path().join("sub");
+        std::fs::create_dir_all(&sub).expect("mkdir");
+        let (_db_dir, conn) = open_temp_db();
+        let db = Mutex::new(conn);
+        write_pdf(dir.path(), "a.pdf", 1);
+        write_pdf(&sub, "b.pdf", 2);
+
+        let mut seen = Vec::new();
+        let found =
+            scan_folders(&db, &[dir.path().to_path_buf(), sub], |n| seen.push(n)).expect("scan");
+
+        assert_eq!(found, 2);
+        assert_eq!(seen, vec![1, 2]);
+        assert_eq!(
+            visible_books(&db.lock().expect("lock"))
+                .expect("list")
+                .len(),
+            2
+        );
     }
 }
