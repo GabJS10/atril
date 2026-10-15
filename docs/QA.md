@@ -58,3 +58,31 @@ Se pasa con el `.deb` instalado (`sudo apt install ./atril-libros_1.0.1_amd64.de
 
 **Rendimiento y memoria**
 - [ ] Memoria tras leer 50 páginas de un escaneado: comparable a Okular con el mismo libro.
+
+## Fase W (Windows 10/11, sobre el instalador NSIS)
+
+**Instalador**
+- [ ] SmartScreen avisa (app sin firmar): "Más información → Ejecutar de todas formas" funciona.
+- [ ] Instala sin pedir administrador; idioma del instalador según el sistema; acceso "Atril" en el menú Inicio; ejecutable `Atril.exe`.
+- [ ] Sin WebView2 instalado (Windows 10 limpio), el instalador lo descarga.
+- [ ] Desinstalar desde Configuración → Aplicaciones; los datos en `%LOCALAPPDATA%\atril\` se conservan (o no) según lo esperado.
+
+**Biblioteca**
+- [ ] Añadir una carpeta (con espacios, tildes y algún emoji en el nombre); escaneo, portadas y color de portada.
+- [ ] La misma carpeta escrita con otras mayúsculas (`c:\libros` vs `C:\Libros`) no se añade dos veces.
+- [ ] Soltar un PDF desde el Explorador en la ventana: se importa.
+- [ ] Arrastrar un libro a una Sala (arrastre por punteros); un clic normal sigue abriendo el libro. Repetir en Linux.
+- [ ] Renombrar, mover y borrar en el Explorador un libro de menos de 16 MiB **con el libro abierto**: se deja y Atril lo detecta. Uno de más de 16 MiB abierto: el Explorador no deja (límite conocido); al cerrar la app, sí.
+- [ ] Carpeta en ruta larga (> 260 caracteres), unidad de red y OneDrive (si hay).
+- [ ] Segunda instancia (abrir Atril otra vez): enfoca la ventana existente.
+
+**Lector**
+- [ ] Render, scroll, zoom (Ctrl + rueda y teclas) nítido y sin páginas en blanco; escaneado grande fluido.
+- [ ] Seleccionar y copiar; subrayar, nota, exportar a Markdown (título con `:` o `?`: nombre de archivo válido).
+- [ ] Ctrl F abre la búsqueda de Atril (no la del navegador); índice; enlaces internos y externos.
+- [ ] Ctrl P, F5, Ctrl R, F3, F7, Alt+←/→, Ctrl+U, F12 y Ctrl+Shift+I no hacen nada del navegador; clic derecho fuera de campos de texto no muestra menú del navegador.
+- [ ] Barras de scroll finas y acordes al tema (claro, oscuro, sepia, noche).
+- [ ] Posición recordada al cerrar y reabrir; pantalla completa (F11); modo foco.
+
+**Rendimiento y memoria**
+- [ ] Memoria (Administrador de tareas) tras leer 50 páginas de un escaneado y tras abrir varios libros pequeños: razonable y comparable a Linux.
