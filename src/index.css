@@ -345,3 +345,10 @@
 @utility highlight-mark {
   background-color: color-mix(in srgb, var(--mark) 40%, transparent);
 }
+
+/* WebView2 (Windows) draws its own scrollbars: thin, in the line colour of the theme. WebKitGTK keeps its defaults,
+   set by data-platform (main.tsx, markPlatform). */
+:root[data-platform="windows"] {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}

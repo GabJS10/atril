@@ -9,6 +9,7 @@ import { useAddFolder } from "./actions";
 import { LoadError } from "./Notices";
 import { useFolderMutations } from "./collectionActions";
 import { roomColorOf } from "./identity";
+import { fileName } from "./paths";
 import { useFolders } from "./queries";
 
 const CARD = "flex flex-col gap-6 rounded-card bg-card p-8";
@@ -23,10 +24,6 @@ function Label({ title, hint }: { title: string; hint?: string }) {
       {hint ? <span className="text-ui text-ink-2">{hint}</span> : null}
     </div>
   );
-}
-
-function folderName(path: string): string {
-  return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 }
 
 const PAPERS = [
@@ -189,7 +186,7 @@ function FoldersCard() {
               <FolderIcon size={20} />
             </span>
             <div className="flex min-w-0 flex-1 basis-55 flex-col gap-0.5">
-              <span className="truncate text-body font-semibold">{folderName(folder.path)}</span>
+              <span className="truncate text-body font-semibold">{fileName(folder.path)}</span>
               <span className="truncate font-mono text-caption text-ink-2">{folder.path}</span>
             </div>
             <span className="text-ui text-ink-2">

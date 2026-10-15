@@ -5,6 +5,7 @@ import { ghostButton, primaryButton, secondaryButton, smallButton } from "../ui/
 import { DownloadIcon } from "../ui/icons";
 import { StateCard } from "../ui/StateCard";
 import { useRelinkBook, useRemoveBook } from "./actions";
+import { fileName } from "./paths";
 import { importResultKey } from "./useFileDrop";
 
 /** Scan in progress, over a library that already has books: a slim card with a quiet pulse (DESIGN.md, aviso). */
@@ -179,11 +180,6 @@ export function EmptyLibrary({
   );
 }
 
-/** The last name of a path, whatever the separator. */
-function baseName(path: string): string {
-  return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
-}
-
 /** Result of the last files dropped on the window or opened from the dialog: how many were added, and which were refused. */
 export function ImportNotice({ className = "" }: { className?: string }) {
   const t = useT();
@@ -212,7 +208,7 @@ export function ImportNotice({ className = "" }: { className?: string }) {
           </span>
           {data.rejected.map((item) => (
             <span key={item.path} className="truncate">
-              {baseName(item.path)} ·{" "}
+              {fileName(item.path)} ·{" "}
               {t(item.error.code === "invalid_pdf" ? "import.reason.invalid" : "import.reason.other")}
             </span>
           ))}

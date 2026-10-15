@@ -1,8 +1,10 @@
 import { createRootRoute, Link, Outlet } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useSettings } from "../api/queries";
+import { useBrowserDefaults } from "../browserDefaults";
 import { useLocaleStore, useT } from "../i18n";
 import { useFullscreenKey } from "../useFullscreenKey";
+import { BookDragGhost } from "../library/BookDragGhost";
 import { useFileDrop } from "../library/useFileDrop";
 import { useLibraryEvents } from "../library/useLibraryEvents";
 import { applyTheme } from "../theme";
@@ -14,6 +16,7 @@ function RootLayout() {
   useLibraryEvents();
   useFileDrop();
   useFullscreenKey();
+  useBrowserDefaults();
   const language = settings?.language;
   const setLanguage = useLocaleStore((state) => state.setLanguage);
   const locale = useLocaleStore((state) => state.locale);
@@ -34,6 +37,7 @@ function RootLayout() {
   return (
     <div className="flex min-h-screen flex-col">
       <Outlet />
+      <BookDragGhost />
     </div>
   );
 }

@@ -1,13 +1,12 @@
 import { Link } from "@tanstack/react-router";
-import { useState } from "react";
 import type { Book, Collection, Highlight } from "../api/types";
 import { useT } from "../i18n";
 import { useHighlights } from "../reader/highlights";
 import { PIGMENT_COLOR, PIGMENT_KEY } from "../reader/highlightPresentation";
 import { ArrowRightIcon, BookOpenIcon, PlusIcon } from "../ui/icons";
 import { primaryButton, secondaryButton, textLink } from "../ui/buttons";
-import { BOOK_DRAG_TYPE, BookCard, Cover, ProgressBar, type CoverSize } from "./Cover";
-import { useCollectionMutations } from "./collectionActions";
+import { useBookDragSource, useBookDragStore } from "./bookDrag";
+import { BookCard, Cover, ProgressBar, type CoverSize } from "./Cover";
 import { BookMenu } from "./BookMenu";
 import { countLabel, pagesLeftLabel, useProgressLabel } from "./format";
 import { roomColorOf, tintOf } from "./identity";
@@ -58,6 +57,7 @@ function heroTitleClass(title: string): string {
  */
 export function ContinueCard({ book }: { book: Book }) {
   const t = useT();
+  const startDrag = useBookDragSource(book);
   const percent = useProgressLabel(book.progress);
   const highlights = useHighlights(book.id);
   const all = highlights.data ?? [];
@@ -75,14 +75,7 @@ export function ContinueCard({ book }: { book: Book }) {
       style={tint}
       className={`flex flex-wrap gap-8 rounded-card p-10 ${color ? "bg-cover-tint" : "bg-card"}`}
     >
-      <div
-        className="group relative self-center"
-        draggable
-        onDragStart={(event) => {
-          event.dataTransfer.setData(BOOK_DRAG_TYPE, book.id);
-          event.dataTransfer.effectAllowed = "copy";
-        }}
-      >
+      <div className="group relative self-center select-none" onPointerDown={startDrag}>
         <Link to="/read/$bookId" params={{ bookId: book.id }} className="block rounded-tab" draggable={false}>
           <Cover book={book} size="xl" />
         </Link>
@@ -187,18 +180,16 @@ export function AlsoReading({ books }: { books: Book[] }) {
 
 function ReadingTile({ book }: { book: Book }) {
   const t = useT();
+  const startDrag = useBookDragSource(book);
   const percent = useProgressLabel(book.progress);
   const left = pagesLeftLabel(book, t);
   return (
     <Link
       to="/read/$bookId"
       params={{ bookId: book.id }}
-      draggable
-      onDragStart={(event) => {
-        event.dataTransfer.setData(BOOK_DRAG_TYPE, book.id);
-        event.dataTransfer.effectAllowed = "copy";
-      }}
-      className="flex items-center gap-4 rounded-tile bg-card p-4 transition-colors duration-fast ease-atril hover:bg-raised"
+      draggable={false}
+      onPointerDown={startDrag}
+      className="flex items-center gap-4 rounded-tile bg-card p-4 transition-colors duration-fast ease-atril select-none hover:bg-raised"
     >
       <Cover book={book} size="sm" />
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
@@ -274,11 +265,10 @@ export function CoverFan({
   );
 }
 
-/** Salas: a card per Sala, tinted with its colour, with its covers in a fan. Drop a book on one to add it. */
+/** Salas: a card per Sala, tinted with its colour, with its covers in a fan. Drop a book on one to add it (bookDrag.ts). */
 export function RoomsSection({ collections }: { collections: Collection[] }) {
   const t = useT();
-  const { add } = useCollectionMutations();
-  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const overRoomId = useBookDragStore((state) => state.drag?.overRoomId ?? null);
 
   return (
     <section aria-labelledby="rooms-title" className="flex flex-col gap-5">
@@ -290,21 +280,9 @@ export function RoomsSection({ collections }: { collections: Collection[] }) {
             to="/collection/$collectionId"
             params={{ collectionId: collection.id }}
             data-room={roomColorOf(collection.id)}
-            onDragOver={(event) => {
-              if (!event.dataTransfer.types.includes(BOOK_DRAG_TYPE)) return;
-              event.preventDefault();
-              setDropTarget(collection.id);
-            }}
-            onDragLeave={() => setDropTarget(null)}
-            onDrop={(event) => {
-              const bookId = event.dataTransfer.getData(BOOK_DRAG_TYPE);
-              setDropTarget(null);
-              if (!bookId) return;
-              event.preventDefault();
-              add.mutate({ bookIds: [bookId], collectionId: collection.id });
-            }}
+            data-room-id={collection.id}
             className={`group flex min-h-50 flex-wrap items-center gap-6 rounded-card bg-room-tint p-8 transition-shadow duration-fast ease-atril ${
-              dropTarget === collection.id ? "ring-2 ring-accent" : ""
+              overRoomId === collection.id ? "ring-2 ring-accent" : ""
             }`}
           >
             <div className="flex min-w-35 flex-1 flex-col gap-2">

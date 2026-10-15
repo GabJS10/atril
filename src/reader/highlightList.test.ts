@@ -55,6 +55,10 @@ describe("suggestedExportName", () => {
     );
   });
 
+  it("removes the Windows path separator and the other unsafe characters", () => {
+    expect(suggestedExportName("C:\\Users\\x\\Libros\\a.pdf")).toBe("C Users x Libros a.pdf - subrayados.md");
+  });
+
   it("falls back to the app name when the title is empty", () => {
     expect(suggestedExportName("  ")).toBe("Atril - subrayados.md");
   });
