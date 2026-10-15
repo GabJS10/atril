@@ -51,9 +51,16 @@ regex = "1"
 # Color dominante de las portadas que ya existen (src/cover_color.rs): decodifica `covers/<id>.jpg` (o .webp) sin
 # MuPDF. Rust puro (zune-jpeg, image-webp), sin dependencias del sistema.
 image = { version = "0.25", default-features = false, features = ["jpeg", "webp"] }
-# Indexador nativo: `setpriority` sobre el hilo de indexado (Linux) para que el render del visor gane la CPU.
+
+# Solo Unix: el indexador baja el `nice` de su hilo con `setpriority` (Linux) para que el render del visor gane la
+# CPU, y `engine/raw.rs` llama a `malloc_trim` (glibc). Windows no la necesita.
+[target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+# Solo Windows: `SetThreadPriority` para bajar la prioridad del hilo del indexador (equivale al `nice` de Linux).
+# Features mínimas; 0.61 es la versión que ya trae Tauri.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_Threading"] }
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

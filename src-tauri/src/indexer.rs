@@ -329,7 +329,9 @@ fn run(
     engine: &Engine,
     wakes: &Receiver<()>,
 ) {
-    lower_priority();
+    if !lower_priority() {
+        tracing::debug!("could not lower the priority of the indexer thread");
+    }
     let mut attempted = HashSet::new();
     let mut color_attempted = HashSet::new();
     loop {
@@ -370,16 +372,65 @@ fn run(
     }
 }
 
-/// Baja la prioridad de este hilo. En Linux `nice` es por hilo, así que solo afecta al indexador.
-/// En otros sistemas no hace nada (Windows está en el backlog).
-fn lower_priority() {
+/// Baja la prioridad de este hilo para que el render del visor gane la CPU. Es por hilo en las dos plataformas:
+/// `nice` 19 en Linux y `THREAD_PRIORITY_LOWEST` en Windows. Devuelve `false` si el sistema no lo permite o si en
+/// este sistema no hay nada que hacer.
+fn lower_priority() -> bool {
     #[cfg(target_os = "linux")]
     {
         // SAFETY: `gettid` no tiene precondiciones y `setpriority` solo cambia la prioridad de este hilo.
         let tid = unsafe { libc::gettid() } as libc::id_t;
-        if unsafe { libc::setpriority(libc::PRIO_PROCESS, tid, 19) } != 0 {
-            tracing::debug!("could not lower the priority of the indexer thread");
+        unsafe { libc::setpriority(libc::PRIO_PROCESS, tid, 19) == 0 }
+    }
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::System::Threading::{
+            GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_LOWEST,
+        };
+        // SAFETY: `GetCurrentThread` devuelve un seudo-handle del hilo que llama (no hay que cerrarlo) y
+        // `SetThreadPriority` solo cambia la prioridad de ese hilo.
+        unsafe { SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_LOWEST) != 0 }
+    }
+    #[cfg(not(any(target_os = "linux", windows)))]
+    {
+        false
+    }
+}
+
+/// La prioridad es por hilo: la prueba la baja en un hilo propio para no afectar al resto de las pruebas.
+#[cfg(all(test, any(target_os = "linux", windows)))]
+mod priority_tests {
+    use super::lower_priority;
+
+    /// Prioridad actual de este hilo, en la escala de cada sistema (`nice` en Linux, `THREAD_PRIORITY_*` en Windows).
+    fn current_priority() -> i32 {
+        #[cfg(target_os = "linux")]
+        {
+            // SAFETY: `gettid` no tiene precondiciones y `getpriority` solo lee la prioridad del hilo.
+            unsafe { libc::getpriority(libc::PRIO_PROCESS, libc::gettid() as libc::id_t) }
         }
+        #[cfg(windows)]
+        {
+            use windows_sys::Win32::System::Threading::{GetCurrentThread, GetThreadPriority};
+            // SAFETY: `GetCurrentThread` devuelve un seudo-handle del hilo que llama.
+            unsafe { GetThreadPriority(GetCurrentThread()) }
+        }
+    }
+
+    #[test]
+    fn the_indexer_thread_runs_at_the_lowest_priority() {
+        let (lowered, priority) = std::thread::spawn(|| (lower_priority(), current_priority()))
+            .join()
+            .expect("priority thread");
+
+        assert!(lowered, "the system accepted the new priority");
+        #[cfg(target_os = "linux")]
+        assert_eq!(priority, 19);
+        #[cfg(windows)]
+        assert_eq!(
+            priority,
+            windows_sys::Win32::System::Threading::THREAD_PRIORITY_LOWEST
+        );
     }
 }
 
