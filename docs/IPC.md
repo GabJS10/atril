@@ -118,7 +118,7 @@ Valores por defecto: `language: "system"`, `theme: "dark"`, `defaultZoom: "page_
 | Comando | Argumentos | Devuelve | Errores |
 |---|---|---|---|
 | `list_library_folders` | — | `LibraryFolder[]` | `db` |
-| `add_library_folder` | `{ path: string }` | `LibraryFolder`. Si la carpeta ya estaba, devuelve la existente. Lanza el escaneo en segundo plano (`library://changed`, `reason: "scan"`) | `invalid_input` (no es una carpeta), `io`, `db` |
+| `add_library_folder` | `{ path: string }` | `LibraryFolder`. Si la carpeta ya estaba, devuelve la existente: «ya estaba» según las reglas de rutas de la plataforma (en Windows no distinguen mayúsculas ni `/` de `\`, ni cuenta la barra final), y `path` se guarda normalizado (separadores unificados, sin barra final) conservando las mayúsculas que dio el usuario. Lanza el escaneo en segundo plano (`library://changed`, `reason: "scan"`) | `invalid_input` (no es una carpeta), `io`, `db` |
 | `remove_library_folder` | `{ folderId: string }` | `null`. Deja de vigilar la carpeta; sus libros se quedan en la biblioteca | `not_found`, `db` |
 | `rescan_library` | — | `null`. El resultado llega por `library://changed` | `db` |
 | `get_scan_status` | — | `ScanStatus` (para pintar el estado "escaneando" al entrar en la biblioteca) | — |
@@ -126,7 +126,7 @@ Valores por defecto: `language: "system"`, `theme: "dark"`, `defaultZoom: "page_
 
 **Indexador nativo (R1.3, `src-tauri/src/indexer.rs`)**
 
-Indexa los libros con `scanState: "pending"` y sin `missing`. Procesa uno a uno, en un hilo propio (`atril-indexer`) con su propia copia del documento de MuPDF. Ese hilo baja su prioridad (nice 19 en Linux) y no empieza un libro mientras haya renders del visor en cola, para no retrasar las páginas del lector.
+Indexa los libros con `scanState: "pending"` y sin `missing`. Procesa uno a uno, en un hilo propio (`atril-indexer`) con su propia copia del documento de MuPDF. Ese hilo baja su prioridad (nice 19 en Linux, `THREAD_PRIORITY_LOWEST` en Windows) y no empieza un libro mientras haya renders del visor en cola, para no retrasar las páginas del lector.
 
 - **Cuándo se ejecuta:** al arrancar la app; tras cada escaneo de carpetas (también el de vigilancia); tras `import_files` si entró algún libro; al abrir un PDF desde el sistema con la app ya abierta; y cada 30 s por si entra un libro por otra vía.
 - **Qué hace con cada libro:**
