@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 import type { Book, Collection, Highlight } from "../api/types";
 import { useT } from "../i18n";
 import { useHighlights } from "../reader/highlights";
-import { PIGMENT_COLOR, PIGMENT_KEY } from "../reader/highlightPresentation";
+import { displayHighlightText, PIGMENT_COLOR, PIGMENT_KEY } from "../reader/highlightPresentation";
 import { ArrowRightIcon, BookOpenIcon, PlusIcon } from "../ui/icons";
 import { primaryButton, secondaryButton, textLink } from "../ui/buttons";
 import { useBookDragSource, useBookDragStore } from "./bookDrag";
@@ -137,7 +137,7 @@ export function ContinueCard({ book }: { book: Book }) {
               style={{ "--mark": PIGMENT_COLOR[last.color] } as React.CSSProperties}
             >
               <span className="sr-only">{t(PIGMENT_KEY[last.color])}: </span>
-              {last.text}
+              {displayHighlightText(last.text)}
             </span>
           </p>
           {last.note ? (

@@ -50,13 +50,37 @@ export function separatorAfter(word: TextWord): string {
 /** A word cut to a range of its characters (a selection can start or end in the middle of one). */
 export type WordSlice = { index: number; from: number; to: number };
 
-/** The text of a run of words, in reading order, with the line and block breaks the engine marked. */
+/**
+ * What a word cut by a line end becomes when the next word continues it, or null when the break is a real one.
+ * A hyphen after a letter, with the next word in lower case, is a hyphenation: "for-" + "taleza" is "fortaleza", so
+ * the hyphen goes. A hyphen after a digit is a range: "19-" + "20" keeps it ("19-20"). Both lose the line break.
+ */
+export function hyphenatedJoin(line: string, next: string): string | null {
+  if (/\p{L}[-‐­]$/u.test(line) && /^\p{Ll}/u.test(next)) return line.slice(0, -1);
+  if (/\p{Nd}[-‐]$/u.test(line) && /^\p{Nd}/u.test(next)) return line.replace(/‐$/u, "-");
+  return null;
+}
+
+/**
+ * The text of a run of words, in reading order, with the line and block breaks the engine marked. A line end that
+ * splits a hyphenated word (see `hyphenatedJoin`) is joined instead of broken.
+ */
 export function copyTextOf(words: readonly TextWord[], slices: readonly WordSlice[]): string {
   let text = "";
   slices.forEach((slice, position) => {
     const word = words[slice.index];
     if (!word) return;
-    text += word.text.slice(slice.from, slice.to);
+    const piece = word.text.slice(slice.from, slice.to);
+    const nextSlice = slices[position + 1];
+    const nextWord = nextSlice ? words[nextSlice.index] : undefined;
+    if (nextSlice && nextWord && word.lineEnd && !word.blockEnd) {
+      const joined = hyphenatedJoin(piece, nextWord.text.slice(nextSlice.from, nextSlice.to));
+      if (joined !== null) {
+        text += joined;
+        return;
+      }
+    }
+    text += piece;
     // The break after the last word is not part of the text.
     if (position < slices.length - 1) text += separatorAfter(word);
   });
