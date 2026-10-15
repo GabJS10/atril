@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { createMemoryHistory } from "@tanstack/react-router";
@@ -7,7 +7,7 @@ import { App } from "../App";
 import { createQueryClient } from "../api/queries";
 import type { Book, Collection, HomeData } from "../api/types";
 import { createAppRouter } from "../router";
-import { BOOK_DRAG_TYPE } from "./Cover";
+import { useBookDragStore } from "./bookDrag";
 
 function book(id: string, title: string): Book {
   return {
@@ -83,18 +83,26 @@ describe("Salas and removals", () => {
     await waitFor(() => expect(calls).toContainEqual({ cmd: "create_collection", args: { name: "Ensayo" } }));
   });
 
-  it("adds a book to a Sala when it is dropped on the Sala", async () => {
+  it("adds a book to a Sala when it is dragged onto the Sala", async () => {
     const calls = recordCommands();
     renderAt("/");
     // The sidebar lists the Sala too; the card in the Salas section is the last link.
     const row = (await screen.findAllByRole("link", { name: /Filosofía/ })).at(-1)!;
+    const cover = (await screen.findAllByRole("link", { name: /Meditaciones/ })).at(0)!;
 
-    const dataTransfer = {
-      types: [BOOK_DRAG_TYPE],
-      getData: (type: string) => (type === BOOK_DRAG_TYPE ? "m1" : ""),
-    };
-    fireEvent.dragOver(row, { dataTransfer });
-    fireEvent.drop(row, { dataTransfer });
+    // jsdom has no layout: the pointer is "over" the Sala's card wherever it is.
+    Object.defineProperty(document, "elementFromPoint", { value: () => row, configurable: true });
+    try {
+      act(() => {
+        cover.dispatchEvent(
+          new MouseEvent("pointerdown", { bubbles: true, button: 0, clientX: 100, clientY: 100 }),
+        );
+        window.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 150, clientY: 120 }));
+        window.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 150, clientY: 120 }));
+      });
+    } finally {
+      Reflect.deleteProperty(document, "elementFromPoint");
+    }
 
     await waitFor(() =>
       expect(calls).toContainEqual({
@@ -102,6 +110,7 @@ describe("Salas and removals", () => {
         args: { bookIds: ["m1"], collectionId: "c1" },
       }),
     );
+    expect(useBookDragStore.getState().drag).toBeNull();
   });
 
   it("deletes a Sala only after confirmation, and never deletes books", async () => {

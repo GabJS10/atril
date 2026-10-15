@@ -3,6 +3,7 @@ import type { Book } from "../api/types";
 import { useT } from "../i18n";
 import { StarIcon } from "../ui/icons";
 import { useToggleFavorite } from "./actions";
+import { useBookDragSource } from "./bookDrag";
 import { BookMenu } from "./BookMenu";
 import { useProgressLabel } from "./format";
 import { coverToneOf } from "./identity";
@@ -41,7 +42,7 @@ export function Cover({
       } ${className}`}
     >
       {book.coverUrl ? (
-        <img src={book.coverUrl} alt="" className="h-full w-full object-cover" />
+        <img src={book.coverUrl} alt="" draggable={false} className="h-full w-full object-cover" />
       ) : (
         <div
           aria-hidden="true"
@@ -90,11 +91,9 @@ export function ProgressBar({
   );
 }
 
-export const BOOK_DRAG_TYPE = "application/x-atril-book";
-
 /**
- * A cover with its caption, linking to the reader. Drag it onto a Sala to add it. The options menu and the
- * favourite toggle sit over the cover. A missing file is shown but cannot be opened.
+ * A cover with its caption, linking to the reader. Drag it onto a Sala to add it (bookDrag.ts). The options menu and
+ * the favourite toggle sit over the cover. A missing file is shown but cannot be opened.
  */
 export function BookCard({
   book,
@@ -107,6 +106,7 @@ export function BookCard({
 }) {
   const t = useT();
   const toggleFavorite = useToggleFavorite();
+  const startDrag = useBookDragSource(book);
   const percent = useProgressLabel(book.progress);
   const finished = book.progress !== null && book.progress >= 1;
   const reading = book.progress !== null && book.progress > 0 && !finished;
@@ -145,14 +145,7 @@ export function BookCard({
   );
 
   return (
-    <div
-      className="group relative min-w-0 shrink-0"
-      draggable={!book.missing}
-      onDragStart={(event) => {
-        event.dataTransfer.setData(BOOK_DRAG_TYPE, book.id);
-        event.dataTransfer.effectAllowed = "copy";
-      }}
-    >
+    <div className="group relative min-w-0 shrink-0 select-none" onPointerDown={startDrag}>
       {book.missing ? (
         <div className="block">{body}</div>
       ) : (

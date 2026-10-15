@@ -4,6 +4,7 @@ import { useSettings } from "../api/queries";
 import { useBrowserDefaults } from "../browserDefaults";
 import { useLocaleStore, useT } from "../i18n";
 import { useFullscreenKey } from "../useFullscreenKey";
+import { BookDragGhost } from "../library/BookDragGhost";
 import { useFileDrop } from "../library/useFileDrop";
 import { useLibraryEvents } from "../library/useLibraryEvents";
 import { applyTheme } from "../theme";
@@ -36,6 +37,7 @@ function RootLayout() {
   return (
     <div className="flex min-h-screen flex-col">
       <Outlet />
+      <BookDragGhost />
     </div>
   );
 }
