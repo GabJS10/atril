@@ -6,7 +6,7 @@ import {
   type Box,
   type PageMapping,
 } from "../geometry";
-import { copyTextOf, foldedTextOf, sliceBox, type WordSlice } from "./textLayer";
+import { copyTextOf, foldedTextOf, sliceBox, type WordSlice } from "./textLayerModel";
 
 /**
  * What a selection covers on one page: PDF rectangles (one per line) and the text. `text` has its breaks folded into

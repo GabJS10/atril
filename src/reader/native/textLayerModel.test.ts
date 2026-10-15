@@ -8,7 +8,7 @@ import {
   spanContent,
   stretchFor,
   wordStyle,
-} from "./textLayer";
+} from "./textLayerModel";
 
 const word = (text: string, x0: number, lineEnd = false, blockEnd = false): TextWord => ({
   text,
