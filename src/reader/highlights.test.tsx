@@ -6,6 +6,7 @@ import { createElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { Highlight } from "../api/types";
 import { highlightsKey, useHighlightActions, useHighlights } from "./highlights";
+import { useHighlightSession } from "./useHighlightSession";
 
 const BOOK = "book-1";
 const RECT: [number, number, number, number] = [72, 690, 200, 704];
@@ -138,5 +139,31 @@ describe("highlight actions", () => {
 
     expect(calls.find((call) => call.cmd === "delete_highlight")?.args).toEqual({ highlightId: "h1" });
     expect(client.getQueryData<Highlight[]>(highlightsKey(BOOK))?.map((item) => item.id)).toEqual(["h2"]);
+  });
+});
+
+describe("highlight editor", () => {
+  it("closes once the note is saved, and sends the note", async () => {
+    const { wrapper, calls } = setup((cmd) => {
+      if (cmd === "list_highlights") return [saved("h1")];
+      if (cmd === "update_highlight") return saved("h1", { note: "Una nota" });
+      return null;
+    });
+    const { result } = renderHook(() => useHighlightSession(BOOK), { wrapper });
+    await waitFor(() => expect(result.current.highlights).toHaveLength(1));
+
+    const anchor = { left: 72, top: 100, right: 200, bottom: 120, width: 128, height: 20 } as DOMRect;
+    act(() => result.current.handlers.onHighlightPress("h1", anchor));
+    expect(result.current.editing?.highlight.id).toBe("h1");
+
+    act(() => result.current.editor.saveNote("h1", "Una nota"));
+
+    expect(result.current.editing).toBeNull();
+    await waitFor(() =>
+      expect(calls.find((call) => call.cmd === "update_highlight")?.args).toEqual({
+        highlightId: "h1",
+        note: "Una nota",
+      }),
+    );
   });
 });

@@ -120,7 +120,10 @@ export function useHighlightSession(bookId: string) {
         setLastColor(color);
         void actions.update(id, { color });
       },
-      saveNote: (id: string, text: string) => void actions.update(id, { note: text.trim() ? text : null }),
+      saveNote: (id: string, text: string) => {
+        setEditing(null);
+        void actions.update(id, { note: text.trim() ? text : null });
+      },
       remove: (id: string) => {
         setEditing(null);
         void actions.remove(id);
