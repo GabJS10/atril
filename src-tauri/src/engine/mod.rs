@@ -22,6 +22,7 @@ pub mod encode;
 mod engine_tests;
 pub mod geometry;
 pub mod links;
+pub mod open;
 pub mod outline;
 pub mod pool;
 pub mod raw;

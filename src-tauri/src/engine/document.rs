@@ -6,12 +6,12 @@ use std::path::Path;
 
 use mupdf::pdf::{PdfDocument, PdfObject};
 use mupdf::text_page::{TextPage, TextPageFlags};
-use mupdf::{Colorspace, Document, Matrix, Page};
+use mupdf::{Colorspace, Matrix, Page};
 use serde::Serialize;
 
 use super::encode::encode_jpeg;
 use super::geometry::{self, PageBoxes, PageGeometry, Rect};
-use super::{EngineError, MAX_PIXELS, MAX_SIDE_PIXELS};
+use super::{EngineError, MAX_PIXELS, MAX_SIDE_PIXELS, open};
 
 /// Número de páginas y geometría de cada una (ver `geometry`).
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -32,7 +32,7 @@ impl OpenDocument {
         if !path.is_file() {
             return Err(EngineError::Io(format!("{} is not a file", path.display())));
         }
-        let document = Document::open(path).map_err(invalid_pdf)?;
+        let document = open::open_document(path)?;
         if document.needs_password().map_err(invalid_pdf)? {
             return Err(EngineError::InvalidPdf(
                 "the PDF is password protected".into(),
