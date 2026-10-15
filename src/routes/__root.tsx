@@ -1,6 +1,7 @@
 import { createRootRoute, Link, Outlet } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useSettings } from "../api/queries";
+import { useBrowserDefaults } from "../browserDefaults";
 import { useLocaleStore, useT } from "../i18n";
 import { useFullscreenKey } from "../useFullscreenKey";
 import { useFileDrop } from "../library/useFileDrop";
@@ -14,6 +15,7 @@ function RootLayout() {
   useLibraryEvents();
   useFileDrop();
   useFullscreenKey();
+  useBrowserDefaults();
   const language = settings?.language;
   const setLanguage = useLocaleStore((state) => state.setLanguage);
   const locale = useLocaleStore((state) => state.locale);
