@@ -237,6 +237,9 @@ dependencies = [
  "unicode-normalization",
  "uuid",
  "walkdir",
+ "webview2-com",
+ "windows-core",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

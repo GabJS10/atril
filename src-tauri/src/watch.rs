@@ -250,30 +250,176 @@ mod tests {
 
 #[cfg(test)]
 mod watcher_tests {
-    use std::sync::mpsc;
-    use std::time::Duration;
+    //! Pruebas del vigilante con `notify` real y el sistema de archivos. `inotify` (Linux) y `ReadDirectoryChangesW`
+    //! (Windows) no coinciden en cuántos eventos mandan, en qué orden ni con qué tipo (un renombrado llega como
+    //! `Name(From)` + `Name(To)`, como `Name(Both)` o como `Any`), ni en cuánto tardan. Por eso nunca se espera un
+    //! evento concreto: se espera, con margen, uno que **mencione** la ruta que cambió, y después se comprueba el
+    //! efecto con un escaneo, que es lo que hace la app (`Worker::run` ignora el tipo de evento).
 
-    use notify::{RecursiveMode, Watcher};
+    use std::path::{Path, PathBuf};
+    use std::sync::Mutex;
+    use std::sync::mpsc::{self, Receiver};
+    use std::time::{Duration, Instant};
+
+    use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
+
+    use crate::library::get_book;
+    use crate::scan::scan_folders;
+    use crate::test_support::{import, open_temp_db, write_pdf};
+
+    const WAIT: Duration = Duration::from_secs(30);
+
+    fn watch(dir: &Path) -> (RecommendedWatcher, Receiver<notify::Result<Event>>) {
+        let (tx, rx) = mpsc::channel();
+        let mut watcher = notify::recommended_watcher(move |result| {
+            let _ = tx.send(result);
+        })
+        .expect("watcher");
+        watcher.watch(dir, RecursiveMode::Recursive).expect("watch");
+        (watcher, rx)
+    }
+
+    /// Espera hasta `WAIT` un evento correcto que cumpla `matches`; descarta los demás.
+    fn wait_for(
+        rx: &Receiver<notify::Result<Event>>,
+        mut matches: impl FnMut(&Event) -> bool,
+    ) -> bool {
+        let deadline = Instant::now() + WAIT;
+        while let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
+            match rx.recv_timeout(remaining) {
+                Ok(Ok(event)) if matches(&event) => return true,
+                Ok(_) => {}
+                Err(_) => return false,
+            }
+        }
+        false
+    }
+
+    fn mentions(event: &Event, path: &Path) -> bool {
+        event.paths.iter().any(|candidate| candidate == path)
+    }
 
     /// Comprueba que `notify` entrega eventos de un PDF nuevo en una carpeta vigilada.
     #[test]
     fn a_new_pdf_in_a_watched_folder_produces_an_event() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let (tx, rx) = mpsc::channel();
-        let mut watcher =
-            notify::recommended_watcher(move |result: notify::Result<notify::Event>| {
-                let _ = tx.send(result.is_ok());
-            })
-            .expect("watcher");
-        watcher
-            .watch(dir.path(), RecursiveMode::Recursive)
-            .expect("watch");
+        let (_watcher, rx) = watch(dir.path());
 
-        std::fs::write(dir.path().join("nuevo.pdf"), b"%PDF-1.4").expect("write");
+        let path = dir.path().join("nuevo.pdf");
+        std::fs::write(&path, b"%PDF-1.4").expect("write");
 
-        let event = rx
-            .recv_timeout(Duration::from_secs(10))
-            .expect("event within 10 s");
-        assert!(event);
+        assert!(
+            wait_for(&rx, |event| mentions(event, &path)),
+            "no event for {path:?}"
+        );
+    }
+
+    #[test]
+    fn renaming_a_pdf_in_a_watched_folder_produces_an_event_for_the_new_name() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let old = write_pdf(dir.path(), "a.pdf", 1);
+        let (_watcher, rx) = watch(dir.path());
+
+        let new = dir.path().join("renombrado.pdf");
+        std::fs::rename(&old, &new).expect("rename");
+
+        assert!(
+            wait_for(&rx, |event| mentions(event, &new)),
+            "no event for {new:?}"
+        );
+    }
+
+    #[test]
+    fn a_moved_pdf_keeps_its_book_after_the_event_and_a_rescan() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let sub = dir.path().join("Economía y política");
+        std::fs::create_dir_all(&sub).expect("mkdir");
+        let (_db_dir, mut conn) = open_temp_db();
+        let original = write_pdf(dir.path(), "a.pdf", 1);
+        let book = import(&mut conn, &original);
+        let db = Mutex::new(conn);
+        let (_watcher, rx) = watch(dir.path());
+
+        let moved = sub.join("a movido.pdf");
+        std::fs::rename(&original, &moved).expect("move");
+        assert!(
+            wait_for(&rx, |event| mentions(event, &moved)),
+            "no event for {moved:?}"
+        );
+
+        let found = scan_folders(&db, &[dir.path().to_path_buf()], |_| {}).expect("scan");
+
+        assert_eq!(found, 0, "the same book, not a new one");
+        let conn = db.lock().expect("lock");
+        let after = get_book(&conn, &book.id).expect("get");
+        assert_eq!(after.file_name, "a movido.pdf");
+        assert!(!after.missing);
+    }
+
+    #[test]
+    fn a_deleted_pdf_is_seen_and_the_rescan_marks_its_book_missing() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (_db_dir, mut conn) = open_temp_db();
+        let path = write_pdf(dir.path(), "a.pdf", 1);
+        let book = import(&mut conn, &path);
+        let db = Mutex::new(conn);
+        let (_watcher, rx) = watch(dir.path());
+
+        std::fs::remove_file(&path).expect("delete");
+        assert!(
+            wait_for(&rx, |event| mentions(event, &path)),
+            "no event for {path:?}"
+        );
+
+        scan_folders(&db, &[dir.path().to_path_buf()], |_| {}).expect("scan");
+
+        assert!(
+            get_book(&db.lock().expect("lock"), &book.id)
+                .expect("get")
+                .missing
+        );
+    }
+
+    #[test]
+    fn a_folder_moved_into_a_watched_one_is_seen_and_its_books_are_found() {
+        let outside = tempfile::tempdir().expect("outside");
+        let library = tempfile::tempdir().expect("library");
+        let incoming = outside.path().join("nuevos");
+        std::fs::create_dir_all(&incoming).expect("mkdir");
+        write_pdf(&incoming, "uno.pdf", 1);
+        write_pdf(&incoming, "dos.pdf", 2);
+        let (_db_dir, conn) = open_temp_db();
+        let db = Mutex::new(conn);
+        let (_watcher, rx) = watch(library.path());
+
+        let arrived: PathBuf = library.path().join("nuevos");
+        std::fs::rename(&incoming, &arrived).expect("move the folder in");
+        assert!(
+            wait_for(&rx, |event| mentions(event, &arrived)),
+            "no event for {arrived:?}"
+        );
+
+        let found = scan_folders(&db, &[library.path().to_path_buf()], |_| {}).expect("scan");
+
+        assert_eq!(found, 2);
+    }
+
+    /// Los manejadores de Atril abren los libros con `std::fs`, que en Windows comparte `FILE_SHARE_DELETE`:
+    /// mientras se lee un libro (huella, protocolo), el Explorador puede renombrarlo.
+    #[test]
+    fn a_pdf_being_read_can_be_renamed_and_the_watcher_still_reports_it() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let old = write_pdf(dir.path(), "a.pdf", 1);
+        let reading = std::fs::File::open(&old).expect("open for reading");
+        let (_watcher, rx) = watch(dir.path());
+
+        let new = dir.path().join("b.pdf");
+        std::fs::rename(&old, &new).expect("rename a file that is open for reading");
+
+        assert!(
+            wait_for(&rx, |event| mentions(event, &new)),
+            "no event for {new:?}"
+        );
+        drop(reading);
     }
 }

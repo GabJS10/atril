@@ -16,6 +16,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::error::{AppError, ErrorCode};
+use crate::path_rules;
 use crate::protocol::{book_cover_url, book_file_url};
 use crate::settings::{ViewMode, Zoom};
 
@@ -227,11 +228,15 @@ pub fn commit_file(
         )
         .optional()?;
 
+    // El libro ya tenía esta ruta (escrita igual o, en Windows, con otras mayúsculas o separadores).
+    let owns_path = existing
+        .as_ref()
+        .is_some_and(|(known_path, _)| path_rules::same(known_path, &file.path));
     if let (Some((known_path, removed)), Origin::Scan) = (&existing, origin) {
         if *removed {
             return Ok(None);
         }
-        if known_path != &file.path && Path::new(known_path).is_file() {
+        if !owns_path && Path::new(known_path).is_file() {
             return Ok(None);
         }
     }
@@ -239,13 +244,7 @@ pub fn commit_file(
 
     // Otra huella ocupaba esta ruta: el archivo se reemplazó. Esa entrada ya no tiene archivo;
     // se conserva (progreso, subrayados) sin ruta real.
-    let displaced: Option<String> = tx
-        .query_row(
-            "SELECT id FROM books WHERE path = ?1 AND id <> ?2",
-            params![file.path, file.id],
-            |row| row.get(0),
-        )
-        .optional()?;
+    let displaced = displaced_book(&tx, file, owns_path, path_rules::Style::NATIVE)?;
     if let Some(old_id) = displaced {
         tx.execute(
             "UPDATE books SET path = ?1, missing = 1 WHERE id = ?2",
@@ -279,6 +278,40 @@ pub fn commit_file(
         .book;
     tx.commit()?;
     Ok(Some(Commit { book, created }))
+}
+
+/// El otro libro (otra huella) que ocupaba la ruta de `file`, si lo hay: el archivo se reemplazó por otro contenido.
+/// La búsqueda exacta usa el índice de `books.path`. Con las reglas de Windows las rutas no distinguen mayúsculas, así
+/// que un libro nuevo (o que cambia de ruta) también se compara sin ellas con los demás; si el libro ya tenía esta
+/// ruta (`owns_path`), no hace falta, y los reescaneos de una biblioteca grande no recorren la tabla por cada archivo.
+fn displaced_book(
+    conn: &Connection,
+    file: &PreparedFile,
+    owns_path: bool,
+    style: path_rules::Style,
+) -> Result<Option<String>, AppError> {
+    let exact: Option<String> = conn
+        .query_row(
+            "SELECT id FROM books WHERE path = ?1 AND id <> ?2",
+            params![file.path, file.id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if exact.is_some() || owns_path || style != path_rules::Style::Windows {
+        return Ok(exact);
+    }
+    // `NOCASE` solo acerca candidatas (ASCII); decide `path_rules::same`.
+    let mut stmt =
+        conn.prepare("SELECT id, path FROM books WHERE path = ?1 COLLATE NOCASE AND id <> ?2")?;
+    let candidates = stmt
+        .query_map(params![file.path, file.id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(candidates
+        .into_iter()
+        .find(|(_, other)| path_rules::key(other, style) == path_rules::key(&file.path, style))
+        .map(|(id, _)| id))
 }
 
 /// Prepara el archivo (sin lock) y lo registra (con lock, un momento).
@@ -1433,5 +1466,99 @@ mod tests {
                 .is_none()
         );
         assert!(visible_books(&conn).expect("list").is_empty());
+    }
+    #[test]
+    fn a_file_replaced_in_its_path_detaches_the_old_book_and_keeps_its_progress() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (_db, mut conn) = open_temp_db();
+        let path = write_pdf(dir.path(), "a.pdf", 1);
+        let old = import(&mut conn, &path);
+        save_reading_state(&mut conn, &old.id, &save_input(3, 10)).expect("save");
+
+        write_pdf(dir.path(), "a.pdf", 2);
+        let new = import(&mut conn, &path);
+
+        assert_ne!(new.id, old.id);
+        let detached = get_book(&conn, &old.id).expect("old book survives");
+        assert!(detached.missing);
+        assert_eq!(detached.progress, Some(0.3));
+        let stored: String = conn
+            .query_row(
+                "SELECT path FROM books WHERE id = ?1",
+                params![old.id],
+                |row| row.get(0),
+            )
+            .expect("path");
+        assert_eq!(stored, format!("{DETACHED_PREFIX}{}", old.id));
+    }
+
+    fn insert_book_row(conn: &Connection, id: &str, path: &str) {
+        conn.execute(
+            "INSERT INTO books (id, path, file_size, title, added_at) VALUES (?1, ?2, 1, 'x', 'now')",
+            params![id, path],
+        )
+        .expect("insert");
+    }
+
+    fn prepared(id: &str, path: &str) -> PreparedFile {
+        PreparedFile {
+            id: id.to_owned(),
+            path: path.to_owned(),
+            file_size: 1,
+            file_mtime: None,
+            title: "x".to_owned(),
+        }
+    }
+
+    #[test]
+    fn displaced_book_matches_the_exact_path_with_any_rules() {
+        let (_db, conn) = open_temp_db();
+        insert_book_row(&conn, "old", "/libros/a.pdf");
+        let file = prepared("new", "/libros/a.pdf");
+
+        for style in [path_rules::Style::Posix, path_rules::Style::Windows] {
+            assert_eq!(
+                displaced_book(&conn, &file, false, style).expect("query"),
+                Some("old".to_owned())
+            );
+        }
+        // El propio libro nunca se desplaza a sí mismo.
+        assert_eq!(
+            displaced_book(
+                &conn,
+                &prepared("old", "/libros/a.pdf"),
+                true,
+                path_rules::Style::Windows
+            )
+            .expect("query"),
+            None
+        );
+    }
+
+    #[test]
+    fn displaced_book_ignores_case_only_with_windows_rules() {
+        let (_db, conn) = open_temp_db();
+        insert_book_row(&conn, "old", r"C:\Libros\Economía.pdf");
+        let variant = prepared("new", r"c:\LIBROS\Economía.pdf");
+
+        assert_eq!(
+            displaced_book(&conn, &variant, false, path_rules::Style::Windows).expect("query"),
+            Some("old".to_owned())
+        );
+        assert_eq!(
+            displaced_book(&conn, &variant, false, path_rules::Style::Posix).expect("query"),
+            None,
+            "on Linux the two spellings are two different files"
+        );
+        assert_eq!(
+            displaced_book(&conn, &variant, true, path_rules::Style::Windows).expect("query"),
+            None,
+            "a book that already owns the path does not widen the search"
+        );
+        let other_folder = prepared("new", r"c:\otra\Economía.pdf");
+        assert_eq!(
+            displaced_book(&conn, &other_folder, false, path_rules::Style::Windows).expect("query"),
+            None
+        );
     }
 }
