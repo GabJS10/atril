@@ -1,6 +1,7 @@
 //! Subrayados y notas: CRUD y exportación a Markdown (`docs/IPC.md`, fase 3).
 //! Los rectángulos van en coordenadas PDF; sirven a cualquier zoom.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -417,7 +418,63 @@ fn quote(text: &str, labels: &Labels) -> String {
     if collapsed.is_empty() {
         format!("> {}", labels.no_text)
     } else {
-        format!("> {}", escape(&collapsed))
+        format!("> {}", escape(&display_text(&collapsed)))
+    }
+}
+
+/// Quita los guiones de corte de línea que quedaron en el texto extraído del PDF
+/// («for- taleza» → «fortaleza»), igual que la vista del lector. Función pura: no toca la base.
+///
+/// Reglas (cada guion va seguido de un único espacio):
+/// - minúscula + guion (`-`, U+2010 o U+00AD) + espacio + minúscula → se quitan guion y espacio;
+/// - dígito + guion (`-` o U+2010) + espacio + dígito → se conserva el guion y se quita el espacio
+///   («22,19- 20» → «22,19-20»).
+///
+/// Las coincidencias encadenadas también se resuelven («a- b- c» → «abc»). «Rosa- María»
+/// y el texto sin guiones quedan intactos.
+///
+/// Caso límite aceptado: «pre- y post-» se une como «prey», porque no distinguimos un corte
+/// de palabra de un guion compuesto tras minúscula.
+fn display_text(text: &str) -> Cow<'_, str> {
+    const SOFT_HYPHEN: char = '\u{00AD}';
+    let is_hyphen = |c: char| matches!(c, '-' | '\u{2010}' | SOFT_HYPHEN);
+
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut changed = false;
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        // Se mira el carácter original anterior, así las coincidencias encadenadas funcionan.
+        let around = if is_hyphen(c) && i > 0 && chars.get(i + 1) == Some(&' ') {
+            chars.get(i + 2).map(|&next| (chars[i - 1], next))
+        } else {
+            None
+        };
+        match around {
+            Some((prev, next)) if prev.is_lowercase() && next.is_lowercase() => {
+                changed = true;
+                i += 2;
+                continue;
+            }
+            Some((prev, next))
+                if prev.is_ascii_digit() && next.is_ascii_digit() && c != SOFT_HYPHEN =>
+            {
+                changed = true;
+                out.push(c);
+                i += 2;
+                continue;
+            }
+            _ => {}
+        }
+        out.push(c);
+        i += 1;
+    }
+
+    if changed {
+        Cow::Owned(out)
+    } else {
+        Cow::Borrowed(text)
     }
 }
 
@@ -973,5 +1030,63 @@ mod tests {
             "{written}"
         );
         assert!(written.contains("2026-01-03"));
+    }
+
+    #[test]
+    fn display_text_joins_line_break_hyphens_and_keeps_the_rest() {
+        let cases = [
+            ("hoy nos llena de for- taleza", "hoy nos llena de fortaleza"),
+            ("sin vio- lentar", "sin violentar"),
+            ("ac- ciédn de gracias", "acciédn de gracias"),
+            (
+                "con \u{00AD} soft\u{00AD} hyphen",
+                "con \u{00AD} softhyphen",
+            ),
+            ("un corte\u{2010} y otro", "un cortey otro"),
+            ("un corte\u{2010} 2 otro", "un corte\u{2010} 2 otro"),
+            ("una co\u{00AD} rrección", "una corrección"),
+            ("Lucas (22,19- 20)", "Lucas (22,19-20)"),
+            ("Lucas (22,19\u{2010} 20)", "Lucas (22,19\u{2010}20)"),
+            ("a- b- c", "abc"),
+            ("Rosa- María", "Rosa- María"),
+            ("sin guiones en absoluto", "sin guiones en absoluto"),
+            ("pre- y post-", "prey post-"),
+            ("fin de línea-", "fin de línea-"),
+            ("guion-espacio final- ", "guion-espacio final- "),
+        ];
+        for (input, expected) in cases {
+            assert_eq!(display_text(input), expected, "entrada: {input:?}");
+        }
+    }
+
+    #[test]
+    fn display_text_borrows_when_nothing_changes() {
+        assert!(matches!(display_text("sin cambios"), Cow::Borrowed(_)));
+        assert!(matches!(display_text("Rosa- María"), Cow::Borrowed(_)));
+        assert!(matches!(display_text("for- taleza"), Cow::Owned(_)));
+    }
+
+    #[test]
+    fn markdown_quotes_join_line_break_hyphens() {
+        let md = render_markdown(
+            "Libro",
+            None,
+            &[sample(
+                "e",
+                1,
+                500.0,
+                "hoy nos llena de for-  taleza. Lucas (22,19- 20) y Rosa- María",
+                None,
+            )],
+            Language::Es,
+            "2026-01-02",
+        );
+
+        assert!(
+            md.contains("> hoy nos llena de fortaleza. Lucas (22,19-20) y Rosa- María\n"),
+            "{md}"
+        );
+        assert!(!md.contains("for- taleza"), "{md}");
+        assert!(!md.contains("19- 20"), "{md}");
     }
 }
