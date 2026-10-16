@@ -87,7 +87,7 @@ chmod +x atril-libros_1.0.1_amd64.AppImage
 To uninstall the `.deb`: `sudo apt remove atril-libros`. Your library is kept.
 
 ### Where your data lives
-Atril never modifies or moves your PDFs. Your library, reading positions, highlights and covers are stored in `~/.local/share/atril/` (`atril.db` and `covers/`).
+Atril never modifies or moves your PDFs. Your library, reading positions, highlights and covers are stored in `~/.local/share/atril/` on Linux and `%LOCALAPPDATA%\atril\` on Windows (`atril.db`, `covers/` and the log, `atril.log`). Uninstalling Atril keeps this folder, so a reinstall finds your library as you left it; delete the folder to start from scratch.
 
 ## Build from source
 

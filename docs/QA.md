@@ -65,7 +65,8 @@ Se pasa con el `.deb` instalado (`sudo apt install ./atril-libros_1.0.1_amd64.de
 - [ ] SmartScreen avisa (app sin firmar): "Más información → Ejecutar de todas formas" funciona.
 - [ ] Instala sin pedir administrador; idioma del instalador según el sistema; acceso "Atril" en el menú Inicio; ejecutable `Atril.exe`.
 - [ ] Sin WebView2 instalado (Windows 10 limpio), el instalador lo descarga.
-- [ ] Desinstalar desde Configuración → Aplicaciones; los datos en `%LOCALAPPDATA%\atril\` se conservan (o no) según lo esperado.
+- [ ] Desinstalar desde Configuración → Aplicaciones: los datos de `%LOCALAPPDATA%\atril\` se conservan (a propósito). Reinstalar recupera la biblioteca; para empezar de cero, borrar esa carpeta.
+- [ ] Volver a añadir una carpeta devuelve los libros quitados que estén dentro, aunque se movieran (por huella); `atril.log` muestra `restored_by_hash`.
 
 **Biblioteca**
 - [ ] Añadir una carpeta (con espacios, tildes y algún emoji en el nombre); escaneo, portadas y color de portada.
