@@ -203,6 +203,10 @@ pub enum Origin {
     /// Lo encontró un escaneo de carpeta: no devuelve libros quitados y, si ya hay
     /// otra copia existente con esa huella, la ruta conocida se mantiene.
     Scan,
+    /// Escaneo de una carpeta que el usuario acaba de añadir (`add_library_folder`): como `Scan`, pero un libro
+    /// quitado con esta huella vuelve a la biblioteca y su ruta pasa a ser esta (aunque estuviera en otra carpeta,
+    /// que es lo normal tras reinstalar o mover los libros). Conserva progreso, subrayados y Salas.
+    Restore,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -210,14 +214,25 @@ pub struct Commit {
     pub book: Book,
     /// `true` si el libro no estaba en la base de datos.
     pub created: bool,
+    /// `true` si el libro estaba quitado de la biblioteca y este registro lo devolvió (`Origin::Restore`).
+    pub restored: bool,
 }
 
-/// Inserta o actualiza el libro. `Ok(None)` si un escaneo decide no tocarlo.
+/// Por qué un escaneo decide no tocar un archivo.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Skipped {
+    /// El libro con esta huella está quitado de la biblioteca.
+    Removed,
+    /// Otra copia del libro, con la misma huella, sigue existiendo en su ruta conocida.
+    Duplicate,
+}
+
+/// Inserta o actualiza el libro. `Ok(Err(motivo))` si un escaneo decide no tocarlo.
 pub fn commit_file(
     conn: &mut Connection,
     file: &PreparedFile,
     origin: Origin,
-) -> Result<Option<Commit>, AppError> {
+) -> Result<Result<Commit, Skipped>, AppError> {
     let tx = conn.transaction()?;
 
     let existing: Option<(String, bool)> = tx
@@ -232,15 +247,18 @@ pub fn commit_file(
     let owns_path = existing
         .as_ref()
         .is_some_and(|(known_path, _)| path_rules::same(known_path, &file.path));
-    if let (Some((known_path, removed)), Origin::Scan) = (&existing, origin) {
+    if let (Some((known_path, removed)), Origin::Scan | Origin::Restore) = (&existing, origin) {
         if *removed {
-            return Ok(None);
-        }
-        if !owns_path && Path::new(known_path).is_file() {
-            return Ok(None);
+            if origin == Origin::Scan {
+                return Ok(Err(Skipped::Removed));
+            }
+        } else if !owns_path && Path::new(known_path).is_file() {
+            return Ok(Err(Skipped::Duplicate));
         }
     }
     let created = existing.is_none();
+    let restored =
+        origin == Origin::Restore && existing.as_ref().is_some_and(|(_, removed)| *removed);
 
     // Otra huella ocupaba esta ruta: el archivo se reemplazó. Esa entrada ya no tiene archivo;
     // se conserva (progreso, subrayados) sin ruta real.
@@ -277,7 +295,11 @@ pub fn commit_file(
         .ok_or_else(|| AppError::internal("book missing right after upsert"))?
         .book;
     tx.commit()?;
-    Ok(Some(Commit { book, created }))
+    Ok(Ok(Commit {
+        book,
+        created,
+        restored,
+    }))
 }
 
 /// El otro libro (otra huella) que ocupaba la ruta de `file`, si lo hay: el archivo se reemplazó por otro contenido.
@@ -319,7 +341,7 @@ pub fn register(
     db: &Mutex<Connection>,
     path: &Path,
     origin: Origin,
-) -> Result<Option<Commit>, AppError> {
+) -> Result<Result<Commit, Skipped>, AppError> {
     let prepared = prepare_file(path)?;
     let mut conn = lock_db(db)?;
     commit_file(&mut conn, &prepared, origin)
@@ -329,6 +351,7 @@ pub fn register(
 pub fn open_path(conn: &mut Connection, path: &Path) -> Result<Book, AppError> {
     let prepared = prepare_file(path)?;
     commit_file(conn, &prepared, Origin::Import)?
+        .ok()
         .map(|commit| commit.book)
         .ok_or_else(|| AppError::internal("import did not register the book"))
 }
@@ -359,8 +382,8 @@ pub fn import_files(db: &Mutex<Connection>, paths: &[PathBuf]) -> Result<ImportR
     };
     for path in paths {
         match register(db, path, Origin::Import) {
-            Ok(Some(commit)) => result.imported.push(commit.book),
-            Ok(None) => {}
+            Ok(Ok(commit)) => result.imported.push(commit.book),
+            Ok(Err(_)) => {}
             Err(error) => result.rejected.push(Rejection {
                 path: path.display().to_string(),
                 error,
@@ -491,29 +514,6 @@ pub fn remove_book(conn: &Connection, id: &str) -> Result<(), AppError> {
         return Err(not_found(id));
     }
     Ok(())
-}
-
-/// Devuelve a la biblioteca los libros quitados cuyo archivo está en `folder` (a cualquier nivel), conservando su
-/// progreso, subrayados y Salas. Lo hace `add_library_folder`: añadir una carpeta es una acción explícita del usuario,
-/// y un escaneo normal nunca devuelve los libros quitados (`Origin::Scan`). Compara por ruta con las reglas de la
-/// plataforma (en Windows, sin distinguir mayúsculas ni separadores). Los libros sin archivo siguen `missing`; las
-/// entradas separadas (`detached:`) no están en ninguna carpeta y no se tocan. Devuelve cuántos volvieron.
-pub fn restore_removed_in_folder(conn: &Connection, folder: &str) -> Result<u64, AppError> {
-    let removed: Vec<(String, String)> = {
-        let mut stmt = conn.prepare("SELECT id, path FROM books WHERE removed_at IS NOT NULL")?;
-        stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
-            .collect::<rusqlite::Result<Vec<_>>>()?
-    };
-    let mut restored = 0;
-    for (id, path) in removed {
-        if path_rules::is_within(&path, folder, path_rules::Style::NATIVE) {
-            restored += conn.execute(
-                "UPDATE books SET removed_at = NULL WHERE id = ?1",
-                params![id],
-            )? as u64;
-        }
-    }
-    Ok(restored)
 }
 
 /// Id y ruta de los libros pendientes de indexar (sin `missing`), por fecha de alta. Es lo que lee el
@@ -1477,7 +1477,7 @@ mod tests {
         assert!(
             commit_file(&mut conn, &prepared_copy, Origin::Scan)
                 .expect("commit")
-                .is_none()
+                .is_err()
         );
         assert_eq!(get_book(&conn, &book.id).expect("get").file_name, "a.pdf");
 
@@ -1486,7 +1486,7 @@ mod tests {
         assert!(
             commit_file(&mut conn, &prepared_original, Origin::Scan)
                 .expect("commit")
-                .is_none()
+                .is_err()
         );
         assert!(visible_books(&conn).expect("list").is_empty());
     }

@@ -926,7 +926,7 @@ mod tests {
         let db = Mutex::new(conn);
 
         let scan_started = Instant::now();
-        let found = crate::scan::scan_folders(&db, &[books], |_| {}).expect("scan");
+        let found = crate::scan::scan_folders(&db, &[books], &[], |_| {}).expect("scan");
         println!(
             "scan: {found} PDF registered in {:.2?}",
             scan_started.elapsed()

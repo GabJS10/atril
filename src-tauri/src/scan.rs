@@ -10,7 +10,7 @@ use serde::Serialize;
 use walkdir::WalkDir;
 
 use crate::error::AppError;
-use crate::library::{self, Origin};
+use crate::library::{self, Origin, Skipped};
 use crate::path_rules;
 
 /// Estado del escaneo (`docs/IPC.md`, `ScanStatus`).
@@ -32,28 +32,44 @@ const MAX_WARNINGS: u64 = 20;
 /// cuyo archivo ya no existe. Devuelve cuántos libros nuevos se registraron.
 /// `on_found` se llama con el contador cada vez que aparece uno nuevo.
 ///
+/// `restore_in` son las carpetas que el usuario acaba de añadir: un PDF dentro de ellas se registra con
+/// `Origin::Restore` (devuelve el libro quitado con esa huella, con su ruta nueva). El resto, con `Origin::Scan`.
+///
 /// Escribe en el registro (`atril.log`) un resumen por escaneo y un aviso por cada error (hasta [`MAX_WARNINGS`]):
 /// en Windows no hay consola, y un escaneo que "no encuentra nada" no dejaba ninguna pista de por qué.
 pub fn scan_folders(
     db: &Mutex<Connection>,
     folders: &[PathBuf],
+    restore_in: &[PathBuf],
     mut on_found: impl FnMut(u64),
 ) -> Result<u64, AppError> {
     let collected = collect_pdfs(folders);
 
     let mut found = 0;
     let mut known = 0u64;
-    let mut skipped = 0u64;
+    let mut skipped_removed = 0u64;
+    let mut skipped_duplicate = 0u64;
+    let mut restored = 0u64;
     let mut rejected = 0u64;
     for path in &collected.pdfs {
-        match library::register(db, path, Origin::Scan) {
-            Ok(Some(commit)) if commit.created => {
+        let origin = if is_in_any(path, restore_in) {
+            Origin::Restore
+        } else {
+            Origin::Scan
+        };
+        match library::register(db, path, origin) {
+            Ok(Ok(commit)) if commit.created => {
                 found += 1;
                 on_found(found);
             }
-            Ok(Some(_)) => known += 1,
-            // Quitado de la biblioteca, o con otra copia ya conocida: un escaneo no lo toca.
-            Ok(None) => skipped += 1,
+            Ok(Ok(commit)) if commit.restored => {
+                restored += 1;
+                tracing::info!(path = %path.display(), "scan: removed book restored by fingerprint");
+            }
+            Ok(Ok(_)) => known += 1,
+            // Un escaneo no toca un libro quitado de la biblioteca ni una copia de otro ya conocido.
+            Ok(Err(Skipped::Removed)) => skipped_removed += 1,
+            Ok(Err(Skipped::Duplicate)) => skipped_duplicate += 1,
             Err(error) => {
                 rejected += 1;
                 if rejected <= MAX_WARNINGS {
@@ -76,7 +92,9 @@ pub fn scan_folders(
         pdf_candidates = collected.pdfs.len(),
         registered = found,
         known,
-        skipped_removed_or_duplicate = skipped,
+        restored_by_hash = restored,
+        skipped_removed,
+        skipped_duplicate,
         removed_books_in_db = count_removed(db),
         rejected,
         walk_errors = collected.walk_errors,
@@ -235,6 +253,14 @@ fn is_regular_file(entry: &walkdir::DirEntry) -> bool {
         || (kind.is_symlink() && std::fs::metadata(entry.path()).is_ok_and(|meta| meta.is_file()))
 }
 
+/// `path` está dentro de alguna de las carpetas (reglas de rutas de la plataforma).
+fn is_in_any(path: &Path, folders: &[PathBuf]) -> bool {
+    let path = path.to_string_lossy();
+    folders.iter().any(|folder| {
+        path_rules::is_within(&path, &folder.to_string_lossy(), path_rules::Style::NATIVE)
+    })
+}
+
 fn is_pdf_name(path: &Path) -> bool {
     path.extension()
         .is_some_and(|extension| extension.eq_ignore_ascii_case("pdf"))
@@ -273,7 +299,7 @@ mod tests {
 
     fn scan(db: &Mutex<Connection>, folders: &[&Path]) -> u64 {
         let folders: Vec<PathBuf> = folders.iter().map(|p| p.to_path_buf()).collect();
-        scan_folders(db, &folders, |_| {}).expect("scan")
+        scan_folders(db, &folders, &[], |_| {}).expect("scan")
     }
 
     #[test]
@@ -288,7 +314,8 @@ mod tests {
         std::fs::write(dir.path().join("falso.pdf"), b"no es un pdf").expect("fake");
 
         let mut seen = Vec::new();
-        let found = scan_folders(&db, &[dir.path().to_path_buf()], |n| seen.push(n)).expect("scan");
+        let found =
+            scan_folders(&db, &[dir.path().to_path_buf()], &[], |n| seen.push(n)).expect("scan");
 
         assert_eq!(found, 2);
         assert_eq!(seen, vec![1, 2]);
@@ -465,8 +492,8 @@ mod tests {
         write_pdf(&sub, "b.pdf", 2);
 
         let mut seen = Vec::new();
-        let found =
-            scan_folders(&db, &[dir.path().to_path_buf(), sub], |n| seen.push(n)).expect("scan");
+        let found = scan_folders(&db, &[dir.path().to_path_buf(), sub], &[], |n| seen.push(n))
+            .expect("scan");
 
         assert_eq!(found, 2);
         assert_eq!(seen, vec![1, 2]);
@@ -529,7 +556,7 @@ mod tests {
                 .unwrap_or_else(|error| panic!("add {variant:?}: {error:?}"));
             let paths = crate::folders::paths(&conn).expect("paths");
             let db = Mutex::new(conn);
-            let found = scan_folders(&db, &paths, |_| {}).expect("scan");
+            let found = scan_folders(&db, &paths, &[], |_| {}).expect("scan");
 
             assert_eq!(found, 4, "variant {variant:?} stored as {:?}", folder.path);
             let conn = db.lock().expect("lock");
@@ -543,7 +570,7 @@ mod tests {
 
             // El segundo escaneo (el del arranque, o el de cada cambio de archivos) no cambia nada.
             assert_eq!(
-                scan_folders(&db, &paths, |_| {}).expect("rescan"),
+                scan_folders(&db, &paths, &[], |_| {}).expect("rescan"),
                 0,
                 "variant {variant:?}"
             );
@@ -593,5 +620,197 @@ mod tests {
             .collect();
         assert_eq!(names, ["link.pdf"]);
         assert_eq!(collected.not_files, 1);
+    }
+
+    /// El caso real: la base sobrevivió a una reinstalación, el usuario había quitado el libro cuando estaba en otra
+    /// carpeta y ahora añade la carpeta donde están los archivos.
+    struct Moved {
+        db: Mutex<Connection>,
+        new_dir: tempfile::TempDir,
+        book_id: String,
+    }
+
+    fn removed_then_moved() -> (tempfile::TempDir, Moved) {
+        let old_dir = tempfile::tempdir().expect("old");
+        let new_dir = tempfile::Builder::new()
+            .prefix("Nueva carpeta ñ ")
+            .tempdir()
+            .expect("new");
+        let (db_dir, mut conn) = open_temp_db();
+        let original = write_pdf(old_dir.path(), "a.pdf", 1);
+        let book = import(&mut conn, &original);
+        save_reading_state(
+            &mut conn,
+            &book.id,
+            &ReadingStateInput {
+                page: 4,
+                offset_in_page: 0.0,
+                zoom: Zoom::Preset(ZoomPreset::PageWidth),
+                view_mode: ViewMode::Normal,
+                page_count: 8,
+            },
+        )
+        .expect("save");
+        crate::highlights::create(
+            &conn,
+            crate::highlights::HighlightInput {
+                book_id: book.id.clone(),
+                page: 2,
+                rects: vec![[72.0, 100.0, 300.0, 112.0]],
+                text: "subrayado".into(),
+                color: crate::highlights::HighlightColor::Ochre,
+                note: None,
+            },
+        )
+        .expect("highlight");
+        let room = crate::collections::create(&conn, "Sala").expect("room");
+        crate::collections::add_books(&mut conn, &room.id, std::slice::from_ref(&book.id))
+            .expect("room member");
+        remove_book(&conn, &book.id).expect("remove");
+        // El archivo se mueve (o se reinstala el equipo y los libros están en otra carpeta).
+        std::fs::rename(&original, new_dir.path().join("a.pdf")).expect("move");
+        (
+            db_dir,
+            Moved {
+                db: Mutex::new(conn),
+                new_dir,
+                book_id: book.id,
+            },
+        )
+    }
+
+    fn count(conn: &Connection, sql: &str, id: &str) -> i64 {
+        conn.query_row(sql, params![id], |row| row.get(0))
+            .expect("count")
+    }
+
+    fn assert_restored(moved: &Moved) {
+        let conn = moved.db.lock().expect("lock");
+        let book = get_book(&conn, &moved.book_id).expect("the book is back");
+        assert!(!book.missing);
+        assert_eq!(book.progress, Some(0.5));
+        let stored: String = conn
+            .query_row(
+                "SELECT path FROM books WHERE id = ?1",
+                params![moved.book_id],
+                |row| row.get(0),
+            )
+            .expect("path");
+        assert_eq!(
+            stored,
+            moved.new_dir.path().join("a.pdf").to_str().expect("utf-8")
+        );
+        assert_eq!(visible_books(&conn).expect("list").len(), 1);
+        assert_eq!(
+            count(
+                &conn,
+                "SELECT COUNT(*) FROM highlights WHERE book_id = ?1",
+                &moved.book_id
+            ),
+            1
+        );
+        assert_eq!(
+            count(
+                &conn,
+                "SELECT COUNT(*) FROM book_collections WHERE book_id = ?1",
+                &moved.book_id
+            ),
+            1
+        );
+    }
+
+    #[test]
+    fn adding_the_folder_brings_back_a_removed_book_whose_file_moved() {
+        let (_db_dir, moved) = removed_then_moved();
+        let folder = moved.new_dir.path().to_path_buf();
+
+        let found = scan_folders(
+            &moved.db,
+            std::slice::from_ref(&folder),
+            std::slice::from_ref(&folder),
+            |_| {},
+        )
+        .expect("scan");
+
+        assert_eq!(found, 0, "it is not a new book");
+        assert_restored(&moved);
+    }
+
+    #[test]
+    fn a_normal_rescan_of_an_added_folder_does_not_bring_it_back() {
+        let (_db_dir, moved) = removed_then_moved();
+        let folder = moved.new_dir.path().to_path_buf();
+
+        scan_folders(&moved.db, &[folder], &[], |_| {}).expect("scan");
+
+        let conn = moved.db.lock().expect("lock");
+        assert!(visible_books(&conn).expect("list").is_empty());
+    }
+
+    #[test]
+    fn only_the_folder_that_was_just_added_restores() {
+        let (_db_dir, moved) = removed_then_moved();
+        let other = tempfile::tempdir().expect("other");
+        let folder = moved.new_dir.path().to_path_buf();
+
+        // La carpeta del libro está en la biblioteca, pero la recién añadida es otra.
+        scan_folders(
+            &moved.db,
+            &[folder.clone(), other.path().to_path_buf()],
+            &[other.path().to_path_buf()],
+            |_| {},
+        )
+        .expect("scan");
+
+        assert!(
+            visible_books(&moved.db.lock().expect("lock"))
+                .expect("list")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn restoring_does_not_move_a_book_that_was_not_removed() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (_db_dir, mut conn) = open_temp_db();
+        let original = write_pdf(dir.path(), "a.pdf", 1);
+        let book = import(&mut conn, &original);
+        let copies = tempfile::tempdir().expect("copies");
+        std::fs::copy(&original, copies.path().join("copia.pdf")).expect("copy");
+        let db = Mutex::new(conn);
+
+        let folder = copies.path().to_path_buf();
+        scan_folders(
+            &db,
+            std::slice::from_ref(&folder),
+            std::slice::from_ref(&folder),
+            |_| {},
+        )
+        .expect("scan");
+
+        let conn = db.lock().expect("lock");
+        assert_eq!(get_book(&conn, &book.id).expect("get").file_name, "a.pdf");
+        assert_eq!(visible_books(&conn).expect("list").len(), 1);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn on_windows_the_added_folder_matches_whatever_its_case_or_separators() {
+        let text = |moved: &Moved| moved.new_dir.path().to_str().expect("utf-8").to_owned();
+        let variants: [fn(String) -> String; 4] = [
+            |t| t.to_uppercase(),
+            |t| t.to_lowercase().replace('\\', "/"),
+            |t| format!("{t}\\"),
+            |t| format!(r"\\?\{t}"),
+        ];
+        for variant in variants {
+            let (_db_dir, moved) = removed_then_moved();
+            let folder = moved.new_dir.path().to_path_buf();
+            let added = PathBuf::from(variant(text(&moved)));
+
+            scan_folders(&moved.db, &[folder], &[added], |_| {}).expect("scan");
+
+            assert_restored(&moved);
+        }
     }
 }

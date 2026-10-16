@@ -6,7 +6,7 @@ use rusqlite::{Connection, params};
 use serde::Serialize;
 
 use crate::error::{AppError, ErrorCode};
-use crate::library::{self, now_iso};
+use crate::library::now_iso;
 use crate::path_rules;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -78,15 +78,6 @@ pub fn add(conn: &Connection, path: &Path) -> Result<LibraryFolder, AppError> {
         params![folder.id, folder.path, folder.added_at],
     )?;
     Ok(folder)
-}
-
-/// [`add`] más lo que implica que sea una acción explícita del usuario: los libros que quitó de la biblioteca y que
-/// están dentro de esa carpeta (a cualquier nivel) vuelven, con su progreso, subrayados y Salas. Vale también si la
-/// carpeta ya estaba añadida. Devuelve la carpeta y cuántos libros volvieron. Un escaneo normal no los devuelve.
-pub fn add_restoring(conn: &Connection, path: &Path) -> Result<(LibraryFolder, u64), AppError> {
-    let folder = add(conn, path)?;
-    let restored = library::restore_removed_in_folder(conn, &folder.path)?;
-    Ok((folder, restored))
 }
 
 pub fn remove(conn: &Connection, id: &str) -> Result<(), AppError> {
@@ -210,137 +201,5 @@ mod tests {
         assert_eq!(first, shouting);
         assert_eq!(first, slashed);
         assert_eq!(list(&conn).expect("list").len(), 1);
-    }
-
-    /// Un libro importado con la ruta tal cual y quitado después, como hace «Quitar de la biblioteca».
-    fn removed_book(conn: &mut Connection, dir: &Path, name: &str, seed: u8) -> library::Book {
-        let path = crate::test_support::write_pdf(dir, name, seed);
-        let book = crate::test_support::import(conn, &path);
-        library::remove_book(conn, &book.id).expect("remove");
-        book
-    }
-
-    fn is_removed(conn: &Connection, id: &str) -> bool {
-        conn.query_row(
-            "SELECT removed_at IS NOT NULL FROM books WHERE id = ?1",
-            params![id],
-            |row| row.get(0),
-        )
-        .expect("row")
-    }
-
-    #[test]
-    fn adding_a_folder_brings_back_the_removed_books_inside_it_at_any_depth() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let mut conn = db::open(&dir.path().join("atril.db")).expect("db");
-        let root = tempfile::tempdir().expect("books");
-        let economia = root.path().join("Economia");
-        let sub = economia.join("tomos").join("uno");
-        let sibling = root.path().join("Economia2");
-        for folder in [&sub, &sibling] {
-            std::fs::create_dir_all(folder).expect("mkdir");
-        }
-        let top = removed_book(&mut conn, &economia, "a.pdf", 1);
-        let deep = removed_book(&mut conn, &sub, "b.pdf", 2);
-        let elsewhere = removed_book(&mut conn, &sibling, "c.pdf", 3);
-
-        let (_, restored) = add_restoring(&conn, &economia).expect("add");
-
-        assert_eq!(restored, 2);
-        assert!(!is_removed(&conn, &top.id));
-        assert!(!is_removed(&conn, &deep.id));
-        assert!(
-            is_removed(&conn, &elsewhere.id),
-            "a folder whose name only starts the same is another folder"
-        );
-    }
-
-    #[test]
-    fn adding_a_folder_that_was_already_there_also_brings_books_back() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let mut conn = db::open(&dir.path().join("atril.db")).expect("db");
-        let books = tempfile::tempdir().expect("books");
-        add(&conn, books.path()).expect("first");
-        let book = removed_book(&mut conn, books.path(), "a.pdf", 1);
-
-        let (_, restored) = add_restoring(&conn, &books.path().join("")).expect("again");
-
-        assert_eq!(restored, 1);
-        assert!(!is_removed(&conn, &book.id));
-        assert_eq!(list(&conn).expect("list").len(), 1);
-    }
-
-    #[test]
-    fn a_normal_scan_does_not_bring_removed_books_back() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let mut conn = db::open(&dir.path().join("atril.db")).expect("db");
-        let books = tempfile::tempdir().expect("books");
-        let book = removed_book(&mut conn, books.path(), "a.pdf", 1);
-        add(&conn, books.path()).expect("plain add");
-        let db = std::sync::Mutex::new(conn);
-
-        crate::scan::scan_folders(&db, &[books.path().to_path_buf()], |_| {}).expect("scan");
-
-        assert!(is_removed(&db.lock().expect("lock"), &book.id));
-    }
-
-    #[test]
-    fn restored_books_keep_their_progress_and_a_missing_file_stays_missing() {
-        use crate::settings::{ViewMode, Zoom, ZoomPreset};
-        let dir = tempfile::tempdir().expect("tempdir");
-        let mut conn = db::open(&dir.path().join("atril.db")).expect("db");
-        let books = tempfile::tempdir().expect("books");
-        let kept = crate::test_support::write_pdf(books.path(), "a.pdf", 1);
-        let kept = crate::test_support::import(&mut conn, &kept);
-        library::save_reading_state(
-            &mut conn,
-            &kept.id,
-            &library::ReadingStateInput {
-                page: 4,
-                offset_in_page: 0.0,
-                zoom: Zoom::Preset(ZoomPreset::PageWidth),
-                view_mode: ViewMode::Normal,
-                page_count: 8,
-            },
-        )
-        .expect("save");
-        library::remove_book(&conn, &kept.id).expect("remove");
-        let gone = removed_book(&mut conn, books.path(), "b.pdf", 2);
-        std::fs::remove_file(books.path().join("b.pdf")).expect("delete");
-        let db = std::sync::Mutex::new(conn);
-
-        let (_, restored) = add_restoring(&db.lock().expect("lock"), books.path()).expect("add");
-        let paths = list(&db.lock().expect("lock")).expect("list");
-        let paths: Vec<_> = paths.iter().map(|f| PathBuf::from(&f.path)).collect();
-        crate::scan::scan_folders(&db, &paths, |_| {}).expect("scan");
-
-        assert_eq!(restored, 2);
-        let conn = db.lock().expect("lock");
-        let kept = library::get_book(&conn, &kept.id).expect("kept");
-        assert!(!kept.missing);
-        assert_eq!(kept.progress, Some(0.5));
-        assert!(library::get_book(&conn, &gone.id).expect("gone").missing);
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn on_windows_the_folder_matches_the_removed_books_whatever_its_case_or_separators() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let mut conn = db::open(&dir.path().join("atril.db")).expect("db");
-        let books = tempfile::tempdir().expect("books");
-        let book = removed_book(&mut conn, books.path(), "a.pdf", 1);
-        let text = books.path().to_str().expect("utf-8").to_owned();
-
-        for variant in [
-            text.to_uppercase(),
-            text.to_lowercase().replace('\\', "/"),
-            format!(r"\\?\{text}"),
-        ] {
-            conn.execute("UPDATE books SET removed_at = ?1", params!["2000-01-01"])
-                .expect("remove again");
-            let (_, restored) = add_restoring(&conn, Path::new(&variant)).expect("add");
-            assert_eq!(restored, 1, "variant {variant:?}");
-            assert!(!is_removed(&conn, &book.id), "variant {variant:?}");
-        }
     }
 }
