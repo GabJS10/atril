@@ -9,9 +9,15 @@ import {
   removeBook,
   setFavorite,
 } from "../api/tauri";
-import type { Book, ImportResult } from "../api/types";
+import type { AppError, Book, ImportResult } from "../api/types";
 import { invalidateLibrary } from "./queries";
 import { importResultKey } from "./useFileDrop";
+
+/** Query key of the last failed attempt to add a library folder, shown as a notice (not a library query). */
+export const folderErrorKey = ["folderError"] as const;
+
+/** A folder Atril refused to watch, with the reason the backend gave. */
+export type FolderError = { path: string; error: AppError };
 
 /**
  * Asks for a PDF and registers it. A file Atril refuses (not a PDF, unreadable) is not thrown at the screen: it is
@@ -62,14 +68,28 @@ export function useRemoveBook() {
   });
 }
 
+/**
+ * Asks for a folder and starts watching it. A folder Atril refuses (not a folder, unreadable) is not thrown at the
+ * screen: it is left as the folder notice, so the user sees what happened. Cancelling the dialog does nothing.
+ */
 export function useAddFolder() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async () => {
       const path = await pickFolderPath();
-      return path ? addLibraryFolder(path) : null;
+      if (!path) return null;
+      try {
+        return await addLibraryFolder(path);
+      } catch (error) {
+        if (!isAppError(error)) throw error;
+        queryClient.setQueryData<FolderError>(folderErrorKey, { path, error });
+        return null;
+      }
     },
-    onSuccess: () => invalidateLibrary(queryClient),
+    onSuccess: (folder) => {
+      if (folder) queryClient.setQueryData<FolderError | null>(folderErrorKey, null);
+      invalidateLibrary(queryClient);
+    },
   });
 }
 
