@@ -225,8 +225,11 @@ pub fn add_library_folder(
 ) -> Result<LibraryFolder, AppError> {
     let folder = {
         let conn = app.db()?;
-        folders::add(&conn, Path::new(&path))?
+        folders::add(&conn, Path::new(&path)).inspect_err(
+            |error| tracing::warn!(received = %path, %error, "library folder refused"),
+        )?
     };
+    tracing::info!(received = %path, stored = %folder.path, "library folder added");
     watch::request_scan(&app.worker);
     Ok(folder)
 }
