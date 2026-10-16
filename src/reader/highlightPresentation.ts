@@ -29,3 +29,16 @@ export function floatingPosition(anchor: DOMRect, width: number, height = 56): {
   const top = above >= EDGE ? above : anchor.bottom + EDGE;
   return { left, top };
 }
+
+/**
+ * The text of a highlight as it is shown and exported. Highlights saved before the line breaks of a hyphenated word
+ * were joined keep a hyphen and a space there ("for- taleza"); this repairs them without touching the database:
+ * a hyphen (or soft hyphen) after a lower-case letter and before a lower-case letter is a hyphenation, and goes;
+ * a hyphen between two digits is a range ("19- 20"), and keeps its hyphen. The rule cannot tell "pre- y post-"
+ * (it becomes "prey"): that is accepted, it is rare. Mid-word uppercase ("Rosa- María") is left alone.
+ */
+export function displayHighlightText(text: string): string {
+  return text
+    .replace(/(?<=\p{Ll})[-\u2010\u00AD] (?=\p{Ll})/gu, "")
+    .replace(/(?<=\p{Nd})[-\u2010] (?=\p{Nd})/gu, "-");
+}

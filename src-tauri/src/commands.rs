@@ -225,9 +225,13 @@ pub fn add_library_folder(
 ) -> Result<LibraryFolder, AppError> {
     let folder = {
         let conn = app.db()?;
-        folders::add(&conn, Path::new(&path))?
+        folders::add(&conn, Path::new(&path)).inspect_err(
+            |error| tracing::warn!(received = %path, %error, "library folder refused"),
+        )?
     };
-    watch::request_scan(&app.worker);
+    tracing::info!(received = %path, stored = %folder.path, "library folder added");
+    // Es una acción explícita: este escaneo (y solo este) devuelve los libros quitados que encuentre en la carpeta.
+    watch::request_scan_added(&app.worker, PathBuf::from(&folder.path));
     Ok(folder)
 }
 

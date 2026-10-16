@@ -1125,11 +1125,18 @@ mod tests {
     }
 
     #[test]
-    fn page_urls_are_built_by_the_backend() {
+    fn urls_are_built_by_the_backend_with_the_origin_of_the_platform() {
         let id = "c".repeat(64);
+        // WebView2 sirve los esquemas propios como `http://<esquema>.localhost`.
+        let origin = if cfg!(windows) {
+            "http://atril.localhost"
+        } else {
+            "atril://localhost"
+        };
 
-        assert!(book_page_base_url(&id).ends_with(&format!("/page/{id}")));
-        assert!(book_page_base_url(&id).starts_with("atril://localhost/"));
+        assert_eq!(book_page_base_url(&id), format!("{origin}/page/{id}"));
+        assert_eq!(book_file_url(&id), format!("{origin}/book/{id}"));
+        assert_eq!(book_cover_url(&id), format!("{origin}/cover/{id}"));
     }
 
     #[test]

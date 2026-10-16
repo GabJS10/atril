@@ -1,6 +1,6 @@
 [package]
 name = "atril-libros"
-version = "1.0.1"
+version = "1.1.0"
 description = "A quiet desktop reader for your PDF books"
 authors = ["GabJS10"]
 license = "AGPL-3.0-only"
@@ -51,9 +51,20 @@ regex = "1"
 # Color dominante de las portadas que ya existen (src/cover_color.rs): decodifica `covers/<id>.jpg` (o .webp) sin
 # MuPDF. Rust puro (zune-jpeg, image-webp), sin dependencias del sistema.
 image = { version = "0.25", default-features = false, features = ["jpeg", "webp"] }
-# Indexador nativo: `setpriority` sobre el hilo de indexado (Linux) para que el render del visor gane la CPU.
+
+# Solo Unix: el indexador baja el `nice` de su hilo con `setpriority` (Linux) para que el render del visor gane la
+# CPU, y `engine/raw.rs` llama a `malloc_trim` (glibc). Windows no la necesita.
+[target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+# Solo Windows: `SetThreadPriority` para bajar la prioridad del hilo del indexador (equivale al `nice` de Linux).
+# Features mínimas; 0.61 es la versión que ya trae Tauri.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_Threading"] }
+# Aceleradores del navegador de WebView2 (`platform.rs`). Mismas versiones que usan Tauri y wry, para que los tipos de
+# `PlatformWebview::controller()` sean los mismos.
+webview2-com = "0.39"
+windows-core = "0.62"
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
@@ -64,6 +75,13 @@ opt-level = 3
 # `catch_unwind` para que un PDF raro no tire la app.
 panic = "unwind"
 strip = true
+
+# MuPDF siempre en su variante "release", también en desarrollo y en las pruebas. En Windows es obligatorio: con
+# `opt-level` 0, `mupdf-sys` compila MuPDF con la CRT de depuración (`/MDd`) y enlaza `ucrtd`, `vcruntimed` y
+# `msvcrtd`, que chocan con el runtime de VC++ estático que fuerza `tauri-build` (LNK2005 de `__CxxFrameHandler3`
+# al enlazar `cargo test` y la `cdylib`). En Linux, además, las pruebas de render corren más rápido.
+[profile.dev.package.mupdf-sys]
+opt-level = 3
 
 [dev-dependencies]
 tempfile = "3.27.0"

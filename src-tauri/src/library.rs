@@ -16,6 +16,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::error::{AppError, ErrorCode};
+use crate::path_rules;
 use crate::protocol::{book_cover_url, book_file_url};
 use crate::settings::{ViewMode, Zoom};
 
@@ -202,6 +203,10 @@ pub enum Origin {
     /// Lo encontró un escaneo de carpeta: no devuelve libros quitados y, si ya hay
     /// otra copia existente con esa huella, la ruta conocida se mantiene.
     Scan,
+    /// Escaneo de una carpeta que el usuario acaba de añadir (`add_library_folder`): como `Scan`, pero un libro
+    /// quitado con esta huella vuelve a la biblioteca y su ruta pasa a ser esta (aunque estuviera en otra carpeta,
+    /// que es lo normal tras reinstalar o mover los libros). Conserva progreso, subrayados y Salas.
+    Restore,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -209,14 +214,25 @@ pub struct Commit {
     pub book: Book,
     /// `true` si el libro no estaba en la base de datos.
     pub created: bool,
+    /// `true` si el libro estaba quitado de la biblioteca y este registro lo devolvió (`Origin::Restore`).
+    pub restored: bool,
 }
 
-/// Inserta o actualiza el libro. `Ok(None)` si un escaneo decide no tocarlo.
+/// Por qué un escaneo decide no tocar un archivo.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Skipped {
+    /// El libro con esta huella está quitado de la biblioteca.
+    Removed,
+    /// Otra copia del libro, con la misma huella, sigue existiendo en su ruta conocida.
+    Duplicate,
+}
+
+/// Inserta o actualiza el libro. `Ok(Err(motivo))` si un escaneo decide no tocarlo.
 pub fn commit_file(
     conn: &mut Connection,
     file: &PreparedFile,
     origin: Origin,
-) -> Result<Option<Commit>, AppError> {
+) -> Result<Result<Commit, Skipped>, AppError> {
     let tx = conn.transaction()?;
 
     let existing: Option<(String, bool)> = tx
@@ -227,25 +243,26 @@ pub fn commit_file(
         )
         .optional()?;
 
-    if let (Some((known_path, removed)), Origin::Scan) = (&existing, origin) {
+    // El libro ya tenía esta ruta (escrita igual o, en Windows, con otras mayúsculas o separadores).
+    let owns_path = existing
+        .as_ref()
+        .is_some_and(|(known_path, _)| path_rules::same(known_path, &file.path));
+    if let (Some((known_path, removed)), Origin::Scan | Origin::Restore) = (&existing, origin) {
         if *removed {
-            return Ok(None);
-        }
-        if known_path != &file.path && Path::new(known_path).is_file() {
-            return Ok(None);
+            if origin == Origin::Scan {
+                return Ok(Err(Skipped::Removed));
+            }
+        } else if !owns_path && Path::new(known_path).is_file() {
+            return Ok(Err(Skipped::Duplicate));
         }
     }
     let created = existing.is_none();
+    let restored =
+        origin == Origin::Restore && existing.as_ref().is_some_and(|(_, removed)| *removed);
 
     // Otra huella ocupaba esta ruta: el archivo se reemplazó. Esa entrada ya no tiene archivo;
     // se conserva (progreso, subrayados) sin ruta real.
-    let displaced: Option<String> = tx
-        .query_row(
-            "SELECT id FROM books WHERE path = ?1 AND id <> ?2",
-            params![file.path, file.id],
-            |row| row.get(0),
-        )
-        .optional()?;
+    let displaced = displaced_book(&tx, file, owns_path, path_rules::Style::NATIVE)?;
     if let Some(old_id) = displaced {
         tx.execute(
             "UPDATE books SET path = ?1, missing = 1 WHERE id = ?2",
@@ -278,7 +295,45 @@ pub fn commit_file(
         .ok_or_else(|| AppError::internal("book missing right after upsert"))?
         .book;
     tx.commit()?;
-    Ok(Some(Commit { book, created }))
+    Ok(Ok(Commit {
+        book,
+        created,
+        restored,
+    }))
+}
+
+/// El otro libro (otra huella) que ocupaba la ruta de `file`, si lo hay: el archivo se reemplazó por otro contenido.
+/// La búsqueda exacta usa el índice de `books.path`. Con las reglas de Windows las rutas no distinguen mayúsculas, así
+/// que un libro nuevo (o que cambia de ruta) también se compara sin ellas con los demás; si el libro ya tenía esta
+/// ruta (`owns_path`), no hace falta, y los reescaneos de una biblioteca grande no recorren la tabla por cada archivo.
+fn displaced_book(
+    conn: &Connection,
+    file: &PreparedFile,
+    owns_path: bool,
+    style: path_rules::Style,
+) -> Result<Option<String>, AppError> {
+    let exact: Option<String> = conn
+        .query_row(
+            "SELECT id FROM books WHERE path = ?1 AND id <> ?2",
+            params![file.path, file.id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if exact.is_some() || owns_path || style != path_rules::Style::Windows {
+        return Ok(exact);
+    }
+    // `NOCASE` solo acerca candidatas (ASCII); decide `path_rules::same`.
+    let mut stmt =
+        conn.prepare("SELECT id, path FROM books WHERE path = ?1 COLLATE NOCASE AND id <> ?2")?;
+    let candidates = stmt
+        .query_map(params![file.path, file.id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(candidates
+        .into_iter()
+        .find(|(_, other)| path_rules::key(other, style) == path_rules::key(&file.path, style))
+        .map(|(id, _)| id))
 }
 
 /// Prepara el archivo (sin lock) y lo registra (con lock, un momento).
@@ -286,7 +341,7 @@ pub fn register(
     db: &Mutex<Connection>,
     path: &Path,
     origin: Origin,
-) -> Result<Option<Commit>, AppError> {
+) -> Result<Result<Commit, Skipped>, AppError> {
     let prepared = prepare_file(path)?;
     let mut conn = lock_db(db)?;
     commit_file(&mut conn, &prepared, origin)
@@ -296,6 +351,7 @@ pub fn register(
 pub fn open_path(conn: &mut Connection, path: &Path) -> Result<Book, AppError> {
     let prepared = prepare_file(path)?;
     commit_file(conn, &prepared, Origin::Import)?
+        .ok()
         .map(|commit| commit.book)
         .ok_or_else(|| AppError::internal("import did not register the book"))
 }
@@ -326,8 +382,8 @@ pub fn import_files(db: &Mutex<Connection>, paths: &[PathBuf]) -> Result<ImportR
     };
     for path in paths {
         match register(db, path, Origin::Import) {
-            Ok(Some(commit)) => result.imported.push(commit.book),
-            Ok(None) => {}
+            Ok(Ok(commit)) => result.imported.push(commit.book),
+            Ok(Err(_)) => {}
             Err(error) => result.rejected.push(Rejection {
                 path: path.display().to_string(),
                 error,
@@ -1421,7 +1477,7 @@ mod tests {
         assert!(
             commit_file(&mut conn, &prepared_copy, Origin::Scan)
                 .expect("commit")
-                .is_none()
+                .is_err()
         );
         assert_eq!(get_book(&conn, &book.id).expect("get").file_name, "a.pdf");
 
@@ -1430,8 +1486,102 @@ mod tests {
         assert!(
             commit_file(&mut conn, &prepared_original, Origin::Scan)
                 .expect("commit")
-                .is_none()
+                .is_err()
         );
         assert!(visible_books(&conn).expect("list").is_empty());
+    }
+    #[test]
+    fn a_file_replaced_in_its_path_detaches_the_old_book_and_keeps_its_progress() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (_db, mut conn) = open_temp_db();
+        let path = write_pdf(dir.path(), "a.pdf", 1);
+        let old = import(&mut conn, &path);
+        save_reading_state(&mut conn, &old.id, &save_input(3, 10)).expect("save");
+
+        write_pdf(dir.path(), "a.pdf", 2);
+        let new = import(&mut conn, &path);
+
+        assert_ne!(new.id, old.id);
+        let detached = get_book(&conn, &old.id).expect("old book survives");
+        assert!(detached.missing);
+        assert_eq!(detached.progress, Some(0.3));
+        let stored: String = conn
+            .query_row(
+                "SELECT path FROM books WHERE id = ?1",
+                params![old.id],
+                |row| row.get(0),
+            )
+            .expect("path");
+        assert_eq!(stored, format!("{DETACHED_PREFIX}{}", old.id));
+    }
+
+    fn insert_book_row(conn: &Connection, id: &str, path: &str) {
+        conn.execute(
+            "INSERT INTO books (id, path, file_size, title, added_at) VALUES (?1, ?2, 1, 'x', 'now')",
+            params![id, path],
+        )
+        .expect("insert");
+    }
+
+    fn prepared(id: &str, path: &str) -> PreparedFile {
+        PreparedFile {
+            id: id.to_owned(),
+            path: path.to_owned(),
+            file_size: 1,
+            file_mtime: None,
+            title: "x".to_owned(),
+        }
+    }
+
+    #[test]
+    fn displaced_book_matches_the_exact_path_with_any_rules() {
+        let (_db, conn) = open_temp_db();
+        insert_book_row(&conn, "old", "/libros/a.pdf");
+        let file = prepared("new", "/libros/a.pdf");
+
+        for style in [path_rules::Style::Posix, path_rules::Style::Windows] {
+            assert_eq!(
+                displaced_book(&conn, &file, false, style).expect("query"),
+                Some("old".to_owned())
+            );
+        }
+        // El propio libro nunca se desplaza a sí mismo.
+        assert_eq!(
+            displaced_book(
+                &conn,
+                &prepared("old", "/libros/a.pdf"),
+                true,
+                path_rules::Style::Windows
+            )
+            .expect("query"),
+            None
+        );
+    }
+
+    #[test]
+    fn displaced_book_ignores_case_only_with_windows_rules() {
+        let (_db, conn) = open_temp_db();
+        insert_book_row(&conn, "old", r"C:\Libros\Economía.pdf");
+        let variant = prepared("new", r"c:\LIBROS\Economía.pdf");
+
+        assert_eq!(
+            displaced_book(&conn, &variant, false, path_rules::Style::Windows).expect("query"),
+            Some("old".to_owned())
+        );
+        assert_eq!(
+            displaced_book(&conn, &variant, false, path_rules::Style::Posix).expect("query"),
+            None,
+            "on Linux the two spellings are two different files"
+        );
+        assert_eq!(
+            displaced_book(&conn, &variant, true, path_rules::Style::Windows).expect("query"),
+            None,
+            "a book that already owns the path does not widen the search"
+        );
+        let other_folder = prepared("new", r"c:\otra\Economía.pdf");
+        assert_eq!(
+            displaced_book(&conn, &other_folder, false, path_rules::Style::Windows).expect("query"),
+            None
+        );
     }
 }

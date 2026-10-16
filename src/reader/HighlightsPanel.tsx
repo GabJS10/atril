@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useT } from "../i18n";
 import type { Highlight } from "../api/types";
 import { chipButton } from "../ui/buttons";
-import { PIGMENT_COLOR, PIGMENT_KEY } from "./highlightPresentation";
+import { displayHighlightText, PIGMENT_COLOR, PIGMENT_KEY } from "./highlightPresentation";
 import { groupByPage } from "./highlightList";
 import { StateCard } from "../ui/StateCard";
 import { SidePanel } from "./SidePanel";
@@ -99,7 +99,7 @@ export function HighlightsPanel({
                   })}
                 </span>
                 <span className="font-serif text-title-sm leading-[1.35] font-medium text-ink italic">
-                  {highlight.text}
+                  {displayHighlightText(highlight.text)}
                 </span>
                 {highlight.note ? (
                   <span className="rounded-tab bg-surface-2 px-2.5 py-2 text-ui text-ink-2">

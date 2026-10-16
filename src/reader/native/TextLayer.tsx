@@ -1,6 +1,6 @@
 import { memo, useLayoutEffect, useRef } from "react";
 import type { TextWord } from "../../api/types";
-import { spanContent, stretchFor, wordStyle } from "./textLayer";
+import { spanContent, stretchFor, wordStyle } from "./textLayerModel";
 import { layerWords, TEXT_LAYER_CLASS, TEXT_WORD_CLASS } from "./textSelection";
 
 /**

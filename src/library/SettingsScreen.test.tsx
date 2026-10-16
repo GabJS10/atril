@@ -74,4 +74,21 @@ describe("settings screen", () => {
 
     await waitFor(() => expect(patches).toEqual([{ defaultZoom: "page_fit" }]));
   });
+
+  it("names a Windows library folder by its last name and shows the full path", async () => {
+    mockIPC((cmd) => {
+      switch (cmd) {
+        case "get_settings":
+          return DEFAULTS;
+        case "list_library_folders":
+          return [{ id: "f1", path: "C:\\Users\\x\\Libros", addedAt: "2026-01-10T10:00:00Z" }];
+        default:
+          throw new Error(`unexpected command ${cmd}`);
+      }
+    });
+    renderSettings();
+
+    expect(await screen.findByText("Libros")).toBeInTheDocument();
+    expect(screen.getByText("C:\\Users\\x\\Libros")).toBeInTheDocument();
+  });
 });

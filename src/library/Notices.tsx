@@ -1,10 +1,12 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { TranslationKey } from "../i18n/es";
 import { useT } from "../i18n";
-import type { Book, ImportResult } from "../api/types";
+import type { AppError, Book, ImportResult } from "../api/types";
 import { ghostButton, primaryButton, secondaryButton, smallButton } from "../ui/buttons";
 import { DownloadIcon } from "../ui/icons";
 import { StateCard } from "../ui/StateCard";
-import { useRelinkBook, useRemoveBook } from "./actions";
+import { folderErrorKey, type FolderError, useRelinkBook, useRemoveBook } from "./actions";
+import { fileName } from "./paths";
 import { importResultKey } from "./useFileDrop";
 
 /** Scan in progress, over a library that already has books: a slim card with a quiet pulse (DESIGN.md, aviso). */
@@ -179,11 +181,6 @@ export function EmptyLibrary({
   );
 }
 
-/** The last name of a path, whatever the separator. */
-function baseName(path: string): string {
-  return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
-}
-
 /** Result of the last files dropped on the window or opened from the dialog: how many were added, and which were refused. */
 export function ImportNotice({ className = "" }: { className?: string }) {
   const t = useT();
@@ -212,7 +209,7 @@ export function ImportNotice({ className = "" }: { className?: string }) {
           </span>
           {data.rejected.map((item) => (
             <span key={item.path} className="truncate">
-              {baseName(item.path)} ·{" "}
+              {fileName(item.path)} ·{" "}
               {t(item.error.code === "invalid_pdf" ? "import.reason.invalid" : "import.reason.other")}
             </span>
           ))}
@@ -223,4 +220,46 @@ export function ImportNotice({ className = "" }: { className?: string }) {
       </button>
     </div>
   );
+}
+
+/** The last attempt to add a library folder was refused: say which folder and why, then let the user close it. */
+export function FolderNotice({ className = "" }: { className?: string }) {
+  const t = useT();
+  const queryClient = useQueryClient();
+  const { data } = useQuery({
+    queryKey: folderErrorKey,
+    queryFn: async (): Promise<FolderError | null> => null,
+    staleTime: Infinity,
+  });
+  if (!data) return null;
+  const dismiss = () => queryClient.setQueryData(folderErrorKey, null);
+  return (
+    <div
+      role="alert"
+      className={`flex flex-col gap-3 rounded-card bg-card px-8 py-5 text-ui text-ink-2 ${className}`}
+    >
+      <span className="text-ink" title={data.path}>
+        {t("folder.error.title", { name: fileName(data.path) })}
+      </span>
+      <span>{t(folderReasonKey(data.error.code))}</span>
+      <button type="button" onClick={dismiss} className={`${smallButton} self-end`}>
+        {t("folder.dismiss")}
+      </button>
+    </div>
+  );
+}
+
+/** The sentence for a backend refusal of a folder; codes Atril does not know get the generic one. */
+function folderReasonKey(code: AppError["code"]): TranslationKey {
+  switch (code) {
+    case "invalid_input":
+      return "folder.reason.notFolder";
+    case "not_found":
+    case "file_missing":
+      return "folder.reason.missing";
+    case "io":
+      return "folder.reason.io";
+    default:
+      return "folder.reason.other";
+  }
 }

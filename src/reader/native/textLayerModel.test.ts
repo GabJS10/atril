@@ -3,12 +3,13 @@ import type { TextWord } from "../../api/types";
 import {
   copyTextOf,
   foldedTextOf,
+  hyphenatedJoin,
   separatorAfter,
   sliceBox,
   spanContent,
   stretchFor,
   wordStyle,
-} from "./textLayer";
+} from "./textLayerModel";
 
 const word = (text: string, x0: number, lineEnd = false, blockEnd = false): TextWord => ({
   text,
@@ -132,5 +133,74 @@ describe("sliceBox", () => {
     expect(sliceBox(w, 2, 2)).toBeNull();
     expect(sliceBox(w, 3, 1)).toBeNull();
     expect(sliceBox({ ...w, text: "" }, 0, 1)).toBeNull();
+  });
+});
+
+describe("hyphenatedJoin", () => {
+  it("joins a word cut by a hyphen after a letter, dropping the hyphen", () => {
+    expect(hyphenatedJoin("for-", "taleza")).toBe("for");
+    expect(hyphenatedJoin("vio-", "lentar")).toBe("vio");
+    expect(hyphenatedJoin("ac\u00ADtual", "")).toBeNull();
+    expect(hyphenatedJoin("vio\u00AD", "lentar")).toBe("vio");
+    expect(hyphenatedJoin("for\u2010", "taleza")).toBe("for");
+  });
+
+  it("keeps the hyphen between two digits, as a range", () => {
+    expect(hyphenatedJoin("19-", "20")).toBe("19-");
+    expect(hyphenatedJoin("19\u2010", "20")).toBe("19-");
+  });
+
+  it("keeps the line break when the next word is not a continuation", () => {
+    expect(hyphenatedJoin("for-", "Taleza")).toBeNull();
+    expect(hyphenatedJoin("for-", "12")).toBeNull();
+    expect(hyphenatedJoin("19-", "Lucas")).toBeNull();
+    expect(hyphenatedJoin("Rosa-", "maría")).toBe("Rosa");
+    expect(hyphenatedJoin("casa", "de")).toBeNull();
+    expect(hyphenatedJoin("-", "de")).toBeNull();
+  });
+});
+
+describe("copyTextOf with hyphenated line ends", () => {
+  it("joins a word split at a line end with the next line, in the text and in the clipboard", () => {
+    const hyphen = [
+      word("hoy", 0),
+      word("nos", 30),
+      word("llena", 60),
+      word("de", 100),
+      word("for-", 130, true),
+      word("taleza", 0),
+      word("y", 40),
+      word("vida", 60, true, true),
+    ];
+    const all = hyphen.map((_, index) => ({ index, from: 0, to: hyphen[index]!.text.length }));
+    expect(copyTextOf(hyphen, all)).toBe("hoy nos llena de fortaleza y vida");
+  });
+
+  it("keeps the hyphen of a range that breaks between two numbers", () => {
+    const range = [word("Lucas", 0), word("(22,19-", 30, true), word("20)", 0)];
+    const all = range.map((_, index) => ({ index, from: 0, to: range[index]!.text.length }));
+    expect(copyTextOf(range, all)).toBe("Lucas (22,19-20)");
+  });
+
+  it("still breaks a line where the next word starts with a capital", () => {
+    const names = [word("Rosa-", 0, true), word("María", 0)];
+    const all = names.map((_, index) => ({ index, from: 0, to: names[index]!.text.length }));
+    expect(copyTextOf(names, all)).toBe("Rosa-\nMaría");
+  });
+
+  it("does not join across a block end", () => {
+    const block = [word("for-", 0, true, true), word("taleza", 0)];
+    const all = block.map((_, index) => ({ index, from: 0, to: block[index]!.text.length }));
+    expect(copyTextOf(block, all)).toBe("for-\n\ntaleza");
+  });
+
+  it("joins a slice cut mid-word at the end of the selection", () => {
+    const hyphen = [word("for-", 0, true), word("taleza", 0)];
+    expect(
+      copyTextOf(hyphen, [
+        { index: 0, from: 0, to: 4 },
+        { index: 1, from: 0, to: 3 },
+      ]),
+    ).toBe("fortal");
   });
 });

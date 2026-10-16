@@ -82,12 +82,46 @@ describe("readNativeSelection", () => {
 
     const [part] = readNativeSelection(selection, container, () => mapping);
 
+    // The clipboard keeps the characters the selection covers.
     expect(part!.copyText).toBe("ugar\nd");
-    // "lugar" is 100..150: from 1/5 of it, so 110..150; "de" is 50..70: up to 1/2, so 50..60.
+    // A highlight takes the words it touches in full, so its text and rectangles cover "lugar" and "de" whole.
+    expect(part!.text).toBe("lugar de");
     expect(part!.rects).toEqual([
-      [110, 488, 150, 500],
-      [50, 473, 60, 485],
+      [100, 488, 150, 500],
+      [50, 473, 70, 485],
     ]);
+  });
+
+  it("keeps a word that the selection starts in the middle of, whole in the highlight", () => {
+    const page = setup();
+    // From the 4th letter of "un" to the 1st letter of "la": the highlight has "un lugar de la" in full.
+    const selection = selectBetween([spanText(page, 1), 1], [spanText(page, 4), 1]);
+
+    const [part] = readNativeSelection(selection, container, () => mapping);
+
+    expect(part!.copyText).toBe("n lugar\nde l");
+    expect(part!.text).toBe("un lugar de la");
+    expect(part!.rects).toEqual([
+      [75, 488, 150, 500],
+      [50, 473, 95, 485],
+    ]);
+  });
+
+  it("joins a word split at a line end by a hyphen in the highlight and in the clipboard", () => {
+    const hyphenated: TextWord[] = [
+      { text: "for-", rect: [50, 100, 70, 112], lineEnd: true, blockEnd: false },
+      { text: "taleza", rect: [50, 115, 90, 127], lineEnd: false, blockEnd: false },
+      { text: "y", rect: [95, 115, 105, 127], lineEnd: false, blockEnd: false },
+    ];
+    container = document.createElement("div");
+    document.body.append(container);
+    const page = mountPage(1, hyphenated, container);
+    const selection = selectBetween([spanText(page, 0), 0], [spanText(page, 2), 1]);
+
+    const [part] = readNativeSelection(selection, container, () => mapping);
+
+    expect(part!.copyText).toBe("fortaleza y");
+    expect(part!.text).toBe("fortaleza y");
   });
 
   it("does not count a word the selection only touches", () => {
