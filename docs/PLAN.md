@@ -20,7 +20,7 @@ Estética: "museo de arte de noche", monocroma (ver [`DESIGN-BRIEF.md`](DESIGN-B
 | Importar | Carpetas vigiladas + archivos sueltos. Los archivos se quedan donde están y se reconocen por su contenido |
 | MVP extra | Modo noche/sepia, índice + búsqueda, notas + exportar a Markdown |
 | Integración con el sistema | **Ninguna como lector de PDF** (2026-10-13): Atril es un lector de libros, no un visor genérico. Ver "Sin integración como lector del sistema" |
-| Plataformas | Linux primero (.deb + AppImage; WebKitGTK 2.52). Windows queda en el backlog |
+| Plataformas | Linux (.deb + AppImage; WebKitGTK 2.52) y, desde v1.1.0 (fase W, 2026-10-16), Windows 10/11: instalador NSIS por usuario (sin admin, English/Spanish, descarga WebView2), **sin firma de código** (aviso de SmartScreen documentado). Detalles de plataforma en `ARCHITECTURE.md`, «Windows (fase W)» |
 | Idioma de la UI | Español e inglés (`src/i18n/es.ts` y `en.ts`); por defecto sigue al sistema |
 | Agentes | Subagentes `frontend` y `backend` (`.claude/agents/`), uno por tarea, cada uno en su worktree de git y con entrega por PR. `plan` elige el modelo (Haiku 5.5 por defecto, Sonnet 5.5 para lo difícil) y el esfuerzo |
 | Commits | Sin `Co-Authored-By: Claude …`. Mensajes en inglés, `feat(frontend): …` |
@@ -58,4 +58,4 @@ React UI (WebView)                      Rust core (Tauri)
 Paquete de menos de 15 MB, arranque en menos de 1 s con la biblioteca, y solo se renderizan las páginas visibles.
 
 ## Backlog
-Windows, marcadores, vista a dos páginas, estadísticas de lectura, grabar los subrayados en una copia del PDF, EPUB y sincronización entre equipos.
+Firma de código del instalador de Windows, marcadores, vista a dos páginas, estadísticas de lectura, grabar los subrayados en una copia del PDF, EPUB y sincronización entre equipos.

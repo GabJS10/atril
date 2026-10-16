@@ -199,8 +199,9 @@ Lo que la CI no puede comprobar y hay que ver a mano con un instalador real:
 ## Releases
 - **v1.0.0** (2026-10-13): Linux, `.deb` y AppImage (paquete y binario `atril-libros`). Se construyen con `.github/workflows/release.yml` al empujar un tag `v*` sobre `main`, que deja un borrador de release en GitHub.
 - **v1.0.1** (2026-10-14): parche de empaquetado; el `.deb` ya lleva descripción, homepage y maintainer.
+- **v1.1.0** (2026-10-16): Windows 10/11 (fase W). `release.yml` añade el job `windows` (windows-2022, `--bundles nsis`), que adjunta `Atril_<versión>_x64-setup.exe` al mismo borrador. `tauri.windows.conf.json` cambia solo en Windows el nombre a «Atril».
 - **Backlog:**
   - `open_document` debería devolver `invalid_pdf` para un PDF sin páginas (hoy lo detecta el front).
-  - El texto de un subrayado conserva el guion de partición de línea («enter- ing»): unir las palabras partidas al final de línea.
   - El papel noche sobre escaneos amarillentos queda verdoso u oliva.
-  - Windows.
+  - Firma de código del instalador de Windows.
+  - Windows: soltar los documentos inactivos del motor (o un `close_document`) para que los libros de más de 16 MiB no queden bloqueados en el Explorador.

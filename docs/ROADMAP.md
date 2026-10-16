@@ -92,6 +92,15 @@ Comparado con Okular, el lector con pdf.js en WebKitGTK no es fluido: scroll, zo
 
 **Cierre:** el .deb y el AppImage se instalan y arrancan limpios; Atril no aparece como lector de PDF en el sistema; QA de `QA.md` pasada y visto bueno del usuario.
 
+## Fase W. Windows 10/11 (2026-10-15 → 2026-10-16)
+- [x] **W0** (plan): job `backend-windows` en la CI.
+- [x] **W1** (`backend`, Sonnet 5.5 `max`): motor y rutas en Windows, prioridad del indexador, archivos sin bloquear (≤ 16 MiB), aceleradores de WebView2, instalador NSIS (`tauri.windows.conf.json`).
+- [x] **W2** (`frontend`, Haiku 5.5 `high`): atajos y menú del navegador, barras de scroll, rutas con `\`, arrastre a Salas por punteros, nombres de archivo que solo difieren en mayúsculas.
+- [x] **W3** (plan): instalador de Windows en `release.yml`, control de mayúsculas en la CI, docs.
+- [x] **W4** (QA del usuario): arreglos de subrayados (palabras completas, guiones de línea, cerrar la nota), aviso al fallar una carpeta, `atril.log` y diagnóstico del escaneo, y devolver los libros quitados al volver a añadir su carpeta (por huella). **v1.1.0**.
+
+**Cierre:** el instalador se instala sin admin y arranca; QA de `QA.md` («Fase W») pasada en Windows y visto bueno del usuario.
+
 ## Flujo de cada fase
 1. `plan` fija el IPC de la fase en `IPC.md` (o lo encarga en la primera tarea del backend).
 2. Cada tarea se hace en un worktree propio con un subagente (ver `AGENTS.md`, «Ciclo de una tarea»). Como mucho 2 a la vez; el front usa `mockIPC` hasta que el backend esté listo.

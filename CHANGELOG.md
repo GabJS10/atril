@@ -2,6 +2,26 @@
 
 All notable changes to Atril are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-10-16
+
+Atril now runs on **Windows 10 and 11** too.
+
+### Added
+- Windows installer (`Atril_1.1.0_x64-setup.exe`): installs for the current user without administrator rights, in English or Spanish, and downloads WebView2 if it is missing.
+- On Windows, small books (up to 16 MiB) can be moved, renamed or deleted in File Explorer while they are open; larger ones are locked until Atril releases them.
+- Browser shortcuts and the browser context menu are disabled inside the app (print, reload, page zoom, find bar, caret browsing).
+- Atril keeps a log in its data folder (`atril.log`), with a summary of every library scan.
+- A notice explains why a folder could not be added to the library.
+
+### Changed
+- Highlights take whole words: a selection that starts or ends in the middle of a word keeps the whole word. Copying still copies exactly what is selected.
+- Books are dragged onto rooms with the pointer instead of HTML drag and drop, the same on Linux and Windows.
+- Adding a folder again brings back the books you had removed from the library that are inside it, recognized by their content even if they moved, with their progress, highlights and rooms.
+
+### Fixed
+- Saving a note closes the note editor.
+- Words split by a hyphen at the end of a line are joined in new highlights ("for- taleza" becomes "fortaleza"); existing highlights are shown and exported joined too.
+
 ## [1.0.1] - 2026-10-14
 
 ### Fixed

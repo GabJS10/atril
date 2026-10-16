@@ -12,7 +12,7 @@ Guía para agentes de IA (y personas) que trabajen en este repositorio.
 - Brief de diseño ("museo de arte de noche"): [`docs/DESIGN-BRIEF.md`](docs/DESIGN-BRIEF.md). El sistema de diseño definitivo irá en `DESIGN.md` y el contexto de producto en `PRODUCT.md` (los escribe `frontend` cuando el usuario elija una propuesta)
 - QA manual por fase: [`docs/QA.md`](docs/QA.md)
 
-**Estado actual:** **v1.0.1 para Linux** (tags `v1.0.1`, `v1.0.0` y `fase-5`). Fases 0 a 5 y fase R cerradas (tags `fase-0` a `fase-5` y `fase-R`): la fase R sustituyó pdf.js por un motor de PDF nativo en Rust (MuPDF). Lo siguiente sale del backlog (ver `docs/ROADMAP.md`).
+**Estado actual:** **v1.1.0 para Linux y Windows** (tags `v1.1.0`, `v1.0.1`, `v1.0.0`). Fases 0 a 5, fase R y fase W cerradas (tags `fase-0` a `fase-5`, `fase-R` y `fase-W`): la fase R sustituyó pdf.js por un motor de PDF nativo en Rust (MuPDF). Lo siguiente sale del backlog (ver `docs/ROADMAP.md`).
 
 ## Forma de trabajo: subagentes + worktrees + pull requests
 `plan` (la sesión principal de Claude Code) orquesta. Cada tarea la hace un **subagente** que trabaja en su propio **worktree de git** (una carpeta aparte con su propia rama) y la entrega como **pull request**. **Este `AGENTS.md` es la fuente de verdad**; `CLAUDE.md` solo lo importa, y los roles de los subagentes están en `.claude/agents/`.
@@ -59,7 +59,7 @@ Los spikes de medición van en un worktree **sin PR**: solo dejan un informe.
 - **Frontend:** React 19 + TypeScript (strict) + Vite, Tailwind 4, TanStack Router (rutas basadas en archivos, `src/routes/`), TanStack Query (datos del backend), Zustand (estado de UI)
 - **Visor PDF:** motor MuPDF en Rust (`src-tauri/src/engine/`) que entrega páginas JPEG por `atril://page/…`. El visor React (`src/reader/native/`) es propio; pdf.js ya no se usa (R2.3)
 - **Backend (Rust):** `rusqlite` (persistencia), `walkdir` + `notify` (escaneo y vigilancia de carpetas), `sha2` (huella), `thiserror`, `tracing`, `dirs`, `tokio`
-- **Plataformas:** Linux (WebKitGTK) primero; Windows 10/11 en el backlog
+- **Plataformas:** Linux (WebKitGTK; .deb y AppImage) y Windows 10/11 (WebView2; instalador NSIS por usuario, sin firmar). La CI prueba el backend en las dos
 
 ## Estructura (prevista)
 ```
