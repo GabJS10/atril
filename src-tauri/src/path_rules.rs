@@ -63,6 +63,28 @@ pub fn same(a: &str, b: &str) -> bool {
     key(a, Style::NATIVE) == key(b, Style::NATIVE)
 }
 
+/// `path` es `folder` o está dentro de ella (a cualquier nivel), según las reglas de `style`. Compara por segmentos
+/// completos: `/libros/Economia/a.pdf` está dentro de `/libros/Economia`, pero `/libros/Economia2` o `/libros/Eco`
+/// no. Léxico, sin tocar el disco.
+pub fn is_within(path: &str, folder: &str, style: Style) -> bool {
+    let path = key(path, style);
+    let folder = key(folder, style);
+    if path == folder {
+        return true;
+    }
+    let separator = match style {
+        Style::Posix => '/',
+        Style::Windows => '\\',
+    };
+    // La raíz (`/`, `C:\`) ya termina en separador.
+    let prefix = if folder.ends_with(separator) {
+        folder
+    } else {
+        format!("{folder}{separator}")
+    };
+    path.starts_with(&prefix)
+}
+
 fn normalize_posix(path: &str) -> String {
     let absolute = path.starts_with('/');
     let segments: Vec<&str> = path
@@ -384,5 +406,27 @@ mod tests {
         assert!(same(r"C:\Libros", r"c:\libros\"));
         #[cfg(not(windows))]
         assert!(!same("/home/u/Libros", "/home/u/libros"));
+    }
+
+    #[test]
+    fn within_compares_whole_segments_at_any_depth() {
+        let within = |path, folder| is_within(path, folder, Style::Posix);
+        assert!(within("/libros/Economia/a.pdf", "/libros/Economia"));
+        assert!(within("/libros/Economia/x/y/a.pdf", "/libros/Economia/"));
+        assert!(within("/libros/Economia", "/libros/Economia"));
+        assert!(within("/libros/a.pdf", "/"));
+        assert!(!within("/libros/Economia2/a.pdf", "/libros/Economia"));
+        assert!(!within("/libros/Eco/a.pdf", "/libros/Economia"));
+        assert!(!within("/libros/economia/a.pdf", "/libros/Economia"));
+    }
+
+    #[test]
+    fn within_on_windows_ignores_case_separators_and_the_verbatim_prefix() {
+        let within = |path, folder| is_within(path, folder, Style::Windows);
+        assert!(within(r"C:\Libros\Eco\a.pdf", r"c:/libros/eco/"));
+        assert!(within(r"C:\Libros\Eco\sub\a.pdf", r"\\?\C:\LIBROS\ECO"));
+        assert!(within(r"C:\a.pdf", r"C:\"));
+        assert!(!within(r"C:\Libros\Economia\a.pdf", r"C:\Libros\Eco"));
+        assert!(!within(r"D:\Libros\Eco\a.pdf", r"C:\Libros\Eco"));
     }
 }

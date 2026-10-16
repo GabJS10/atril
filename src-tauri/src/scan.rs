@@ -43,6 +43,7 @@ pub fn scan_folders(
 
     let mut found = 0;
     let mut known = 0u64;
+    let mut skipped = 0u64;
     let mut rejected = 0u64;
     for path in &collected.pdfs {
         match library::register(db, path, Origin::Scan) {
@@ -50,7 +51,9 @@ pub fn scan_folders(
                 found += 1;
                 on_found(found);
             }
-            Ok(_) => known += 1,
+            Ok(Some(_)) => known += 1,
+            // Quitado de la biblioteca, o con otra copia ya conocida: un escaneo no lo toca.
+            Ok(None) => skipped += 1,
             Err(error) => {
                 rejected += 1;
                 if rejected <= MAX_WARNINGS {
@@ -73,12 +76,56 @@ pub fn scan_folders(
         pdf_candidates = collected.pdfs.len(),
         registered = found,
         known,
+        skipped_removed_or_duplicate = skipped,
+        removed_books_in_db = count_removed(db),
         rejected,
         walk_errors = collected.walk_errors,
         pdf_named_not_files = collected.not_files,
         "scan finished"
     );
     Ok(found)
+}
+
+/// Cuántas entradas de cada carpeta se describen en el registro aunque sean normales: así se ve qué ve `walkdir`
+/// (tipo y atributos) cuando un escaneo "no encuentra nada".
+const SAMPLE_ENTRIES: u64 = 5;
+
+/// Tipo y atributos de una entrada para el registro. En Windows, los atributos de `GetFileAttributes` en hexadecimal
+/// (`0x400` = punto de reanálisis, `0x400000` = recall on data access, `0x40000` = recall on open, `0x1000` = fuera de
+/// línea…); en el resto, solo el tipo.
+fn describe(file_type: std::fs::FileType, metadata: Option<&std::fs::Metadata>) -> String {
+    let kind = if file_type.is_symlink() {
+        "symlink"
+    } else if file_type.is_dir() {
+        "dir"
+    } else if file_type.is_file() {
+        "file"
+    } else {
+        "other"
+    };
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        if let Some(metadata) = metadata {
+            return format!("{kind} attributes=0x{:x}", metadata.file_attributes());
+        }
+    }
+    let _ = metadata;
+    kind.to_owned()
+}
+
+/// Libros que el usuario quitó de la biblioteca (solo para el resumen del registro; `0` si la base falla).
+fn count_removed(db: &Mutex<Connection>) -> i64 {
+    library::lock_db(db)
+        .and_then(|conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM books WHERE removed_at IS NOT NULL",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .map_err(AppError::from)
+        })
+        .unwrap_or(0)
 }
 
 /// Lo que dejó el recorrido de las carpetas.
@@ -102,9 +149,14 @@ fn collect_pdfs(folders: &[PathBuf]) -> Collected {
     let mut seen = HashSet::new();
     for folder in folders {
         let before = (collected.entries, collected.pdfs.len());
+        let root = std::fs::symlink_metadata(folder);
         tracing::info!(
             folder = %folder.display(),
             is_dir = folder.is_dir(),
+            root = %root.as_ref().map_or_else(
+                |error| format!("unreadable: {error}"),
+                |meta| describe(meta.file_type(), Some(meta)),
+            ),
             "scan: walking folder"
         );
         for entry in WalkDir::new(folder).follow_links(false) {
@@ -123,16 +175,32 @@ fn collect_pdfs(folders: &[PathBuf]) -> Collected {
                     continue;
                 }
             };
-            if !is_pdf_name(entry.path()) {
+            let sampled = collected.entries - before.0 <= SAMPLE_ENTRIES;
+            let pdf_named = is_pdf_name(entry.path());
+            let regular = is_regular_file(&entry);
+            // Las primeras entradas de cada carpeta, con su tipo y atributos.
+            if sampled {
+                let metadata = entry.metadata().ok();
+                tracing::info!(
+                    path = %entry.path().display(),
+                    entry = %describe(entry.file_type(), metadata.as_ref()),
+                    pdf_named,
+                    regular,
+                    "scan: entry"
+                );
+            }
+            if !pdf_named {
                 continue;
             }
-            if !is_regular_file(&entry) {
+            if !regular {
                 if !entry.file_type().is_dir() {
                     collected.not_files += 1;
                     if collected.not_files <= MAX_WARNINGS {
+                        // Un enlace, un punto de reanálisis, un marcador de la nube…: con su tipo y atributos.
+                        let metadata = entry.metadata().ok();
                         tracing::warn!(
                             path = %entry.path().display(),
-                            file_type = ?entry.file_type(),
+                            entry = %describe(entry.file_type(), metadata.as_ref()),
                             "scan: a .pdf entry is not a file"
                         );
                     }
