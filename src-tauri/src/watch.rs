@@ -24,6 +24,9 @@ use crate::scan::{self, ScanStatus, SharedScanStatus};
 pub enum Msg {
     /// Escanear todas las carpetas (lo piden los comandos).
     Scan,
+    /// Escanear todas las carpetas; la carpeta indicada acaba de añadirla el usuario, así que este escaneo también
+    /// devuelve los libros quitados que tengan su huella (`library::Origin::Restore`).
+    ScanAdded(PathBuf),
     /// `notify` vio un cambio en alguna carpeta vigilada.
     Fs,
 }
@@ -68,6 +71,9 @@ struct Worker {
     watched: HashSet<PathBuf>,
     /// Carpetas de la biblioteca que existían en el último ciclo.
     available: HashSet<PathBuf>,
+    /// Carpetas recién añadidas por el usuario que el siguiente escaneo debe restaurar. Se anotan al recibir el
+    /// mensaje (incluso si llega mientras se vacía la cola tras un cambio de archivos) y las consume un escaneo.
+    restore_in: Vec<PathBuf>,
 }
 
 impl Worker {
@@ -98,6 +104,7 @@ impl Worker {
             watcher,
             watched: HashSet::new(),
             available: HashSet::new(),
+            restore_in: Vec::new(),
         }
     }
 
@@ -106,10 +113,19 @@ impl Worker {
         loop {
             match rx.recv_timeout(TICK) {
                 Ok(Msg::Scan) => self.sync_and_scan("scan"),
+                Ok(Msg::ScanAdded(folder)) => {
+                    self.restore_in.push(folder);
+                    self.sync_and_scan("scan");
+                }
                 Ok(Msg::Fs) => {
                     thread::sleep(DEBOUNCE);
-                    while rx.try_recv().is_ok() {}
-                    self.sync_and_scan("watch");
+                    drain_keeping_added(&rx, &mut self.restore_in);
+                    let reason = if self.restore_in.is_empty() {
+                        "watch"
+                    } else {
+                        "scan"
+                    };
+                    self.sync_and_scan(reason);
                 }
                 Err(RecvTimeoutError::Timeout) => {
                     if self.folders_changed() {
@@ -158,7 +174,9 @@ impl Worker {
         let mut last_emit = Instant::now()
             .checked_sub(EMIT_EVERY)
             .unwrap_or_else(Instant::now);
-        let result = scan::scan_folders(&self.db, &folders, |found| {
+        // El escaneo consume las carpetas a restaurar: el siguiente (arranque, vigilancia…) no devuelve nada.
+        let restore_in = std::mem::take(&mut self.restore_in);
+        let result = scan::scan_folders(&self.db, &folders, &restore_in, |found| {
             self.set_status(|status| status.found = found);
             if last_emit.elapsed() >= EMIT_EVERY {
                 last_emit = Instant::now();
@@ -232,6 +250,21 @@ pub fn emit_changed(app: &AppHandle, reason: &'static str) {
     }
 }
 
+/// Vacía la cola (tras un cambio de archivos, el escaneo que sigue cubre todo lo pendiente), pero anota las carpetas
+/// recién añadidas: perderlas dejaría sin restaurar los libros quitados de una carpeta que el usuario acaba de añadir.
+fn drain_keeping_added(rx: &Receiver<Msg>, restore_in: &mut Vec<PathBuf>) {
+    while let Ok(msg) = rx.try_recv() {
+        if let Msg::ScanAdded(folder) = msg {
+            restore_in.push(folder);
+        }
+    }
+}
+
+/// `add_library_folder`: escanear devolviendo a la biblioteca los libros quitados que estén en `folder`.
+pub fn request_scan_added(tx: &Sender<Msg>, folder: PathBuf) {
+    let _ = tx.send(Msg::ScanAdded(folder));
+}
+
 /// Ayuda a los comandos: pedir un escaneo sin esperar a que termine.
 pub fn request_scan(tx: &Sender<Msg>) {
     let _ = tx.send(Msg::Scan);
@@ -240,6 +273,30 @@ pub fn request_scan(tx: &Sender<Msg>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn draining_the_queue_keeps_the_folders_the_user_just_added() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        tx.send(Msg::Fs).expect("send");
+        tx.send(Msg::ScanAdded(PathBuf::from("/libros/a")))
+            .expect("send");
+        tx.send(Msg::Scan).expect("send");
+        tx.send(Msg::ScanAdded(PathBuf::from("/libros/b")))
+            .expect("send");
+        let mut restore_in = vec![PathBuf::from("/libros/previa")];
+
+        drain_keeping_added(&rx, &mut restore_in);
+
+        assert_eq!(
+            restore_in,
+            [
+                PathBuf::from("/libros/previa"),
+                PathBuf::from("/libros/a"),
+                PathBuf::from("/libros/b")
+            ]
+        );
+        assert!(rx.try_recv().is_err());
+    }
 
     #[test]
     fn changed_payload_serializes_reason() {
@@ -357,7 +414,7 @@ mod watcher_tests {
             "no event for {moved:?}"
         );
 
-        let found = scan_folders(&db, &[dir.path().to_path_buf()], |_| {}).expect("scan");
+        let found = scan_folders(&db, &[dir.path().to_path_buf()], &[], |_| {}).expect("scan");
 
         assert_eq!(found, 0, "the same book, not a new one");
         let conn = db.lock().expect("lock");
@@ -381,7 +438,7 @@ mod watcher_tests {
             "no event for {path:?}"
         );
 
-        scan_folders(&db, &[dir.path().to_path_buf()], |_| {}).expect("scan");
+        scan_folders(&db, &[dir.path().to_path_buf()], &[], |_| {}).expect("scan");
 
         assert!(
             get_book(&db.lock().expect("lock"), &book.id)
@@ -409,7 +466,7 @@ mod watcher_tests {
             "no event for {arrived:?}"
         );
 
-        let found = scan_folders(&db, &[library.path().to_path_buf()], |_| {}).expect("scan");
+        let found = scan_folders(&db, &[library.path().to_path_buf()], &[], |_| {}).expect("scan");
 
         assert_eq!(found, 2);
     }
