@@ -145,9 +145,19 @@ impl Worker {
         self.sync_watches(&existing);
         self.available = existing;
 
+        tracing::info!(
+            reason,
+            folders = folders.len(),
+            existing = self.available.len(),
+            "library scan starting"
+        );
         self.set_status(|status| status.running = true);
         self.set_status(|status| status.found = 0);
-        let mut last_emit = Instant::now() - EMIT_EVERY;
+        // `Instant` no es la hora del reloj: `now() - 1 s` puede salirse de rango (pánico) si el sistema lleva
+        // arrancado menos de eso.
+        let mut last_emit = Instant::now()
+            .checked_sub(EMIT_EVERY)
+            .unwrap_or_else(Instant::now);
         let result = scan::scan_folders(&self.db, &folders, |found| {
             self.set_status(|status| status.found = found);
             if last_emit.elapsed() >= EMIT_EVERY {

@@ -8,6 +8,7 @@ pub mod folders;
 pub mod highlights;
 pub mod indexer;
 pub mod library;
+pub mod logging;
 #[cfg(test)]
 mod packaging_tests;
 pub mod path_rules;
@@ -26,7 +27,6 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use rusqlite::Connection;
 use tauri::{AppHandle, Manager, Runtime};
-use tracing_subscriber::EnvFilter;
 
 use crate::error::AppError;
 use crate::scan::SharedScanStatus;
@@ -53,12 +53,6 @@ impl AppState {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
-        .try_init();
-
     tauri::Builder::default()
         // La instancia única va primero: así un segundo lanzamiento no llega a arrancar nada.
         // Sus argumentos se ignoran: Atril no es lector de PDF del sistema (ver docs/PLAN.md).
@@ -68,7 +62,11 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            let data_dir = db::data_dir()?;
+            // El registro se instala aquí y no antes del `Builder`: un segundo lanzamiento termina en el plugin de
+            // instancia única, antes de `setup`, y no debe rotar el registro de la instancia que sigue abierta.
+            let data_dir = db::data_dir();
+            logging::init(data_dir.as_ref().ok().map(PathBuf::as_path));
+            let data_dir = data_dir?;
             let (conn, applied) = db::open_app_database(&data_dir)?;
             let covers_dir = data_dir.join("covers");
             std::fs::create_dir_all(&covers_dir)?;

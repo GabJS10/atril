@@ -493,6 +493,29 @@ pub fn remove_book(conn: &Connection, id: &str) -> Result<(), AppError> {
     Ok(())
 }
 
+/// Devuelve a la biblioteca los libros quitados cuyo archivo está en `folder` (a cualquier nivel), conservando su
+/// progreso, subrayados y Salas. Lo hace `add_library_folder`: añadir una carpeta es una acción explícita del usuario,
+/// y un escaneo normal nunca devuelve los libros quitados (`Origin::Scan`). Compara por ruta con las reglas de la
+/// plataforma (en Windows, sin distinguir mayúsculas ni separadores). Los libros sin archivo siguen `missing`; las
+/// entradas separadas (`detached:`) no están en ninguna carpeta y no se tocan. Devuelve cuántos volvieron.
+pub fn restore_removed_in_folder(conn: &Connection, folder: &str) -> Result<u64, AppError> {
+    let removed: Vec<(String, String)> = {
+        let mut stmt = conn.prepare("SELECT id, path FROM books WHERE removed_at IS NOT NULL")?;
+        stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    let mut restored = 0;
+    for (id, path) in removed {
+        if path_rules::is_within(&path, folder, path_rules::Style::NATIVE) {
+            restored += conn.execute(
+                "UPDATE books SET removed_at = NULL WHERE id = ?1",
+                params![id],
+            )? as u64;
+        }
+    }
+    Ok(restored)
+}
+
 /// Id y ruta de los libros pendientes de indexar (sin `missing`), por fecha de alta. Es lo que lee el
 /// indexador nativo (`indexer.rs`), que necesita la ruta para abrir el PDF.
 pub fn pending_scan_paths(conn: &Connection) -> Result<Vec<(String, PathBuf)>, AppError> {
