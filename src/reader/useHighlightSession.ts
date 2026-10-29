@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import type { HighlightColor } from "../api/types";
 import { useT } from "../i18n";
-import { currentHighlightId, useHighlightActions, useHighlights } from "./highlights";
+import {
+  currentHighlightId,
+  useHighlightActions,
+  useHighlightGroupActions,
+  useHighlightGroups,
+  useHighlights,
+} from "./highlights";
 import type { SelectionPart } from "./native/textSelection";
 
 /** A text selection on screen: what it covers, and where the toolbar should sit. */
@@ -21,6 +27,8 @@ export function useHighlightSession(bookId: string) {
   const [notice, setNotice] = useState<string | null>(null);
   const highlights = useHighlights(bookId);
   const actions = useHighlightActions(bookId, () => setNotice(t("highlight.saveFailed")));
+  const groups = useHighlightGroups(bookId);
+  const groupActions = useHighlightGroupActions(bookId, () => setNotice(t("highlightGroup.failed")));
   const [highlightMode, setHighlightMode] = useState(false);
   const [lastColor, setLastColor] = useState<HighlightColor>("ochre");
   const [selection, setSelection] = useState<ActiveSelection | null>(null);
@@ -101,6 +109,8 @@ export function useHighlightSession(bookId: string) {
 
   return {
     highlights: highlights.data ?? [],
+    groups: groups.data ?? [],
+    groupActions,
     highlightMode,
     toggleHighlightMode,
     lastColor,
@@ -127,6 +137,15 @@ export function useHighlightSession(bookId: string) {
       remove: (id: string) => {
         setEditing(null);
         void actions.remove(id);
+      },
+      /** Moves the highlight to a group, or to "Sin grupo" (null). */
+      changeGroup: (id: string, groupId: string | null) => {
+        void actions.update(id, { groupId });
+      },
+      /** Creates a group and moves the highlight into it. A refused group leaves the highlight where it is. */
+      createGroupAndMove: async (id: string, name: string) => {
+        const group = await groupActions.create(name);
+        if (group) void actions.update(id, { groupId: group.id });
       },
     },
   };

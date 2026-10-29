@@ -356,8 +356,15 @@ function ReaderView({
           highlight={highlightSession.editing.highlight}
           anchor={highlightSession.editing.anchor}
           focusNote={highlightSession.editing.focusNote}
+          groups={highlightSession.groups}
           onColor={(color) =>
             highlightSession.editor.changeColor(highlightSession.editing!.highlight.id, color)
+          }
+          onGroup={(groupId) =>
+            highlightSession.editor.changeGroup(highlightSession.editing!.highlight.id, groupId)
+          }
+          onNewGroup={(name) =>
+            void highlightSession.editor.createGroupAndMove(highlightSession.editing!.highlight.id, name)
           }
           onNote={(text) => highlightSession.editor.saveNote(highlightSession.editing!.highlight.id, text)}
           onDelete={() => highlightSession.editor.remove(highlightSession.editing!.highlight.id)}
@@ -420,10 +427,14 @@ function ReaderView({
       {sidePanel === "highlights" ? (
         <HighlightsPanel
           highlights={highlightSession.highlights}
+          groups={highlightSession.groups}
           exporting={exporting}
           onJump={(highlight) => viewer.current?.revealHighlight(highlight)}
           onExport={() => void exportBook()}
           onClose={() => setSidePanel(null)}
+          onCreateGroup={highlightSession.groupActions.create}
+          onRenameGroup={(groupId, name) => void highlightSession.groupActions.rename(groupId, name)}
+          onDeleteGroup={(groupId) => void highlightSession.groupActions.remove(groupId)}
         />
       ) : null}
     </div>

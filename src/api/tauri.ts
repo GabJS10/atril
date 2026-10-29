@@ -13,6 +13,7 @@ import type {
   EngineOutlineItem,
   Highlight,
   HighlightExport,
+  HighlightGroup,
   HighlightInput,
   HighlightPatch,
   HomeData,
@@ -265,6 +266,27 @@ export function exportHighlights(
 
 export function deleteHighlight(highlightId: string): Promise<null> {
   return invoke<null>("delete_highlight", { highlightId });
+}
+
+// Highlight groups (docs/IPC.md, "Grupos de subrayados (v1.2)")
+
+/** The groups of a book, by position. */
+export function listHighlightGroups(bookId: string): Promise<HighlightGroup[]> {
+  return invoke<HighlightGroup[]>("list_highlight_groups", { bookId });
+}
+
+/** The new group goes last in the book. */
+export function createHighlightGroup(bookId: string, name: string): Promise<HighlightGroup> {
+  return invoke<HighlightGroup>("create_highlight_group", { bookId, name });
+}
+
+export function renameHighlightGroup(groupId: string, name: string): Promise<HighlightGroup> {
+  return invoke<HighlightGroup>("rename_highlight_group", { groupId, name });
+}
+
+/** Its highlights are not deleted: they go to "Sin grupo". */
+export function deleteHighlightGroup(groupId: string): Promise<null> {
+  return invoke<null>("delete_highlight_group", { groupId });
 }
 
 export function isAppError(error: unknown): error is AppError {

@@ -44,12 +44,12 @@
 | `lib.rs` | Arranque: DB, `AppState` (DB, motor, indexador, canal del vigilante), registro de comandos y del protocolo `atril://` |
 | `commands.rs` | Los `#[tauri::command]`. Los lentos (`open_document`, texto, búsqueda…) usan `spawn_blocking` |
 | `error.rs` | `AppError { code, message }`, la forma de todos los errores hacia el front |
-| `db.rs` + `migrations/` | SQLite con migraciones. Tablas: `books`, `reading_state`, `highlights`, `collections`, `book_collections`, `library_folders`, `settings` |
+| `db.rs` + `migrations/` | SQLite con migraciones. Tablas: `books`, `reading_state`, `highlights`, `highlight_groups`, `collections`, `book_collections`, `library_folders`, `settings` |
 | `library.rs`, `scan.rs`, `folders.rs`, `query.rs` | Biblioteca: alta por huella, importación, carpetas, consultas de la pantalla de inicio |
 | `watch.rs` | Hilo `library-watch`: escaneos y vigilancia (`notify`). Emite `library://changed` y `library://scan` y despierta al indexador |
 | `indexer.rs` | Hilo `atril-indexer` (prioridad baja: nice 19 en Linux, `THREAD_PRIORITY_LOWEST` en Windows): por cada libro `pending` saca páginas, título y autor y genera una portada JPEG de 400 px. Espera mientras el visor tiene renders en cola |
 | `protocol.rs` | `atril://`: libros con `Range` (206), portadas, páginas JPEG del motor (respuesta asíncrona) y `POST /jpx` (legado) |
-| `highlights.rs`, `collections.rs`, `settings.rs` | Subrayados (con exportación a Markdown), Salas y ajustes |
+| `highlights.rs`, `highlight_groups.rs`, `collections.rs`, `settings.rs` | Subrayados (con exportación a Markdown), sus grupos por libro, Salas y ajustes |
 | `path_rules.rs` | Normalización y clave de comparación de rutas, con las reglas de cada plataforma (en Windows no distinguen mayúsculas ni `/` de `\`). Función pura, probada para las dos desde cualquiera. La usan `folders.rs`, `scan.rs` y `library.rs` |
 | `logging.rs` | Registro (`tracing`) en `<data_dir>/atril.log`; ver «Registro» más abajo |
 | `platform.rs` | Ajustes de la ventana que dependen de la plataforma. En Windows, desactiva los aceleradores del navegador de WebView2 en las compilaciones de release |
@@ -200,6 +200,7 @@ Lo que la CI no puede comprobar y hay que ver a mano con un instalador real:
 - **v1.0.0** (2026-10-13): Linux, `.deb` y AppImage (paquete y binario `atril-libros`). Se construyen con `.github/workflows/release.yml` al empujar un tag `v*` sobre `main`, que deja un borrador de release en GitHub.
 - **v1.0.1** (2026-10-14): parche de empaquetado; el `.deb` ya lleva descripción, homepage y maintainer.
 - **v1.1.0** (2026-10-16): Windows 10/11 (fase W). `release.yml` añade el job `windows` (windows-2022, `--bundles nsis`), que adjunta `Atril_<versión>_x64-setup.exe` al mismo borrador. `tauri.windows.conf.json` cambia solo en Windows el nombre a «Atril».
+- **v1.2.0** (2026-10-29): notas recientes primero y grupos de subrayados por libro (N1; migración 0007, módulo `highlight_groups.rs`).
 - **Backlog:**
   - `open_document` debería devolver `invalid_pdf` para un PDF sin páginas (hoy lo detecta el front).
   - El papel noche sobre escaneos amarillentos queda verdoso u oliva.
