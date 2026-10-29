@@ -57,7 +57,13 @@ function mockLibrary(options: {
   mockIPC((cmd, args) => {
     switch (cmd) {
       case "get_settings":
-        return { language: "es", theme: "dark", defaultZoom: "page_width", defaultViewMode: "normal" };
+        return {
+          language: "es",
+          theme: "dark",
+          defaultZoom: "page_width",
+          defaultViewMode: "normal",
+          checkUpdates: false,
+        };
       case "get_home":
         return options.home ?? home();
       case "get_scan_status":

@@ -3,6 +3,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow, type CloseRequestedEvent } from "@tauri-apps/api/window";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { isOpenableUri } from "./uri";
 import type {
@@ -30,6 +31,7 @@ import type {
   Settings,
   SettingsPatch,
   TextWord,
+  UpdateCheck,
 } from "./types";
 
 // The only place that talks to Rust: one wrapper per command in docs/IPC.md.
@@ -41,6 +43,19 @@ export function getSettings(): Promise<Settings> {
 
 export function updateSettings(patch: SettingsPatch): Promise<Settings> {
   return invoke<Settings>("update_settings", { patch });
+}
+
+/**
+ * Asks GitHub for the latest release. The backend does not read `checkUpdates`: the caller decides when to ask.
+ * Rejects with `network` when offline or GitHub does not answer.
+ */
+export function checkForUpdate(): Promise<UpdateCheck> {
+  return invoke<UpdateCheck>("check_for_update");
+}
+
+/** The version of the running app, as the window bundle reports it (`CARGO_PKG_VERSION`). */
+export function getAppVersion(): Promise<string> {
+  return getVersion();
 }
 
 export function openPath(path: string): Promise<Book> {

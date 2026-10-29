@@ -26,6 +26,7 @@ const defaults: Settings = {
   theme: "dark",
   defaultZoom: "page_width",
   defaultViewMode: "normal",
+  checkUpdates: false,
 };
 
 describe("tauri wrappers", () => {

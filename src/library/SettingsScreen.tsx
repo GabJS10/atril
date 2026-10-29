@@ -1,12 +1,14 @@
 import { useState } from "react";
-import { useSettings, useUpdateSettings } from "../api/queries";
+import { useAppVersion, useCheckForUpdate, useSettings, useUpdateSettings } from "../api/queries";
 import type { LibraryFolder, Settings } from "../api/types";
+import { isAppError } from "../api/tauri";
 import { useLocaleStore, useT } from "../i18n";
 import { ghostButton, primaryButton, secondaryButton, smallButton } from "../ui/buttons";
 import { FolderIcon } from "../ui/icons";
 import { Segmented } from "../ui/Segmented";
 import { useAddFolder } from "./actions";
 import { LoadError } from "./Notices";
+import { openRelease } from "./updates";
 import { useFolderMutations } from "./collectionActions";
 import { roomColorOf } from "./identity";
 import { fileName } from "./paths";
@@ -23,6 +25,37 @@ function Label({ title, hint }: { title: string; hint?: string }) {
       <b className="text-base font-semibold text-ink">{title}</b>
       {hint ? <span className="text-ui text-ink-2">{hint}</span> : null}
     </div>
+  );
+}
+
+/** An on/off switch: ink when on, a quiet track when off. The accent stays with the main action (DESIGN.md). */
+function Switch({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      className={`inline-flex h-7 w-12 shrink-0 items-center rounded-pill transition-colors duration-fast ease-atril ${
+        checked ? "bg-ink" : "bg-wash"
+      }`}
+    >
+      <span
+        aria-hidden="true"
+        className={`size-5 rounded-dot bg-canvas transition-transform duration-fast ease-atril ${
+          checked ? "translate-x-6" : "translate-x-1"
+        }`}
+      />
+    </button>
   );
 }
 
@@ -133,9 +166,82 @@ export function SettingsScreen() {
               </div>
             </div>
           </section>
+
+          <UpdatesCard
+            checkUpdates={settings.data.checkUpdates}
+            onChange={(checkUpdates) => change({ checkUpdates })}
+          />
         </div>
       ) : null}
     </main>
+  );
+}
+
+/** Actualizaciones (v1.3): the installed version, the startup switch and a manual check that ignores the switch. */
+function UpdatesCard({
+  checkUpdates,
+  onChange,
+}: {
+  checkUpdates: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  const t = useT();
+  const version = useAppVersion();
+  const check = useCheckForUpdate();
+  const result = check.isSuccess ? check.data : null;
+
+  return (
+    <section className={CARD} aria-labelledby="updates-title">
+      <h2 id="updates-title" className={CARD_TITLE}>
+        {t("settings.updates")}
+      </h2>
+      {version.data ? (
+        <span className="text-ui text-ink-2">{t("settings.updates.current", { version: version.data })}</span>
+      ) : null}
+      <div className={ROW}>
+        <Label title={t("settings.updates.auto")} hint={t("settings.updates.auto.hint")} />
+        <Switch label={t("settings.updates.auto")} checked={checkUpdates} onChange={onChange} />
+      </div>
+      <div className={ROW}>
+        <button
+          type="button"
+          onClick={() => check.mutate()}
+          disabled={check.isPending}
+          className={secondaryButton}
+        >
+          {t("settings.updates.check")}
+        </button>
+        {check.isPending ? (
+          <span role="status" className="text-ui text-ink-2">
+            {t("settings.updates.checking")}
+          </span>
+        ) : null}
+        {check.isError ? (
+          <span role="alert" className="text-ui text-ink-2">
+            {t(
+              isAppError(check.error) && check.error.code === "network"
+                ? "settings.updates.error.network"
+                : "settings.updates.error",
+            )}
+          </span>
+        ) : null}
+        {result && !result.available ? (
+          <span role="status" className="text-ui text-ink-2">
+            {t("settings.updates.upToDate")}
+          </span>
+        ) : null}
+        {result?.available ? (
+          <>
+            <span role="status" className="text-ui text-ink">
+              {t("settings.updates.available", { version: result.latestVersion })}
+            </span>
+            <button type="button" onClick={() => openRelease(result.url)} className={primaryButton}>
+              {t("update.download")}
+            </button>
+          </>
+        ) : null}
+      </div>
+    </section>
   );
 }
 
