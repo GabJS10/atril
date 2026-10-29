@@ -105,7 +105,7 @@ Comparado con Okular, el lector con pdf.js en WebKitGTK no es fluido: scroll, zo
 - [x] **N1 · Notas: recientes primero y grupos** (2026-10-29, PR #34 y #35; QA del usuario pasada). **v1.2.0**. Contrato en `IPC.md` («Grupos de subrayados»).
   - **N1.B** (`backend`, Haiku 5.5 `high`): migración 0007, CRUD de grupos, `groupId` en subrayados y export por grupos.
   - **N1.F** (`frontend`, Haiku 5.5 `high`): panel con orden «Recientes · Por página» (recientes por defecto), grupos como secciones plegables con «Sin grupo» al final, crear/renombrar/borrar grupos y selector de grupo en el editor del subrayado.
-- [ ] **U1 · Aviso de actualizaciones** (v1.3; PR #37 y #38 fusionados el 2026-10-29, pendiente de la QA del usuario). Al arrancar consulta la última release de GitHub y, si es más nueva, avisa con enlace a la descarga; interruptor en Ajustes (activado por defecto). Solo avisa, no instala. Contrato en `IPC.md` («Actualizaciones (v1.3)»).
+- [x] **U1 · Aviso de actualizaciones** (2026-10-29, PR #37 y #38; QA del usuario pasada). **v1.3.0**. Al arrancar consulta la última release de GitHub y, si es más nueva, avisa con enlace a la descarga; interruptor en Ajustes (activado por defecto). Solo avisa, no instala. Contrato en `IPC.md` («Actualizaciones (v1.3)»).
   - **U1.B** (`backend`, Haiku 5.5 `high`): `updates.rs` (`ureq` + `semver`), comando `check_for_update`, error `network`, ajuste `checkUpdates`.
   - **U1.F** (`frontend`, Haiku 5.5 `high`): comprobación al arrancar, aviso en la biblioteca («Descargar» / «Ahora no») y sección «Actualizaciones» en Ajustes (versión, interruptor, «Comprobar ahora»).
 
