@@ -20,6 +20,7 @@ function highlight(id: string, pageNumber: number, rects: [number, number, numbe
     text: "x",
     color: "sage",
     note: null,
+    groupId: null,
     createdAt: "2026-10-11T12:00:00Z",
     updatedAt: "2026-10-11T12:00:00Z",
   };

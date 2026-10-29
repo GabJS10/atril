@@ -1,16 +1,27 @@
-import { useState } from "react";
-import type { Highlight, HighlightColor } from "../api/types";
+import { useId, useState } from "react";
+import type { Highlight, HighlightColor, HighlightGroup } from "../api/types";
 import { useT } from "../i18n";
+import { GroupNameForm } from "./GroupNameForm";
 import { floatingPosition, PIGMENT_COLOR, PIGMENT_KEY, PIGMENTS } from "./highlightPresentation";
 
 const EDITOR_WIDTH = 300;
+const EDITOR_HEIGHT = 340;
 
-/** Editor of one highlight: its colour, its note, and deleting it. Escape closes it. */
+/** The option of the group selector that asks for a new group. Group ids are uuids, so it never clashes. */
+const NEW_GROUP = "new";
+
+/**
+ * Editor of one highlight: its colour, its group, its note, and deleting it. Escape closes it. The group selector
+ * moves the highlight to a group, to "Sin grupo", or to a new group named in place.
+ */
 export function HighlightEditor({
   highlight,
   anchor,
   focusNote,
+  groups,
   onColor,
+  onGroup,
+  onNewGroup,
   onNote,
   onDelete,
   onClose,
@@ -18,14 +29,19 @@ export function HighlightEditor({
   highlight: Highlight;
   anchor: DOMRect;
   focusNote: boolean;
+  groups: HighlightGroup[];
   onColor: (color: HighlightColor) => void;
+  onGroup: (groupId: string | null) => void;
+  onNewGroup: (name: string) => void;
   onNote: (text: string) => void;
   onDelete: () => void;
   onClose: () => void;
 }) {
   const t = useT();
+  const selectId = useId();
   const [text, setText] = useState(highlight.note ?? "");
-  const { left, top } = floatingPosition(anchor, EDITOR_WIDTH, 260);
+  const [naming, setNaming] = useState(false);
+  const { left, top } = floatingPosition(anchor, EDITOR_WIDTH, EDITOR_HEIGHT);
 
   return (
     <div
@@ -60,6 +76,42 @@ export function HighlightEditor({
           {t("highlight.close")}
         </button>
       </div>
+
+      <div className="flex flex-col gap-2">
+        <label htmlFor={selectId} className="text-ui text-ink-3">
+          {t("highlight.group")}
+        </label>
+        <select
+          id={selectId}
+          value={highlight.groupId ?? ""}
+          onChange={(event) => {
+            const value = event.target.value;
+            if (value === NEW_GROUP) setNaming(true);
+            else onGroup(value === "" ? null : value);
+          }}
+          className="rounded-control bg-field px-3 py-2.5 text-base text-ink"
+        >
+          <option value="">{t("highlightGroup.ungrouped")}</option>
+          {groups.map((group) => (
+            <option key={group.id} value={group.id}>
+              {group.name}
+            </option>
+          ))}
+          <option value={NEW_GROUP}>{t("highlight.groupNew")}</option>
+        </select>
+        {naming ? (
+          <GroupNameForm
+            label={t("highlight.groupNewLabel")}
+            submitLabel={t("highlightGroup.create")}
+            onCancel={() => setNaming(false)}
+            onSubmit={(name) => {
+              setNaming(false);
+              onNewGroup(name);
+            }}
+          />
+        ) : null}
+      </div>
+
       <label className="flex flex-col gap-2">
         <span className="sr-only">{t("highlight.noteLabel")}</span>
         <textarea
