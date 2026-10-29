@@ -2,6 +2,12 @@
 
 All notable changes to Atril are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - 2026-10-29
+
+### Added
+- Atril tells you when a new version is out. At startup it checks the latest release on GitHub and, if it is newer, shows a notice in the library with a link to the download page ("Not now" hides it until the next start). It only notifies: nothing is downloaded or installed.
+- Settings has an "Updates" section with the installed version, a switch to turn the startup check off and a "Check now" button.
+
 ## [1.2.0] - 2026-10-29
 
 ### Added

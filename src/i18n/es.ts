@@ -237,6 +237,21 @@ export const es = {
   "search.failed": "No se pudo buscar",
   "collection.gone": "Esta Sala ya no existe",
   "collection.gone.body": "Puede que la hayas borrado. Sus libros siguen en la biblioteca.",
+  // Actualizaciones (v1.3)
+  "update.notice.title": "Atril {version} está disponible",
+  "update.notice.body": "Descárgala desde GitHub cuando te venga bien. Atril no la instala por ti.",
+  "update.download": "Descargar",
+  "update.later": "Ahora no",
+  "settings.updates": "Actualizaciones",
+  "settings.updates.current": "Versión instalada: {version}",
+  "settings.updates.auto": "Buscar actualizaciones al iniciar",
+  "settings.updates.auto.hint": "Consulta GitHub una vez al abrir Atril. No descarga nada.",
+  "settings.updates.check": "Comprobar ahora",
+  "settings.updates.checking": "Comprobando…",
+  "settings.updates.upToDate": "Atril está al día.",
+  "settings.updates.available": "Atril {version} está disponible.",
+  "settings.updates.error.network": "No se pudo comprobar. Revisa tu conexión.",
+  "settings.updates.error": "No se pudo comprobar si hay una versión nueva.",
 };
 
 export type TranslationKey = keyof typeof es;

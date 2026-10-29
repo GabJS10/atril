@@ -1,6 +1,6 @@
 [package]
 name = "atril-libros"
-version = "1.2.0"
+version = "1.3.0"
 description = "A quiet desktop reader for your PDF books"
 authors = ["GabJS10"]
 license = "AGPL-3.0-only"
@@ -37,6 +37,11 @@ unicode-normalization = "0.1.25"
 uuid = { version = "1.28.0", features = ["v4"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-single-instance = "2"
+# Comprobación de actualizaciones (src/updates.rs): única llamada de red de la app, bloqueante y con TLS de Rust
+# (rustls + raíces de Mozilla, sin OpenSSL ni native-tls). Solo las features mínimas: sin gzip ni JSON propio.
+ureq = { version = "3", default-features = false, features = ["rustls"] }
+# Comparación de versiones de las releases (tags con o sin `v`).
+semver = "1"
 # Motor de PDF nativo (fase R, src/engine/). MuPDF se compila desde fuente y se enlaza estático; `mupdf-sys`
 # necesita libclang para bindgen. Sin `system-fonts` (con fuentes no incrustadas tardaba ~20 s por libro) y
 # con `base14-fonts` (sin ellas el texto se extrae mal). Atril pasa a AGPL por esta dependencia.

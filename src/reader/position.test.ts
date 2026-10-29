@@ -81,6 +81,7 @@ describe("initialReadingStart", () => {
     theme: "dark",
     defaultZoom: "page_fit",
     defaultViewMode: "sepia",
+    checkUpdates: false,
   };
 
   it("uses the Settings defaults and the first page when the book was never read", () => {

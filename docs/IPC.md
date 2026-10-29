@@ -28,6 +28,7 @@ type ErrorCode =
   | "invalid_input"  // argumentos inválidos
   | "io"             // error de disco
   | "db"             // error de SQLite
+  | "network"        // sin conexión, timeout o respuesta HTTP inesperada (v1.3, `check_for_update`)
   | "internal";
 ```
 
@@ -82,6 +83,7 @@ type Settings = {
   theme: "dark" | "light";        // light = "cubo blanco"
   defaultZoom: Zoom;
   defaultViewMode: ViewMode;
+  checkUpdates: boolean;          // v1.3: buscar actualizaciones al iniciar
 };
 type SettingsPatch = Partial<Settings>; // solo las claves presentes se cambian
 ```
@@ -94,7 +96,7 @@ type SettingsPatch = Partial<Settings>; // solo las claves presentes se cambian
 | `get_settings` | — | `Settings` | `db` |
 | `update_settings` | `{ patch: SettingsPatch }` | `Settings` (completos, ya actualizados) | `invalid_input`, `db` |
 
-Valores por defecto: `language: "system"`, `theme: "dark"`, `defaultZoom: "page_width"`, `defaultViewMode: "normal"`.
+Valores por defecto: `language: "system"`, `theme: "dark"`, `defaultZoom: "page_width"`, `defaultViewMode: "normal"`, `checkUpdates: true`.
 
 ### Fase 1
 | Comando | Argumentos | Devuelve | Errores |
@@ -406,6 +408,26 @@ Reglas:
 | Texto | `es` | `en` |
 |---|---|---|
 | Sección sin grupo | `## Sin grupo` | `## Ungrouped` |
+
+### Actualizaciones (v1.3)
+Atril solo **avisa** de que hay una versión nueva; no descarga ni instala nada. Es la única llamada de red de la app.
+
+```ts
+type UpdateCheck = {
+  currentVersion: string; // versión de la app (CARGO_PKG_VERSION), p. ej. "1.2.0"
+  latestVersion: string;  // tag de la última release publicada, sin la "v"
+  available: boolean;     // latestVersion > currentVersion (semver)
+  url: string;            // html_url de esa release en GitHub
+};
+```
+
+| Comando | Argumentos | Devuelve | Errores |
+|---|---|---|---|
+| `check_for_update` | — | `UpdateCheck` | `network`, `internal` |
+
+- Consulta `GET https://api.github.com/repos/GabJS10/atril/releases/latest` (GitHub excluye drafts y prereleases) con `User-Agent: atril/<versión>` y un timeout de ~10 s.
+- `network`: sin conexión, timeout, HTTP distinto de 200 (incluido el límite de peticiones). `internal`: JSON inesperado o tag que no es semver.
+- El comando **no** mira `checkUpdates`: el front decide cuándo llamarlo (al arrancar si `checkUpdates` es `true`, y siempre que el usuario pulse «Comprobar ahora» en Ajustes).
 
 ### Fases 3–5 (borrador, se detalla al empezar cada fase)
 - Metadatos: `update_book_metadata` (editar título y autor a mano; fuera del alcance de la fase 2).

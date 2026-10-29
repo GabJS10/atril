@@ -51,6 +51,7 @@ function mockApp(handlers: Handlers = {}) {
       theme: "dark",
       defaultZoom: "page_width",
       defaultViewMode: "normal",
+      checkUpdates: false,
     }),
     get_home: () => home(),
     get_scan_status: () => ({ running: false, found: 0 }),
