@@ -11,6 +11,8 @@ pub enum ErrorCode {
     InvalidInput,
     Io,
     Db,
+    /// Sin conexión, timeout o respuesta HTTP inesperada (`check_for_update`).
+    Network,
     Internal,
 }
 
@@ -40,6 +42,10 @@ impl AppError {
 
     pub fn io(message: impl Into<String>) -> Self {
         Self::new(ErrorCode::Io, message)
+    }
+
+    pub fn network(message: impl Into<String>) -> Self {
+        Self::new(ErrorCode::Network, message)
     }
 
     pub fn internal(message: impl Into<String>) -> Self {
@@ -85,6 +91,7 @@ mod tests {
             (ErrorCode::InvalidInput, "invalid_input"),
             (ErrorCode::Io, "io"),
             (ErrorCode::Db, "db"),
+            (ErrorCode::Network, "network"),
             (ErrorCode::Internal, "internal"),
         ];
 

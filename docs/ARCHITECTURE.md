@@ -28,6 +28,7 @@
 │  engine/ ────── MuPDF: pool de render, hilo de lectura, cachés      │
 │  indexer.rs ─── metadatos y portadas en segundo plano               │
 │  watch.rs ───── escaneo y vigilancia de carpetas                    │
+│  updates.rs ─── comprobación de versión (GitHub, única red)         │
 │  db.rs ──────── SQLite (~/.local/share/atril/atril.db)              │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -46,6 +47,7 @@
 | `error.rs` | `AppError { code, message }`, la forma de todos los errores hacia el front |
 | `db.rs` + `migrations/` | SQLite con migraciones. Tablas: `books`, `reading_state`, `highlights`, `highlight_groups`, `collections`, `book_collections`, `library_folders`, `settings` |
 | `library.rs`, `scan.rs`, `folders.rs`, `query.rs` | Biblioteca: alta por huella, importación, carpetas, consultas de la pantalla de inicio |
+| `updates.rs` | Comprobación de actualizaciones (v1.3): `GET` a la última release de GitHub con `ureq` (rustls, bloqueante, en `spawn_blocking`) y comparación semver. Solo avisa; no descarga ni instala. **Es la única llamada de red de la app**, y solo la hace `check_for_update` (la pide el front al arrancar si `checkUpdates` está activo, o desde Ajustes). La lógica pura (`parse_release`, `build_check`) se prueba sin red |
 | `watch.rs` | Hilo `library-watch`: escaneos y vigilancia (`notify`). Emite `library://changed` y `library://scan` y despierta al indexador |
 | `indexer.rs` | Hilo `atril-indexer` (prioridad baja: nice 19 en Linux, `THREAD_PRIORITY_LOWEST` en Windows): por cada libro `pending` saca páginas, título y autor y genera una portada JPEG de 400 px. Espera mientras el visor tiene renders en cola |
 | `protocol.rs` | `atril://`: libros con `Range` (206), portadas, páginas JPEG del motor (respuesta asíncrona) y `POST /jpx` (legado) |
@@ -113,7 +115,8 @@ MuPDF (crate `mupdf` 0.8, enlazado estático, `base14-fonts`, sin `system-fonts`
    2. El hilo `atril-read` recorre las páginas y emite `search://progress` en cada una y `search://done` al final.
    3. Una búsqueda nueva cancela la anterior.
 4. **Indexar la biblioteca:** el vigilante o una importación dan de alta libros `pending`. El indexador los procesa de uno en uno y emite `library://changed` (`reason: "index"`), y el front refresca las portadas.
-5. **Subrayar:** de la selección del DOM salen rectángulos de viewport, que el `PageMapping` pasa a rectángulos PDF; se llama a `create_highlight` y se guardan en SQLite.
+5. **Comprobar actualizaciones:** el front llama a `check_for_update` al arrancar (si `checkUpdates` es `true`) o desde Ajustes. `updates.rs` pide `releases/latest` a GitHub con un timeout de 10 s y devuelve `UpdateCheck`; el front muestra el aviso. Errores: `network` (sin conexión, timeout, HTTP ≠ 200) e `internal` (JSON o tag inesperado).
+6. **Subrayar:** de la selección del DOM salen rectángulos de viewport, que el `PageMapping` pasa a rectángulos PDF; se llama a `create_highlight` y se guardan en SQLite.
 
 ## Datos en disco
 `~/.local/share/atril/` (respeta `XDG_DATA_HOME`):

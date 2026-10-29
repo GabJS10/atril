@@ -20,6 +20,7 @@ pub mod scan;
 pub mod settings;
 #[cfg(test)]
 pub mod test_support;
+pub mod updates;
 pub mod watch;
 
 use std::path::PathBuf;
@@ -144,7 +145,8 @@ pub fn run() {
             commands::list_highlight_groups,
             commands::create_highlight_group,
             commands::rename_highlight_group,
-            commands::delete_highlight_group
+            commands::delete_highlight_group,
+            commands::check_for_update
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
