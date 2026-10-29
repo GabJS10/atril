@@ -44,12 +44,12 @@
 | `lib.rs` | Arranque: DB, `AppState` (DB, motor, indexador, canal del vigilante), registro de comandos y del protocolo `atril://` |
 | `commands.rs` | Los `#[tauri::command]`. Los lentos (`open_document`, texto, búsqueda…) usan `spawn_blocking` |
 | `error.rs` | `AppError { code, message }`, la forma de todos los errores hacia el front |
-| `db.rs` + `migrations/` | SQLite con migraciones. Tablas: `books`, `reading_state`, `highlights`, `collections`, `book_collections`, `library_folders`, `settings` |
+| `db.rs` + `migrations/` | SQLite con migraciones. Tablas: `books`, `reading_state`, `highlights`, `highlight_groups`, `collections`, `book_collections`, `library_folders`, `settings` |
 | `library.rs`, `scan.rs`, `folders.rs`, `query.rs` | Biblioteca: alta por huella, importación, carpetas, consultas de la pantalla de inicio |
 | `watch.rs` | Hilo `library-watch`: escaneos y vigilancia (`notify`). Emite `library://changed` y `library://scan` y despierta al indexador |
 | `indexer.rs` | Hilo `atril-indexer` (prioridad baja: nice 19 en Linux, `THREAD_PRIORITY_LOWEST` en Windows): por cada libro `pending` saca páginas, título y autor y genera una portada JPEG de 400 px. Espera mientras el visor tiene renders en cola |
 | `protocol.rs` | `atril://`: libros con `Range` (206), portadas, páginas JPEG del motor (respuesta asíncrona) y `POST /jpx` (legado) |
-| `highlights.rs`, `collections.rs`, `settings.rs` | Subrayados (con exportación a Markdown), Salas y ajustes |
+| `highlights.rs`, `highlight_groups.rs`, `collections.rs`, `settings.rs` | Subrayados (con exportación a Markdown), sus grupos por libro, Salas y ajustes |
 | `path_rules.rs` | Normalización y clave de comparación de rutas, con las reglas de cada plataforma (en Windows no distinguen mayúsculas ni `/` de `\`). Función pura, probada para las dos desde cualquiera. La usan `folders.rs`, `scan.rs` y `library.rs` |
 | `logging.rs` | Registro (`tracing`) en `<data_dir>/atril.log`; ver «Registro» más abajo |
 | `platform.rs` | Ajustes de la ventana que dependen de la plataforma. En Windows, desactiva los aceleradores del navegador de WebView2 en las compilaciones de release |
