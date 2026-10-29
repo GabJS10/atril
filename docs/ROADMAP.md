@@ -102,7 +102,7 @@ Comparado con Okular, el lector con pdf.js en WebKitGTK no es fluido: scroll, zo
 **Cierre:** el instalador se instala sin admin y arranca; QA de `QA.md` («Fase W») pasada en Windows y visto bueno del usuario.
 
 ## Backlog posterior a v1.1
-- [x] **N1 · Notas: recientes primero y grupos** (2026-10-29, PR #34 y #35; QA del usuario pasada). Contrato en `IPC.md` («Grupos de subrayados»).
+- [x] **N1 · Notas: recientes primero y grupos** (2026-10-29, PR #34 y #35; QA del usuario pasada). **v1.2.0**. Contrato en `IPC.md` («Grupos de subrayados»).
   - **N1.B** (`backend`, Haiku 5.5 `high`): migración 0007, CRUD de grupos, `groupId` en subrayados y export por grupos.
   - **N1.F** (`frontend`, Haiku 5.5 `high`): panel con orden «Recientes · Por página» (recientes por defecto), grupos como secciones plegables con «Sin grupo» al final, crear/renombrar/borrar grupos y selector de grupo en el editor del subrayado.
 

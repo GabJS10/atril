@@ -37,7 +37,7 @@ It is a reader for your books, not a generic PDF viewer: you add a folder (or a 
 ### A reader that stays out of the way
 - **Native PDF engine** (MuPDF): fast first page, smooth scrolling and crisp zoom, scanned books included.
 - **Remembers the exact position** in every book, down to the scroll offset.
-- **Highlights in four pigments**, with notes, saved instantly and **exportable to Markdown**. Your PDF files are never modified.
+- **Highlights in four pigments**, with notes, saved instantly and **exportable to Markdown**. The newest come first, and you can sort them into groups ("Chapter 3 notes"). Your PDF files are never modified.
 - **Search** with highlighted matches (<kbd>Ctrl</kbd>+<kbd>F</kbd>), **outline**, and working **links**.
 - **Normal, sepia and night** paper, focus mode (<kbd>F</kbd>) and full screen (<kbd>F11</kbd>).
 
@@ -69,19 +69,19 @@ It is a reader for your books, not a generic PDF viewer: you add a folder (or a 
 
 Atril runs on **Linux** and **Windows 10/11** (x86-64). Get the files from the [latest release](https://github.com/GabJS10/atril/releases/latest).
 
-**Windows** (`.exe` installer): run `Atril_1.1.0_x64-setup.exe`. It installs for your user only, without administrator rights. The installer is not signed yet, so Windows SmartScreen may warn you: click **More info → Run anyway**. Atril needs Microsoft Edge WebView2, which Windows 10/11 usually has; if not, the installer downloads it. To uninstall: *Settings → Apps*.
+**Windows** (`.exe` installer): run `Atril_1.2.0_x64-setup.exe`. It installs for your user only, without administrator rights. The installer is not signed yet, so Windows SmartScreen may warn you: click **More info → Run anyway**. Atril needs Microsoft Edge WebView2, which Windows 10/11 usually has; if not, the installer downloads it. To uninstall: *Settings → Apps*.
 
 **Debian, Ubuntu, Linux Mint** (`.deb`):
 
 ```bash
-sudo apt install ./atril-libros_1.1.0_amd64.deb
+sudo apt install ./atril-libros_1.2.0_amd64.deb
 ```
 
 **Any distribution** (AppImage):
 
 ```bash
-chmod +x atril-libros_1.1.0_amd64.AppImage
-./atril-libros_1.1.0_amd64.AppImage
+chmod +x atril-libros_1.2.0_amd64.AppImage
+./atril-libros_1.2.0_amd64.AppImage
 ```
 
 > The package and the command are called `atril-libros`, so they never clash with the unrelated *Atril* document viewer of the MATE desktop (package `atril`). In your menu the app is simply called **Atril**.

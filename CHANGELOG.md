@@ -2,6 +2,15 @@
 
 All notable changes to Atril are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-10-29
+
+### Added
+- Highlight groups: each book can have its own groups ("Chapter 3 notes"). Create, rename and delete them from the highlights panel, where each group is a folding section with its count and "Ungrouped" goes last. Move a highlight to a group, or to a new one, from its editor. Deleting a group keeps its highlights; they become ungrouped.
+- The Markdown export has a section per group when the book has groups; books without groups export exactly as before.
+
+### Changed
+- The highlights panel shows the newest highlights first. A "By page" chip switches back to reading order.
+
 ## [1.1.0] - 2026-10-16
 
 Atril now runs on **Windows 10 and 11** too.
