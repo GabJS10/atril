@@ -43,6 +43,8 @@ function mockLibrary(settings: Partial<Settings>, check: () => unknown) {
         return { running: false, found: 0 };
       case "list_library_folders":
         return [];
+      case "plugin:app|version":
+        return "1.2.0";
       default:
         throw new Error(`unexpected command ${cmd}`);
     }
@@ -50,9 +52,9 @@ function mockLibrary(settings: Partial<Settings>, check: () => unknown) {
   return calls;
 }
 
-function renderLibrary() {
+function renderLibrary(path = "/") {
   const queryClient = createQueryClient();
-  const router = createAppRouter(createMemoryHistory({ initialEntries: ["/"] }));
+  const router = createAppRouter(createMemoryHistory({ initialEntries: [path] }));
   render(<App router={router} queryClient={queryClient} />);
   return queryClient;
 }
@@ -67,6 +69,16 @@ describe("update notice in the library", () => {
     await user.click(screen.getByRole("button", { name: "Descargar" }));
 
     await waitFor(() => expect(calls.opened).toEqual([RELEASE.url]));
+  });
+
+  it("is not repeated on the Settings page, which shows the result itself", async () => {
+    mockLibrary({}, () => RELEASE);
+    const queryClient = renderLibrary("/settings");
+
+    expect(await screen.findByRole("region", { name: "Actualizaciones" })).toBeInTheDocument();
+    await waitFor(() => expect(queryClient.getQueryData(updateCheckQueryKey)).toEqual(RELEASE));
+    expect(screen.queryByText("Atril 1.3.0 está disponible")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Descargar" })).toBeNull();
   });
 
   it("says nothing when the app is up to date", async () => {
