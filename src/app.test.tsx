@@ -24,6 +24,7 @@ function mockSettings(language: Settings["language"], theme: Settings["theme"] =
         theme,
         defaultZoom: "page_width",
         defaultViewMode: "normal",
+        checkUpdates: false,
       }) satisfies Settings,
   });
 }
@@ -54,6 +55,7 @@ function mockCommands(handlers: Record<string, (args: unknown) => unknown>) {
       theme: "dark",
       defaultZoom: "page_width",
       defaultViewMode: "normal",
+      checkUpdates: false,
     }),
     ...emptyLibrary,
     ...handlers,

@@ -48,7 +48,13 @@ function recordCommands() {
   mockIPC((cmd, args) => {
     switch (cmd) {
       case "get_settings":
-        return { language: "es", theme: "dark", defaultZoom: "page_width", defaultViewMode: "normal" };
+        return {
+          language: "es",
+          theme: "dark",
+          defaultZoom: "page_width",
+          defaultViewMode: "normal",
+          checkUpdates: false,
+        };
       case "get_home":
         return home();
       case "get_scan_status":

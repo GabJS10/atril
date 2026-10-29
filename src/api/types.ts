@@ -8,16 +8,38 @@ export type Settings = {
   theme: "dark" | "light";
   defaultZoom: Zoom;
   defaultViewMode: ViewMode;
+  /** Check GitHub for a new release when the app opens (IPC v1.3). Default true. */
+  checkUpdates: boolean;
 };
 
 export type SettingsPatch = Partial<Settings>;
 
 export type ErrorCode =
-  "not_found" | "file_missing" | "invalid_pdf" | "invalid_input" | "io" | "db" | "internal";
+  | "not_found"
+  | "file_missing"
+  | "invalid_pdf"
+  | "invalid_input"
+  | "io"
+  | "db"
+  | "internal"
+  /** No connection, timeout or unexpected HTTP answer while checking for updates (IPC v1.3). */
+  | "network";
 
 export type AppError = {
   code: ErrorCode;
   message: string;
+};
+
+/** Result of `check_for_update` (docs/IPC.md, "Actualizaciones (v1.3)"). Atril only tells; it never downloads. */
+export type UpdateCheck = {
+  /** The app version, e.g. "1.2.0". */
+  currentVersion: string;
+  /** The tag of the latest published release, without the "v". */
+  latestVersion: string;
+  /** `latestVersion` is newer than `currentVersion`. */
+  available: boolean;
+  /** The release page on GitHub. */
+  url: string;
 };
 
 // Reading and library types (docs/IPC.md, "Tipos compartidos").
