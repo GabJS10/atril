@@ -363,6 +363,50 @@ Reglas exactas:
 
 **Lo que queda fuera de esta fase:** buscar dentro de los subrayados, exportar a otros formatos y el "modo subrayador" (es solo de front).
 
+### Grupos de subrayados (v1.2)
+
+Cada libro puede tener **grupos** de subrayados ("Notas del capítulo 3"). Un subrayado está en un grupo como mucho; sin grupo = "Sin grupo". Migración `0007_highlight_groups.sql`: tabla `highlight_groups` (con `ON DELETE CASCADE` desde `books`) y columna `highlights.group_id` (`ON DELETE SET NULL`).
+
+**Tipos**
+```ts
+type HighlightGroup = {
+  id: string;          // uuid v4, generado por el backend
+  bookId: string;
+  name: string;        // recortado; 1 a 200 caracteres
+  position: number;    // orden dentro del libro; un grupo nuevo va al final (max + 1)
+  createdAt: string;   // ISO 8601 UTC
+};
+
+// Cambios en los tipos de la fase 3:
+// Highlight      gana  groupId: string | null
+// HighlightInput gana  groupId?: string | null   (ausente o null = sin grupo)
+```
+
+**Comandos**
+| Comando | Argumentos | Devuelve | Errores |
+|---|---|---|---|
+| `list_highlight_groups` | `{ bookId: string }` | `HighlightGroup[]`, por `position` y luego `createdAt` | `not_found`, `db` |
+| `create_highlight_group` | `{ bookId: string; name: string }` | `HighlightGroup` (al final) | `not_found` (libro), `invalid_input` (nombre vacío tras recortar o > 200 caracteres), `db` |
+| `rename_highlight_group` | `{ groupId: string; name: string }` | `HighlightGroup` actualizado | `not_found`, `invalid_input`, `db` |
+| `delete_highlight_group` | `{ groupId: string }` | `null` | `not_found`, `db` |
+
+Reglas:
+- **`update_highlight`** acepta además `groupId?: string | null`, con los mismos tres estados que `note`: ausente = no cambia; `null` = sin grupo; cadena = lo mueve a ese grupo. Hace falta al menos uno de `color`, `note` o `groupId`; si no, `invalid_input`.
+- En `create_highlight` y `update_highlight`, un `groupId` que no existe o que es de otro libro → `invalid_input`.
+- **`delete_highlight_group`** no borra subrayados: los suyos pasan a `groupId: null`.
+- Dos grupos del mismo libro pueden tener el mismo nombre (no se valida unicidad).
+- Un libro quitado de la biblioteca devuelve `not_found` en estos comandos, como en los de subrayados.
+- `list_highlights` no cambia: el orden de la lista lo decide el front (recientes primero o por página).
+
+**Export a Markdown con grupos** (`export_highlights`)
+- Si el libro **no tiene ningún grupo con subrayados**, el formato es exactamente el de la fase 3.
+- Si los tiene: tras la cabecera, una sección `## <nombre del grupo>` por cada grupo con subrayados, en orden de `position`; dentro, `### Página N` / `### Page N` en orden ascendente con las mismas reglas 4 a 8 de la fase 3. Los subrayados sin grupo van al final bajo `## Sin grupo` / `## Ungrouped` (solo si hay alguno). Los grupos vacíos no salen.
+- El nombre del grupo lleva el mismo escape que las citas.
+
+| Texto | `es` | `en` |
+|---|---|---|
+| Sección sin grupo | `## Sin grupo` | `## Ungrouped` |
+
 ### Fases 3–5 (borrador, se detalla al empezar cada fase)
 - Metadatos: `update_book_metadata` (editar título y autor a mano; fuera del alcance de la fase 2).
 
