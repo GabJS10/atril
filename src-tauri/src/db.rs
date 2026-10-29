@@ -15,6 +15,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0004_regenerate_covers.sql"),
     include_str!("migrations/0005_reindex_filename_titles.sql"),
     include_str!("migrations/0006_cover_color.sql"),
+    include_str!("migrations/0007_highlight_groups.sql"),
 ];
 
 /// Versión que obliga a borrar las portadas de `covers/` al aplicarse (ver `0004_regenerate_covers.sql`).
@@ -92,6 +93,7 @@ mod tests {
         "book_collections",
         "books",
         "collections",
+        "highlight_groups",
         "highlights",
         "library_folders",
         "reading_state",
@@ -230,7 +232,7 @@ mod tests {
             .expect("insert");
         }
 
-        assert_eq!(migrate(&mut conn).expect("migrate"), vec![5, 6]);
+        assert_eq!(migrate(&mut conn).expect("migrate"), vec![5, 6, 7]);
 
         let states = |conn: &Connection| -> Vec<(String, String, i64)> {
             conn.prepare("SELECT id, scan_state, has_cover FROM books ORDER BY id")
@@ -275,7 +277,7 @@ mod tests {
         )
         .expect("insert");
 
-        assert_eq!(migrate(&mut conn).expect("migrate"), vec![6]);
+        assert_eq!(migrate(&mut conn).expect("migrate"), vec![6, 7]);
 
         let (title, state, has_cover, color): (String, String, i64, Option<String>) = conn
             .query_row(
@@ -302,5 +304,43 @@ mod tests {
         let error = migrate(&mut conn).expect_err("must refuse");
 
         assert_eq!(error.code, crate::error::ErrorCode::Db);
+    }
+
+    #[test]
+    fn migration_0007_keeps_existing_highlights_without_group() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("atril.db");
+        {
+            // Base de datos de antes de 0007: las seis primeras migraciones, con un libro y un subrayado.
+            let old = Connection::open(&path).expect("open");
+            old.pragma_update(None, "foreign_keys", true)
+                .expect("foreign keys");
+            for sql in &MIGRATIONS[..6] {
+                old.execute_batch(sql).expect("old migration");
+            }
+            old.pragma_update(None, "user_version", 6).expect("version");
+            old.execute_batch(
+                "INSERT INTO books (id, path, file_size, title, added_at)
+                 VALUES ('libro', '/libros/a.pdf', 4096, 'Pedro Páramo', '2026-01-01T00:00:00.000Z');
+                 INSERT INTO highlights (id, book_id, page, rects, text, color, note, created_at, updated_at)
+                 VALUES ('h1', 'libro', 2, '[[72,100,300,112]]', 'texto antiguo', 'ochre', 'nota', 'a', 'a');",
+            )
+            .expect("previous data");
+        }
+
+        let conn = open(&path).expect("reopen applies 0007");
+
+        assert_eq!(user_version(&conn), MIGRATIONS.len() as i64);
+        assert!(table_names(&conn).contains(&"highlight_groups".to_owned()));
+        let (text, note, group): (String, Option<String>, Option<String>) = conn
+            .query_row(
+                "SELECT text, note, group_id FROM highlights WHERE id = 'h1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("row survives");
+        assert_eq!(text, "texto antiguo");
+        assert_eq!(note.as_deref(), Some("nota"));
+        assert_eq!(group, None);
     }
 }
