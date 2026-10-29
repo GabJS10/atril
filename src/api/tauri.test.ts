@@ -3,15 +3,20 @@ import { mockIPC } from "@tauri-apps/api/mocks";
 import { describe, expect, it } from "vitest";
 import {
   cancelSearch,
+  createHighlightGroup,
+  deleteHighlightGroup,
   getOutline,
   getPageLinks,
   getPageText,
   getSettings,
   isAppError,
+  listHighlightGroups,
   onSearchDone,
   onSearchProgress,
   openExternalUrl,
+  renameHighlightGroup,
   searchDocument,
+  updateHighlight,
   updateSettings,
 } from "./tauri";
 import type { Settings } from "./types";
@@ -99,6 +104,44 @@ describe("engine wrappers (docs/IPC.md, v0.8)", () => {
     expect(finished).toEqual([{ searchId: "s1", total: 0, pagesSearched: 5, cancelled: false, error: null }]);
     await stopProgress();
     await stopDone();
+  });
+});
+
+describe("highlight group wrappers (docs/IPC.md, v1.2)", () => {
+  it("send the names of the contract for the four commands", async () => {
+    const calls: { cmd: string; payload: unknown }[] = [];
+    mockIPC((cmd, payload) => {
+      calls.push({ cmd, payload });
+      return null;
+    });
+
+    await listHighlightGroups("b1");
+    await createHighlightGroup("b1", "Capítulo 3");
+    await renameHighlightGroup("g1", "Capítulo 3, revisado");
+    await deleteHighlightGroup("g1");
+
+    expect(calls).toEqual([
+      { cmd: "list_highlight_groups", payload: { bookId: "b1" } },
+      { cmd: "create_highlight_group", payload: { bookId: "b1", name: "Capítulo 3" } },
+      { cmd: "rename_highlight_group", payload: { groupId: "g1", name: "Capítulo 3, revisado" } },
+      { cmd: "delete_highlight_group", payload: { groupId: "g1" } },
+    ]);
+  });
+
+  it("updateHighlight sends groupId only when the patch has it, and null to clear it", async () => {
+    const calls: { cmd: string; payload: unknown }[] = [];
+    mockIPC((cmd, payload) => {
+      calls.push({ cmd, payload });
+      return null;
+    });
+
+    await updateHighlight("h1", { groupId: null });
+    await updateHighlight("h1", { color: "slate" });
+
+    expect(calls).toEqual([
+      { cmd: "update_highlight", payload: { highlightId: "h1", groupId: null } },
+      { cmd: "update_highlight", payload: { highlightId: "h1", color: "slate" } },
+    ]);
   });
 });
 

@@ -107,6 +107,17 @@ export type HighlightColor = "ochre" | "sienna" | "sage" | "slate";
 /** x1, y1, x2, y2 in PDF user space (origin bottom-left). */
 export type PdfRect = [number, number, number, number];
 
+/** A group of highlights of one book ("Notas del capítulo 3"). Docs: IPC.md, "Grupos de subrayados (v1.2)". */
+export type HighlightGroup = {
+  id: string;
+  bookId: string;
+  /** Trimmed, 1 to 200 characters. */
+  name: string;
+  /** Order inside the book; a new group goes last. */
+  position: number;
+  createdAt: string;
+};
+
 export type HighlightInput = {
   bookId: string;
   page: number;
@@ -114,6 +125,8 @@ export type HighlightInput = {
   text: string;
   color: HighlightColor;
   note?: string | null;
+  /** Absent or null: no group. */
+  groupId?: string | null;
 };
 
 export type Highlight = {
@@ -124,11 +137,18 @@ export type Highlight = {
   text: string;
   color: HighlightColor;
   note: string | null;
+  /** The group the highlight is in; null is "Sin grupo". */
+  groupId: string | null;
   createdAt: string;
   updatedAt: string;
 };
 
-export type HighlightPatch = { color?: HighlightColor; note?: string | null };
+/** Absent keeps the field; `null` clears it (note: no note; groupId: no group). */
+export type HighlightPatch = {
+  color?: HighlightColor;
+  note?: string | null;
+  groupId?: string | null;
+};
 
 /** Result of `export_highlights`: how many highlights were written to the Markdown file. */
 export type HighlightExport = { count: number };

@@ -381,6 +381,7 @@ describe("NativeViewer images", () => {
       text: "x",
       color: "ochre",
       note: null,
+      groupId: null,
       createdAt: "",
       updatedAt: "",
     };
