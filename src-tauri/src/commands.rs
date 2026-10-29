@@ -14,6 +14,7 @@ use crate::engine::text::TextWord;
 use crate::engine::{self, api::OpenedDocument};
 use crate::error::AppError;
 use crate::folders::{self, LibraryFolder};
+use crate::highlight_groups::{self, HighlightGroup};
 use crate::highlights::{self, ExportResult, Highlight, HighlightInput, Language};
 use crate::library::{self, Book, ImportResult, OpenedBook, ReadingStateInput};
 use crate::query::{self, BookQuery, HomeData};
@@ -377,4 +378,41 @@ pub fn export_highlights(
     let date = Utc::now().format("%Y-%m-%d").to_string();
     let conn = app.db()?;
     highlights::export(&conn, &book_id, Path::new(&dest_path), language, &date)
+}
+
+/// Grupos del libro, por `position` (docs/IPC.md, "Grupos de subrayados (v1.2)").
+#[tauri::command]
+pub fn list_highlight_groups(
+    app: State<'_, AppState>,
+    book_id: String,
+) -> Result<Vec<HighlightGroup>, AppError> {
+    let conn = app.db()?;
+    highlight_groups::list(&conn, &book_id)
+}
+
+#[tauri::command]
+pub fn create_highlight_group(
+    app: State<'_, AppState>,
+    book_id: String,
+    name: String,
+) -> Result<HighlightGroup, AppError> {
+    let conn = app.db()?;
+    highlight_groups::create(&conn, &book_id, &name)
+}
+
+#[tauri::command]
+pub fn rename_highlight_group(
+    app: State<'_, AppState>,
+    group_id: String,
+    name: String,
+) -> Result<HighlightGroup, AppError> {
+    let conn = app.db()?;
+    highlight_groups::rename(&conn, &group_id, &name)
+}
+
+/// Sus subrayados pasan a sin grupo; no se borra ninguno.
+#[tauri::command]
+pub fn delete_highlight_group(app: State<'_, AppState>, group_id: String) -> Result<(), AppError> {
+    let conn = app.db()?;
+    highlight_groups::delete(&conn, &group_id)
 }

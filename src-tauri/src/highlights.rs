@@ -1,8 +1,8 @@
-//! Subrayados y notas: CRUD y exportación a Markdown (`docs/IPC.md`, fase 3).
+//! Subrayados y notas: CRUD y exportación a Markdown (`docs/IPC.md`, fase 3 y grupos v1.2).
 //! Los rectángulos van en coordenadas PDF; sirven a cualquier zoom.
 
 use std::borrow::Cow;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 
 use rusqlite::{Connection, OptionalExtension, params};
@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::error::{AppError, ErrorCode};
+use crate::highlight_groups::{self, HighlightGroup};
 use crate::library::{self, now_iso};
 
 const MAX_RECTS: usize = 500;
@@ -69,6 +70,9 @@ pub struct HighlightInput {
     pub color: HighlightColor,
     #[serde(default)]
     pub note: Option<String>,
+    /// Ausente o `null` = sin grupo.
+    #[serde(default)]
+    pub group_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -81,15 +85,18 @@ pub struct Highlight {
     pub text: String,
     pub color: HighlightColor,
     pub note: Option<String>,
+    pub group_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
 
-/// Cambios de `update_highlight`. `note`: `None` = no cambia; `Some(None)` = borra la nota.
+/// Cambios de `update_highlight`. `note` y `group_id`: `None` = no cambia; `Some(None)` = lo quita
+/// (borra la nota / pasa a sin grupo); `Some(Some(_))` = lo pone.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct HighlightPatch {
     pub color: Option<HighlightColor>,
     pub note: Option<Option<String>>,
+    pub group_id: Option<Option<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -98,8 +105,8 @@ pub struct ExportResult {
     pub count: usize,
 }
 
-/// Lee `{ highlightId, color?, note? }` del cuerpo de `update_highlight`.
-/// Distingue la nota ausente (no cambia) de `null` (la borra).
+/// Lee `{ highlightId, color?, note?, groupId? }` del cuerpo de `update_highlight`.
+/// Distingue `note` y `groupId` ausentes (no cambian) de `null` (los quita).
 pub fn parse_update(body: &Value) -> Result<(String, HighlightPatch), AppError> {
     let object = body
         .as_object()
@@ -123,13 +130,26 @@ pub fn parse_update(body: &Value) -> Result<(String, HighlightPatch), AppError> 
         Some(Value::String(text)) => Some(Some(text.clone())),
         Some(_) => return Err(AppError::invalid_input("note must be a string or null")),
     };
+    let group_id = match object.get("groupId") {
+        None => None,
+        Some(Value::Null) => Some(None),
+        Some(Value::String(group_id)) => Some(Some(group_id.clone())),
+        Some(_) => return Err(AppError::invalid_input("groupId must be a string or null")),
+    };
 
-    if color.is_none() && note.is_none() {
+    if color.is_none() && note.is_none() && group_id.is_none() {
         return Err(AppError::invalid_input(
-            "update_highlight needs color or note",
+            "update_highlight needs color, note or groupId",
         ));
     }
-    Ok((id, HighlightPatch { color, note }))
+    Ok((
+        id,
+        HighlightPatch {
+            color,
+            note,
+            group_id,
+        },
+    ))
 }
 
 /// Ordena y valida los rectángulos: `x1 <= x2`, `y1 <= y2`, área no nula, entre 1 y 500.
@@ -196,6 +216,9 @@ pub fn create(conn: &Connection, input: HighlightInput) -> Result<Highlight, App
     let rects = normalize_rects(&input.rects)?;
     check_text(&input.text, "text")?;
     let note = normalize_note(input.note)?;
+    if let Some(group_id) = &input.group_id {
+        highlight_groups::ensure_in_book(conn, group_id, &input.book_id)?;
+    }
 
     let now = now_iso();
     let highlight = Highlight {
@@ -206,12 +229,13 @@ pub fn create(conn: &Connection, input: HighlightInput) -> Result<Highlight, App
         text: input.text,
         color: input.color,
         note,
+        group_id: input.group_id,
         created_at: now.clone(),
         updated_at: now,
     };
     conn.execute(
-        "INSERT INTO highlights (id, book_id, page, rects, text, color, note, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        "INSERT INTO highlights (id, book_id, page, rects, text, color, note, created_at, updated_at, group_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![
             highlight.id,
             highlight.book_id,
@@ -221,7 +245,8 @@ pub fn create(conn: &Connection, input: HighlightInput) -> Result<Highlight, App
             highlight.color.as_str(),
             highlight.note,
             highlight.created_at,
-            highlight.updated_at
+            highlight.updated_at,
+            highlight.group_id
         ],
     )?;
     Ok(highlight)
@@ -235,7 +260,7 @@ pub fn list(
 ) -> Result<Vec<Highlight>, AppError> {
     library::get_book(conn, book_id)?;
     let mut stmt = conn.prepare(
-        "SELECT id, book_id, page, rects, text, color, note, created_at, updated_at
+        "SELECT id, book_id, page, rects, text, color, note, created_at, updated_at, group_id
          FROM highlights
          WHERE book_id = ?1 AND (?2 IS NULL OR page = ?2)
          ORDER BY page, created_at, id",
@@ -254,13 +279,22 @@ pub fn update(conn: &Connection, id: &str, patch: &HighlightPatch) -> Result<Hig
         None => current.note.clone(),
         Some(note) => normalize_note(note.clone())?,
     };
+    let group_id = match &patch.group_id {
+        None => current.group_id.clone(),
+        Some(None) => None,
+        Some(Some(group_id)) => {
+            highlight_groups::ensure_in_book(conn, group_id, &current.book_id)?;
+            Some(group_id.clone())
+        }
+    };
     conn.execute(
-        "UPDATE highlights SET color = ?1, note = ?2, updated_at = ?3 WHERE id = ?4",
-        params![color.as_str(), note, now, id],
+        "UPDATE highlights SET color = ?1, note = ?2, group_id = ?3, updated_at = ?4 WHERE id = ?5",
+        params![color.as_str(), note, group_id, now, id],
     )?;
     Ok(Highlight {
         color,
         note,
+        group_id,
         updated_at: now,
         ..current
     })
@@ -283,6 +317,7 @@ pub fn export(
 ) -> Result<ExportResult, AppError> {
     let book = library::get_book(conn, book_id)?;
     let highlights = list(conn, book_id, None)?;
+    let groups = highlight_groups::list(conn, book_id)?;
 
     if !dest.is_absolute() {
         return Err(AppError::invalid_input("destPath must be an absolute path"));
@@ -301,6 +336,7 @@ pub fn export(
         &book.title,
         book.author.as_deref(),
         &highlights,
+        &groups,
         language,
         date,
     );
@@ -327,6 +363,7 @@ struct Labels {
     no_text: &'static str,
     one: &'static str,
     many: &'static str,
+    ungrouped: &'static str,
 }
 
 impl Labels {
@@ -339,6 +376,7 @@ impl Labels {
                 no_text: "*(sin texto)*",
                 one: "1 subrayado",
                 many: "subrayados",
+                ungrouped: "Sin grupo",
             },
             Language::En => Labels {
                 heading_exported: "Highlights exported from Atril on",
@@ -347,6 +385,7 @@ impl Labels {
                 no_text: "*(no text)*",
                 one: "1 highlight",
                 many: "highlights",
+                ungrouped: "Ungrouped",
             },
         }
     }
@@ -361,10 +400,13 @@ impl Labels {
 }
 
 /// Markdown de la exportación. Función pura: `date` la pone quien llama (AAAA-MM-DD, UTC).
+/// `groups` van en orden de `position`. Si ningún grupo tiene subrayados, el formato es el de la fase 3;
+/// si no, una sección `##` por grupo con subrayados (páginas en `###`) y `## Sin grupo` al final si hay alguno.
 pub fn render_markdown(
     title: &str,
     author: Option<&str>,
     highlights: &[Highlight],
+    groups: &[HighlightGroup],
     language: Language,
     date: &str,
 ) -> String {
@@ -387,6 +429,46 @@ pub fn render_markdown(
         blocks.push(labels.none.to_owned());
     }
 
+    // Un subrayado de un grupo que no esté en `groups` (no debería pasar, el FK lo impide) cuenta como sin grupo.
+    let known: HashSet<&str> = groups.iter().map(|group| group.id.as_str()).collect();
+    let is_grouped = |highlight: &Highlight| {
+        highlight
+            .group_id
+            .as_deref()
+            .is_some_and(|id| known.contains(id))
+    };
+
+    if highlights.iter().any(is_grouped) {
+        for group in groups {
+            let items: Vec<&Highlight> = highlights
+                .iter()
+                .filter(|highlight| highlight.group_id.as_deref() == Some(group.id.as_str()))
+                .collect();
+            if items.is_empty() {
+                continue;
+            }
+            blocks.push(format!("## {}", escape(&collapse(&group.name))));
+            push_pages(&mut blocks, items, "###", &labels);
+        }
+        let ungrouped: Vec<&Highlight> = highlights
+            .iter()
+            .filter(|highlight| !is_grouped(highlight))
+            .collect();
+        if !ungrouped.is_empty() {
+            blocks.push(format!("## {}", labels.ungrouped));
+            push_pages(&mut blocks, ungrouped, "###", &labels);
+        }
+    } else {
+        push_pages(&mut blocks, highlights.iter().collect(), "##", &labels);
+    }
+
+    let mut markdown = blocks.join("\n\n");
+    markdown.push('\n');
+    markdown
+}
+
+/// Una sección por página, en orden, con sus citas y notas. `level` es el nivel del título (`##` o `###`).
+fn push_pages(blocks: &mut Vec<String>, highlights: Vec<&Highlight>, level: &str, labels: &Labels) {
     let mut pages: BTreeMap<i64, Vec<&Highlight>> = BTreeMap::new();
     for highlight in highlights {
         pages.entry(highlight.page).or_default().push(highlight);
@@ -398,23 +480,24 @@ pub fn render_markdown(
                 .then_with(|| reading_left(a).total_cmp(&reading_left(b)))
                 .then_with(|| a.created_at.cmp(&b.created_at))
         });
-        blocks.push(format!("## {} {page}", labels.page));
+        blocks.push(format!("{level} {} {page}", labels.page));
         for highlight in items {
-            blocks.push(quote(&highlight.text, &labels));
+            blocks.push(quote(&highlight.text, labels));
             if let Some(note) = &highlight.note {
                 blocks.push(note.lines().map(escape).collect::<Vec<_>>().join("\n"));
             }
         }
     }
+}
 
-    let mut markdown = blocks.join("\n\n");
-    markdown.push('\n');
-    markdown
+/// Espacios internos colapsados: una sola línea.
+fn collapse(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// Cita de una sola línea: los espacios internos se colapsan.
 fn quote(text: &str, labels: &Labels) -> String {
-    let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let collapsed = collapse(text);
     if collapsed.is_empty() {
         format!("> {}", labels.no_text)
     } else {
@@ -510,7 +593,7 @@ fn reading_left(highlight: &Highlight) -> f64 {
 fn find(conn: &Connection, id: &str) -> Result<Highlight, AppError> {
     let row = conn
         .query_row(
-            "SELECT h.id, h.book_id, h.page, h.rects, h.text, h.color, h.note, h.created_at, h.updated_at
+            "SELECT h.id, h.book_id, h.page, h.rects, h.text, h.color, h.note, h.created_at, h.updated_at, h.group_id
              FROM highlights h
              JOIN books b ON b.id = h.book_id
              WHERE h.id = ?1 AND b.removed_at IS NULL",
@@ -533,6 +616,7 @@ type RawRow = (
     Option<String>,
     String,
     String,
+    Option<String>,
 );
 
 fn read_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RawRow> {
@@ -546,11 +630,12 @@ fn read_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RawRow> {
         row.get(6)?,
         row.get(7)?,
         row.get(8)?,
+        row.get(9)?,
     ))
 }
 
 fn finish_row(raw: RawRow) -> Result<Highlight, AppError> {
-    let (id, book_id, page, rects, text, color, note, created_at, updated_at) = raw;
+    let (id, book_id, page, rects, text, color, note, created_at, updated_at, group_id) = raw;
     Ok(Highlight {
         id,
         book_id,
@@ -559,6 +644,7 @@ fn finish_row(raw: RawRow) -> Result<Highlight, AppError> {
         text,
         color: HighlightColor::parse(&color)?,
         note,
+        group_id,
         created_at,
         updated_at,
     })
@@ -583,6 +669,7 @@ mod tests {
             text: text.to_owned(),
             color: HighlightColor::Ochre,
             note: None,
+            group_id: None,
         }
     }
 
@@ -595,6 +682,7 @@ mod tests {
             text: text.to_owned(),
             color: HighlightColor::Ochre,
             note: note.map(str::to_owned),
+            group_id: None,
             created_at: "2026-10-11T10:00:00.000Z".into(),
             updated_at: "2026-10-11T10:00:00.000Z".into(),
         }
@@ -643,6 +731,7 @@ mod tests {
             &HighlightPatch {
                 color: Some(HighlightColor::Sage),
                 note: None,
+                group_id: None,
             },
         )
         .expect("color");
@@ -673,6 +762,7 @@ mod tests {
             &HighlightPatch {
                 color: Some(HighlightColor::Slate),
                 note: None,
+                group_id: None,
             },
         )
         .expect("absent note");
@@ -684,6 +774,7 @@ mod tests {
             &HighlightPatch {
                 color: None,
                 note: Some(Some("otra".into())),
+                group_id: None,
             },
         )
         .expect("replace");
@@ -695,6 +786,7 @@ mod tests {
             &HighlightPatch {
                 color: None,
                 note: Some(None),
+                group_id: None,
             },
         )
         .expect("clear");
@@ -828,7 +920,8 @@ mod tests {
                 &h.id,
                 &HighlightPatch {
                     color: Some(HighlightColor::Sage),
-                    note: None
+                    note: None,
+                    group_id: None,
                 }
             )
             .expect_err("update")
@@ -846,6 +939,7 @@ mod tests {
             "Pedro Páramo",
             Some("Juan Rulfo"),
             &golden_highlights(),
+            &[],
             Language::Es,
             "2026-10-11",
         );
@@ -869,6 +963,7 @@ mod tests {
             "Pedro Páramo",
             Some("Juan Rulfo"),
             &golden_highlights(),
+            &[],
             Language::En,
             "2026-10-11",
         );
@@ -888,19 +983,20 @@ mod tests {
 
     #[test]
     fn empty_book_and_singular_counts() {
-        let es = render_markdown("T", None, &[], Language::Es, "2026-01-02");
+        let es = render_markdown("T", None, &[], &[], Language::Es, "2026-01-02");
         assert_eq!(
             es,
             "# T\n\nSubrayados exportados desde Atril el 2026-01-02 · 0 subrayados\n\n*Sin subrayados.*\n"
         );
 
-        let en = render_markdown("T", None, &[], Language::En, "2026-01-02");
+        let en = render_markdown("T", None, &[], &[], Language::En, "2026-01-02");
         assert!(en.ends_with("· 0 highlights\n\n*No highlights.*\n"), "{en}");
 
         let one = render_markdown(
             "T",
             None,
             &[sample("a", 1, 500.0, "solo", None)],
+            &[],
             Language::Es,
             "2026-01-02",
         );
@@ -909,6 +1005,7 @@ mod tests {
             "T",
             None,
             &[sample("a", 1, 500.0, "solo", None)],
+            &[],
             Language::En,
             "2026-01-02",
         );
@@ -928,6 +1025,7 @@ mod tests {
             "T",
             None,
             &[lower, same_line_right, same_line_left, upper],
+            &[],
             Language::En,
             "2026-01-02",
         );
@@ -946,6 +1044,7 @@ mod tests {
             "Título *raro*",
             Some("_autor_"),
             &[sample("e", 1, 500.0, text, Some("# nota\n> x"))],
+            &[],
             Language::Es,
             "2026-01-02",
         );
@@ -1078,6 +1177,7 @@ mod tests {
                 "hoy nos llena de for-  taleza. Lucas (22,19- 20) y Rosa- María",
                 None,
             )],
+            &[],
             Language::Es,
             "2026-01-02",
         );
@@ -1088,5 +1188,257 @@ mod tests {
         );
         assert!(!md.contains("for- taleza"), "{md}");
         assert!(!md.contains("19- 20"), "{md}");
+    }
+
+    fn group(id: &str, name: &str, position: i64) -> HighlightGroup {
+        HighlightGroup {
+            id: id.to_owned(),
+            book_id: "libro".into(),
+            name: name.to_owned(),
+            position,
+            created_at: "2026-10-11T10:00:00.000Z".into(),
+        }
+    }
+
+    fn in_group(mut highlight: Highlight, group_id: &str) -> Highlight {
+        highlight.group_id = Some(group_id.to_owned());
+        highlight
+    }
+
+    #[test]
+    fn group_id_is_absent_null_or_a_string_in_update_bodies() {
+        let (_, patch) =
+            parse_update(&json!({ "highlightId": "h", "groupId": "g" })).expect("string");
+        assert_eq!(patch.group_id, Some(Some("g".to_owned())));
+
+        let (_, patch) =
+            parse_update(&json!({ "highlightId": "h", "groupId": null })).expect("null");
+        assert_eq!(patch.group_id, Some(None));
+
+        let (_, patch) =
+            parse_update(&json!({ "highlightId": "h", "color": "sage" })).expect("absent");
+        assert_eq!(patch.group_id, None);
+
+        assert_eq!(
+            parse_update(&json!({ "highlightId": "h", "groupId": 3 }))
+                .expect_err("number")
+                .code,
+            ErrorCode::InvalidInput
+        );
+        assert_eq!(
+            parse_update(&json!({ "highlightId": "h", "groupId": null, "note": 3 }))
+                .expect_err("note still checked")
+                .code,
+            ErrorCode::InvalidInput
+        );
+    }
+
+    #[test]
+    fn highlights_join_and_leave_groups_of_their_own_book() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (_db, mut conn) = open_temp_db();
+        let book = import(&mut conn, &write_pdf(dir.path(), "a.pdf", 1));
+        let other = import(&mut conn, &write_pdf(dir.path(), "b.pdf", 2));
+        let chapter = highlight_groups::create(&conn, &book.id, "capítulo").expect("group");
+        let foreign = highlight_groups::create(&conn, &other.id, "ajeno").expect("group");
+
+        let mut with_group = input(&book.id, 1, 600.0, "en grupo");
+        with_group.group_id = Some(chapter.id.clone());
+        let created = create(&conn, with_group).expect("create in group");
+        assert_eq!(created.group_id.as_deref(), Some(chapter.id.as_str()));
+        assert_eq!(
+            list(&conn, &book.id, None).expect("list")[0]
+                .group_id
+                .as_deref(),
+            Some(chapter.id.as_str())
+        );
+
+        let mut foreign_input = input(&book.id, 1, 600.0, "x");
+        foreign_input.group_id = Some(foreign.id.clone());
+        assert_eq!(
+            create(&conn, foreign_input).expect_err("foreign").code,
+            ErrorCode::InvalidInput
+        );
+        let mut unknown_input = input(&book.id, 1, 600.0, "x");
+        unknown_input.group_id = Some("nope".into());
+        assert_eq!(
+            create(&conn, unknown_input).expect_err("unknown").code,
+            ErrorCode::InvalidInput
+        );
+
+        let to_foreign = update(
+            &conn,
+            &created.id,
+            &HighlightPatch {
+                group_id: Some(Some(foreign.id.clone())),
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            to_foreign.expect_err("foreign move").code,
+            ErrorCode::InvalidInput
+        );
+        assert_eq!(
+            find(&conn, &created.id).expect("find").group_id.as_deref(),
+            Some(chapter.id.as_str()),
+            "a failed move changes nothing"
+        );
+
+        let color_only = update(
+            &conn,
+            &created.id,
+            &HighlightPatch {
+                color: Some(HighlightColor::Slate),
+                ..Default::default()
+            },
+        )
+        .expect("absent groupId keeps the group");
+        assert_eq!(color_only.group_id.as_deref(), Some(chapter.id.as_str()));
+
+        let other_chapter = highlight_groups::create(&conn, &book.id, "otro").expect("group");
+        let moved = update(
+            &conn,
+            &created.id,
+            &HighlightPatch {
+                group_id: Some(Some(other_chapter.id.clone())),
+                ..Default::default()
+            },
+        )
+        .expect("move");
+        assert_eq!(moved.group_id.as_deref(), Some(other_chapter.id.as_str()));
+
+        let ungrouped = update(
+            &conn,
+            &created.id,
+            &HighlightPatch {
+                group_id: Some(None),
+                ..Default::default()
+            },
+        )
+        .expect("null leaves the group");
+        assert_eq!(ungrouped.group_id, None);
+    }
+
+    #[test]
+    fn export_with_groups_has_a_section_per_group_then_ungrouped() {
+        let first = in_group(
+            sample(
+                "h1",
+                2,
+                700.0,
+                "Vine a Comala porque me dijeron que acá vivía mi padre",
+                Some("Esta es la primera frase, la que lo cambia todo."),
+            ),
+            "g2",
+        );
+        let plain = sample("h2", 2, 500.0, "Un subrayado sin nota", None);
+        let late = in_group(
+            sample(
+                "h3",
+                7,
+                300.0,
+                "Ya no hay nada que hacer, cuando todo está perdido",
+                None,
+            ),
+            "g1",
+        );
+        let same_chapter = in_group(sample("h4", 2, 600.0, "Otro del capítulo", None), "g1");
+        let groups = vec![
+            group("g1", "Capítulo 1", 0),
+            group("g2", "Notas", 1),
+            group("g3", "Vacío", 2),
+        ];
+
+        let md = render_markdown(
+            "Pedro Páramo",
+            Some("Juan Rulfo"),
+            &[first, plain, late, same_chapter],
+            &groups,
+            Language::Es,
+            "2026-10-11",
+        );
+
+        assert_eq!(
+            md,
+            "# Pedro Páramo\n*Juan Rulfo*\n\n\
+             Subrayados exportados desde Atril el 2026-10-11 · 4 subrayados\n\n\
+             ## Capítulo 1\n\n\
+             ### Página 2\n\n\
+             > Otro del capítulo\n\n\
+             ### Página 7\n\n\
+             > Ya no hay nada que hacer, cuando todo está perdido\n\n\
+             ## Notas\n\n\
+             ### Página 2\n\n\
+             > Vine a Comala porque me dijeron que acá vivía mi padre\n\n\
+             Esta es la primera frase, la que lo cambia todo.\n\n\
+             ## Sin grupo\n\n\
+             ### Página 2\n\n\
+             > Un subrayado sin nota\n"
+        );
+    }
+
+    #[test]
+    fn groups_without_highlights_keep_the_phase_three_format() {
+        let highlights = golden_highlights();
+        let plain = render_markdown(
+            "Pedro Páramo",
+            Some("Juan Rulfo"),
+            &highlights,
+            &[],
+            Language::Es,
+            "2026-10-11",
+        );
+        let with_empty_group = render_markdown(
+            "Pedro Páramo",
+            Some("Juan Rulfo"),
+            &highlights,
+            &[group("g1", "Capítulo 1", 0)],
+            Language::Es,
+            "2026-10-11",
+        );
+
+        assert_eq!(with_empty_group, plain);
+        assert!(plain.contains("## Página 2\n"), "{plain}");
+    }
+
+    #[test]
+    fn group_names_are_escaped_and_collapsed_like_quotes() {
+        let highlight = in_group(sample("h", 1, 500.0, "cita", None), "g");
+        let md = render_markdown(
+            "T",
+            None,
+            &[highlight],
+            &[group("g", "  *Notas*\n  del   capítulo ", 0)],
+            Language::En,
+            "2026-01-02",
+        );
+
+        assert!(
+            md.contains("\n## \\*Notas\\* del capítulo\n\n### Page 1\n"),
+            "{md}"
+        );
+        assert!(!md.contains("## Ungrouped"), "{md}");
+    }
+
+    #[test]
+    fn export_writes_the_grouped_format_when_a_group_has_highlights() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (_db, mut conn) = open_temp_db();
+        let book = import(&mut conn, &write_pdf(dir.path(), "a.pdf", 1));
+        let chapter = highlight_groups::create(&conn, &book.id, "Capítulo 1").expect("group");
+        let mut grouped = input(&book.id, 1, 600.0, "uno");
+        grouped.group_id = Some(chapter.id.clone());
+        create(&conn, grouped).expect("grouped");
+        let out = dir.path().join("grupos.md");
+
+        let result = export(&conn, &book.id, &out, Language::En, "2026-01-02").expect("export");
+
+        assert_eq!(result.count, 1);
+        let written = std::fs::read_to_string(&out).expect("read");
+        assert!(
+            written.contains("## Capítulo 1\n\n### Page 1\n\n> uno\n"),
+            "{written}"
+        );
+        assert!(!written.contains("Ungrouped"), "{written}");
     }
 }

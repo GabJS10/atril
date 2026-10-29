@@ -5,6 +5,7 @@ pub mod db;
 pub mod engine;
 pub mod error;
 pub mod folders;
+pub mod highlight_groups;
 pub mod highlights;
 pub mod indexer;
 pub mod library;
@@ -139,7 +140,11 @@ pub fn run() {
             commands::create_highlight,
             commands::update_highlight,
             commands::delete_highlight,
-            commands::export_highlights
+            commands::export_highlights,
+            commands::list_highlight_groups,
+            commands::create_highlight_group,
+            commands::rename_highlight_group,
+            commands::delete_highlight_group
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

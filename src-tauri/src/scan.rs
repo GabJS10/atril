@@ -660,6 +660,7 @@ mod tests {
                 text: "subrayado".into(),
                 color: crate::highlights::HighlightColor::Ochre,
                 note: None,
+                group_id: None,
             },
         )
         .expect("highlight");
