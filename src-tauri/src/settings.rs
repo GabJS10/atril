@@ -65,6 +65,8 @@ pub struct Settings {
     pub theme: Theme,
     pub default_zoom: Zoom,
     pub default_view_mode: ViewMode,
+    /// Buscar actualizaciones al arrancar (v1.3). El front decide si llama a `check_for_update`.
+    pub check_updates: bool,
 }
 
 impl Default for Settings {
@@ -74,6 +76,7 @@ impl Default for Settings {
             theme: Theme::Dark,
             default_zoom: Zoom::Preset(ZoomPreset::PageWidth),
             default_view_mode: ViewMode::Normal,
+            check_updates: true,
         }
     }
 }
@@ -86,6 +89,7 @@ pub struct SettingsPatch {
     pub theme: Option<Theme>,
     pub default_zoom: Option<Zoom>,
     pub default_view_mode: Option<ViewMode>,
+    pub check_updates: Option<bool>,
 }
 
 impl SettingsPatch {
@@ -111,6 +115,9 @@ impl SettingsPatch {
         if let Some(view_mode) = self.default_view_mode {
             settings.default_view_mode = view_mode;
         }
+        if let Some(check_updates) = self.check_updates {
+            settings.check_updates = check_updates;
+        }
     }
 
     /// Pares clave/valor JSON listos para guardar en la tabla `settings`.
@@ -127,6 +134,9 @@ impl SettingsPatch {
         }
         if let Some(view_mode) = self.default_view_mode {
             entries.push(("defaultViewMode", encode(&view_mode)?));
+        }
+        if let Some(check_updates) = self.check_updates {
+            entries.push(("checkUpdates", encode(&check_updates)?));
         }
         Ok(entries)
     }
@@ -206,7 +216,8 @@ mod tests {
                 "language": "system",
                 "theme": "dark",
                 "defaultZoom": "page_width",
-                "defaultViewMode": "normal"
+                "defaultViewMode": "normal",
+                "checkUpdates": true
             })
         );
     }
@@ -308,6 +319,62 @@ mod tests {
 
         assert_eq!(error.code, crate::error::ErrorCode::InvalidInput);
         assert_eq!(load(&conn).expect("load"), Settings::default());
+    }
+
+    #[test]
+    fn check_updates_round_trips_through_the_database() {
+        let (_dir, mut conn) = open_temp_db();
+
+        let off = update(
+            &mut conn,
+            &SettingsPatch {
+                check_updates: Some(false),
+                ..SettingsPatch::default()
+            },
+        )
+        .expect("turn off");
+        assert!(!off.check_updates);
+        assert!(!load(&conn).expect("reload off").check_updates);
+
+        let on = update(
+            &mut conn,
+            &SettingsPatch {
+                check_updates: Some(true),
+                ..SettingsPatch::default()
+            },
+        )
+        .expect("turn on");
+        assert!(on.check_updates);
+        assert!(load(&conn).expect("reload on").check_updates);
+    }
+
+    #[test]
+    fn check_updates_patch_key_is_camel_case() {
+        let patch: SettingsPatch =
+            serde_json::from_value(json!({ "checkUpdates": false })).expect("deserialize");
+
+        assert_eq!(
+            patch,
+            SettingsPatch {
+                check_updates: Some(false),
+                ..SettingsPatch::default()
+            }
+        );
+    }
+
+    #[test]
+    fn database_without_check_updates_key_returns_true() {
+        let (_dir, conn) = open_temp_db();
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES ('theme', '\"light\"')",
+            [],
+        )
+        .expect("insert");
+
+        let settings = load(&conn).expect("load");
+
+        assert_eq!(settings.theme, Theme::Light);
+        assert!(settings.check_updates);
     }
 
     #[test]

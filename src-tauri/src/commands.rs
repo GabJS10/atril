@@ -20,6 +20,7 @@ use crate::library::{self, Book, ImportResult, OpenedBook, ReadingStateInput};
 use crate::query::{self, BookQuery, HomeData};
 use crate::scan::ScanStatus;
 use crate::settings::{self, Settings, SettingsPatch};
+use crate::updates::{self, UpdateCheck};
 use crate::watch;
 
 #[tauri::command]
@@ -39,6 +40,15 @@ pub fn update_settings(
         .map_err(|error| AppError::invalid_input(error.to_string()))?;
     let mut conn = app.db()?;
     settings::update(&mut conn, &patch)
+}
+
+/// Comprueba si hay una versión nueva en GitHub (`docs/IPC.md`, «Actualizaciones (v1.3)»). No mira
+/// `checkUpdates`: lo decide el front. Es bloqueante (ureq), así que va en un hilo aparte.
+#[tauri::command]
+pub async fn check_for_update() -> Result<UpdateCheck, AppError> {
+    tauri::async_runtime::spawn_blocking(|| updates::check(env!("CARGO_PKG_VERSION")))
+        .await
+        .map_err(|error| AppError::internal(format!("check_for_update task failed: {error}")))?
 }
 
 #[tauri::command]
